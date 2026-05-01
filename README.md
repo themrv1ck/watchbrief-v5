@@ -13,11 +13,19 @@ WatchBrief V5 是 V4 的 clean rewrite（不修改 V4 正式副本），保留�
 
 ## 推荐命令（按你当前目录执行）
 
-以下命令默认以仓库路径 `watchbrief_v5/` 代码为基准运行。
+Hermes / Codex 默认运行入口是独立项目目录：
+
+```bash
+cd "/Users/apple/Documents/New project/watchbrief_v5"
+```
+
+以下命令都默认在这个目录执行。旧目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5` 只保留历史记录，不再作为 WatchBrief V5 的默认运行入口。
 
 ### 1) 单视频（默认 mock review）
 
 ```bash
+cd "/Users/apple/Documents/New project/watchbrief_v5"
+
 python3 scripts/cli.py \
   --source-url "https://example.com/your-video" \
   --mock-review-response watchbrief_v5/golden/sample_payload_heartflow.json
@@ -28,6 +36,8 @@ python3 scripts/cli.py \
 ### 2) URL 文件（多条）
 
 ```bash
+cd "/Users/apple/Documents/New project/watchbrief_v5"
+
 python3 scripts/cli.py \
   --source-file /path/to/urls.txt \
   --mock-review-response watchbrief_v5/golden/sample_payload_heartflow.json
@@ -38,6 +48,8 @@ python3 scripts/cli.py \
 ### 3) 列表 URL（支持平台列表解析）
 
 ```bash
+cd "/Users/apple/Documents/New project/watchbrief_v5"
+
 python3 scripts/cli.py \
   --source-url "https://www.bilibili.com/..." \
   --mock-review-response watchbrief_v5/golden/sample_payload_heartflow.json
@@ -114,7 +126,7 @@ cache key 至少包含：`transcript_hash`、`qwen_model_id`、`qwen_prompt_fing
 --transcriber auto
 ```
 
-`auto` 只表示“优先使用 MLX-Audio”，不会静默 fallback 到 Whisper。WatchBrief 会优先查找 `WATCHBRIEF_MLX_AUDIO_PYTHON`，再查找 `watchbrief_v5/.venv-mlx/bin/python`、项目根目录 `.venv-mlx/bin/python`、Hermes 安装副本里的 `.venv-mlx/bin/python`。MLX-Audio 不可用且没有显式允许 fallback 时，会失败为：
+`auto` 只表示“优先使用 MLX-Audio”，不会静默 fallback 到 Whisper。WatchBrief 会优先查找 `WATCHBRIEF_MLX_AUDIO_PYTHON`，再查找当前 skill 根目录 `.venv-mlx/bin/python`、独立项目根目录 `/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python`、父级项目根目录 `.venv-mlx/bin/python`、Hermes 安装副本里的 `.venv-mlx/bin/python`。MLX-Audio 不可用且没有显式允许 fallback 时，会失败为：
 
 ```text
 transcriber_unavailable: MLX-Audio unavailable. Checked Python candidates: ...

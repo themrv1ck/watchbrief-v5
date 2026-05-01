@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover
 SUPPORTED_TRANSCRIBERS = ("auto", "mlx_audio", "whisper")
 DEFAULT_WHISPER_MODEL = "base"
 DEFAULT_MLX_AUDIO_MODEL = os.environ.get("WATCHBRIEF_MLX_AUDIO_MODEL", "mlx-community/whisper-large-v3-turbo")
+DEFAULT_PROJECT_ROOT = Path("/Users/apple/Documents/New project/watchbrief_v5")
 MLX_AUDIO_RUNNER_SCRIPT = """
 import json
 import sys
@@ -52,7 +53,9 @@ def mlx_audio_python_candidates() -> list[Path]:
     if env_path:
         candidates.append(Path(env_path).expanduser())
     skill_root = Path(__file__).resolve().parents[1]
+    project_root = Path(os.environ.get("WATCHBRIEF_PROJECT_ROOT") or DEFAULT_PROJECT_ROOT).expanduser()
     candidates.append(skill_root / ".venv-mlx" / "bin" / "python")
+    candidates.append(project_root / ".venv-mlx" / "bin" / "python")
     candidates.append(skill_root.parent / ".venv-mlx" / "bin" / "python")
     candidates.append(Path.home() / ".hermes" / "skills" / "openclaw-imports" / "watchbrief_v5" / ".venv-mlx" / "bin" / "python")
     candidates.append(Path.home() / ".hermes" / "skills" / "openclaw-imports" / "v1deodownload" / ".venv-mlx" / "bin" / "python")

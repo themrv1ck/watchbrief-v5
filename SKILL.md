@@ -11,6 +11,8 @@ description: WatchBrief V5 是视频观看决策报告生成器。它不是下�
 - 外部可发现的 Skill 名称是 `watchbrief_v5`，显示名是 `WatchBrief`。
 - 旧入口 `v1deodownload` 保留，用于回退到 V4，当前阶段不要求下线旧版本。
 - 正式使用手册是 `USAGE_V5.md`，日常运行守则以该文件为准。
+- 默认运行入口是独立项目目录 `/Users/apple/Documents/New project/watchbrief_v5`。Hermes / Codex 调用 WatchBrief V5 时必须先进入这个目录再运行 `python3 scripts/cli.py ...`。
+- 旧目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5` 只保留历史和回溯，不再作为 WatchBrief V5 默认运行入口。
 
 ## 关键边界
 
@@ -24,6 +26,8 @@ description: WatchBrief V5 是视频观看决策报告生成器。它不是下�
 真实 review 走 Codex CLI 登录态，不强制 `OPENAI_API_KEY`。必须显式开启：
 
 ```bash
+cd "/Users/apple/Documents/New project/watchbrief_v5"
+
 python3 scripts/cli.py \
   --source-url '<video_url>' \
   --review-provider codex-cli \
@@ -34,6 +38,8 @@ python3 scripts/cli.py \
 独立账号目录：
 
 ```bash
+cd "/Users/apple/Documents/New project/watchbrief_v5"
+
 python3 scripts/cli.py \
   --source-url '<video_url>' \
   --review-provider codex-cli \
@@ -48,7 +54,7 @@ python3 scripts/cli.py \
 - 默认转写器是 `--transcriber auto`。
 - `auto` 表示 MLX-Audio 优先，且不会静默 fallback 到 Whisper。
 - Whisper 只有显式 `--transcriber whisper` 或显式 `--allow-whisper-fallback` 时才允许使用。
-- MLX-Audio Python 优先查找 `WATCHBRIEF_MLX_AUDIO_PYTHON`，再查找 `watchbrief_v5/.venv-mlx/bin/python`、项目根目录 `.venv-mlx/bin/python`、Hermes 安装副本里的 `.venv-mlx/bin/python`，不依赖系统 `python3` 作为首选路径。
+- MLX-Audio Python 优先查找 `WATCHBRIEF_MLX_AUDIO_PYTHON`，再查找当前 skill 根目录 `.venv-mlx/bin/python`、独立项目根目录 `/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python`、父级项目根目录 `.venv-mlx/bin/python`、Hermes 安装副本里的 `.venv-mlx/bin/python`，不依赖系统 `python3` 作为首选路径。
 - MLX-Audio 不可用且未允许 fallback 时，失败为 `transcriber_unavailable`，错误信息必须列出已检查的 Python 候选路径。
 - `local_extract.py` 必须使用本地 Qwen-family 模型，不允许非 Qwen 模型。
 - Qwen 默认模型固定为 `qwen3-30b-a3b-instruct-2507-mlx`；只有显式传 `WATCHBRIEF_QWEN_MODEL` 或 `--qwen-model` 时才覆盖。

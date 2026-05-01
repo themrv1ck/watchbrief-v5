@@ -17,9 +17,11 @@ from scripts.transcriber import transcribe_audio_to_material
 class AcquisitionTranscriberTest(unittest.TestCase):
     def test_mlx_audio_candidates_include_project_root_venv_before_system_python(self) -> None:
         candidates = transcriber.mlx_audio_python_candidates()
-        project_venv_python = ROOT.parent / ".venv-mlx" / "bin" / "python"
+        project_venv_python = ROOT / ".venv-mlx" / "bin" / "python"
+        canonical_venv_python = Path("/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python")
 
         self.assertIn(project_venv_python, candidates)
+        self.assertIn(canonical_venv_python, candidates)
         self.assertLess(
             candidates.index(project_venv_python),
             candidates.index(Path(transcriber.sys.executable)),

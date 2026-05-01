@@ -174,11 +174,12 @@ Bilibili resolver rules:
 
 Current behavior:
 
+- The canonical WatchBrief V5 project root is `/Users/apple/Documents/New project/watchbrief_v5`; Hermes and Codex default runs must invoke `python3 scripts/cli.py ...` from that directory.
 - `--transcriber auto` is the default.
 - `auto` means MLX-Audio first.
 - Whisper is allowed only when the user explicitly passes `--transcriber whisper`, or explicitly passes `--allow-whisper-fallback` and MLX-Audio is unavailable or fails.
 - The pipeline must not silently fall back from MLX-Audio to Whisper.
-- MLX-Audio Python lookup must prefer `WATCHBRIEF_MLX_AUDIO_PYTHON`, `watchbrief_v5/.venv-mlx/bin/python`, the project-root `.venv-mlx/bin/python`, and Hermes installed skill `.venv-mlx/bin/python` before considering the current Python executable.
+- MLX-Audio Python lookup must prefer `WATCHBRIEF_MLX_AUDIO_PYTHON`, the current skill-root `.venv-mlx/bin/python`, the canonical standalone project `.venv-mlx/bin/python`, the parent project-root `.venv-mlx/bin/python`, and Hermes installed skill `.venv-mlx/bin/python` before considering the current Python executable.
 - If MLX-Audio is unavailable and fallback is not explicitly allowed, the acquisition layer fails with `transcriber_unavailable` and a message that lists checked Python candidates.
 
 ### Local Qwen Extract Strategy
