@@ -1,0 +1,72 @@
+{
+  "title": "魅力不是完美表演，而是让别人读到真实信号",
+  "url": "https://example.com/watch/charm",
+  "channel": "Mock Channel",
+  "duration": "18:06",
+  "date": "2026-04-21",
+  "topic": "社交心理 / 魅力机制 / 关系吸引 / 自我呈现",
+  "replacement_score": 3.7,
+  "tag": "报告足够替代",
+  "one_line_brief": "这期视频主要讲：魅力来自他人能稳定读到善意、潜力和真实，而不是把自己表演得毫无缺点。",
+  "watch_verdict": "看报告基本够，原视频只建议跳看 08:20 | 12:40；不需要完整观看。",
+  "highest_compression": "魅力的核心不是完美展示自己，而是让对方同时读到安全感、成长性和不做作的真实信号。",
+  "path_table": {
+    "problem": "视频从很多人把魅力理解成外形、话术和表演切入。",
+    "mechanism": "它把魅力解释成善意、潜力、真实感和互动反馈共同形成的信号。",
+    "turning_point": "它纠正了越完美越有吸引力的误区，强调适度真实更容易建立信任。",
+    "landing": "最后落到减少过度包装，让表达、边界和行动保持一致。"
+  },
+  "arrow_chain": [
+    "追求完美",
+    "信号失真",
+    "善意可读",
+    "潜力可见",
+    "真实稳定",
+    "吸引形成"
+  ],
+  "final_conclusion": "魅力的核心不是表演得更完美，而是让别人读到你身上的善意、潜力和真实。",
+  "content_caveat": "观点适合社交入门，论证主要依靠经验观察，缺少更系统的研究支撑。",
+  "watch_segments": [
+    {
+      "priority": "primary",
+      "start": "08:20",
+      "end": "12:40",
+      "title": "首选片段：魅力三类信号",
+      "reason": "这一段集中说明善意、潜力和真实如何共同影响吸引。"
+    }
+  ],
+  "only_one_segment": "只选一段：08:20 | 12:40。这一段已经覆盖报告之外最值得补看的解释和例子。",
+  "score_basis": {
+    "information_density": "核心判断集中在 08:20 | 12:40，前后多是常见社交建议的重复铺陈。",
+    "evidence_quality": "论据以经验观察和生活例子为主，没有给出数据、反例或清晰研究来源。",
+    "originality": "善意、潜力、真实的组合表达有启发，但单项观点并不新。",
+    "watch_value": "报告可以替代主要内容，原视频剩余价值主要是作者用例子解释信号的语气和节奏。"
+  },
+  "structured_assessment": {
+    "信息密度": 4.0,
+    "论据质量": 3.8,
+    "独创性": 3.5,
+    "观看性价比": 3.6
+  },
+  "score_trace": {
+    "information_density": 4.0,
+    "evidence_quality": 3.8,
+    "originality": 3.5,
+    "watch_value": 3.6,
+    "formula": "information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3",
+    "computed_replacement_score": 3.7,
+    "model_suggested_score": 3.7,
+    "final_score_source": "deterministic_formula",
+    "warnings": []
+  },
+  "transcript_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "qwen_model_id": "mock-qwen",
+  "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v2",
+  "qwen_prompt_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "codex_model": "gpt-5.4",
+  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v3",
+  "codex_prompt_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "scoring_formula_version": "watchbrief_v5.scoring_formula.v1",
+  "watchbrief_version": "watchbrief_v5",
+  "confidence_note": "mock payload 覆盖字段契约；未接入真实字幕或模型判断。"
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://watchbrief.local/schemas/watch_order.schema.json",
+  "title": "WatchBrief V5 Watch Order Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["job_name", "generated_at", "requested_count", "completed_count", "failed_count", "videos", "failures"],
+  "properties": {
+    "job_name": { "type": "string", "minLength": 1 },
+    "playlist_title": { "type": "string" },
+    "source_url": { "type": "string" },
+    "source_kind": { "type": "string" },
+    "source_subkind": { "type": "string" },
+    "source_platform": { "type": "string" },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "requested_count": { "type": "integer", "minimum": 0 },
+    "completed_count": { "type": "integer", "minimum": 0 },
+    "failed_count": { "type": "integer", "minimum": 0 },
+    "skipped_count": { "type": "integer", "minimum": 0 },
+    "video_note_count": { "type": "integer", "minimum": 0 },
+    "non_video_count": { "type": "integer", "minimum": 0 },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["url", "stage", "error"],
+        "properties": {
+          "title": { "type": "string" },
+          "url": { "type": "string" },
+          "stage": { "type": "string", "minLength": 1 },
+          "error": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["url", "reason_code"],
+        "properties": {
+          "title": { "type": "string" },
+          "url": { "type": "string" },
+          "stage": { "type": "string" },
+          "reason_code": { "type": "string", "minLength": 1 },
+          "error": { "type": "string" },
+          "note_type": { "type": "string" },
+          "note_media_kind": { "type": "string" }
+        }
+      }
+    },
+    "watch_order_items": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "videos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["title", "url", "page_file", "replacement_score", "topic", "tag", "structured_assessment", "watch_segments"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "minLength": 1 },
+          "page_file": { "type": "string", "minLength": 1 },
+          "replacement_score": { "type": "number", "minimum": 0, "maximum": 10 },
+          "topic": { "type": "string", "minLength": 1 },
+          "tag": { "type": "string" },
+          "structured_assessment": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["信息密度", "论据质量", "独创性", "观看性价比"],
+            "properties": {
+              "信息密度": { "type": "number", "minimum": 0, "maximum": 10 },
+              "论据质量": { "type": "number", "minimum": 0, "maximum": 10 },
+              "独创性": { "type": "number", "minimum": 0, "maximum": 10 },
+              "观看性价比": { "type": "number", "minimum": 0, "maximum": 10 }
+            }
+          },
+          "watch_segments": { "type": "array" }
+        }
+      }
+    }
+  }
+}

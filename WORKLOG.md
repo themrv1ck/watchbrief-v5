@@ -1,0 +1,4041 @@
+# 工作日志
+
+## 2026-05-01
+
+- 阶段十九 D：小红书 board `体态纠正与康复` 14 条全量验收。
+  - 本轮使用当前主 CLI `watchbrief_v5/scripts/cli.py`，输入 `https://www.xiaohongshu.com/board/69e0e0930000000016034f8a?source=web_user_page`，未传 `--output-dir`，未跑 YouTube、B 站或其他小红书链接，未改 renderer、Watch Order 模板、单视频 HTML 模板、schema、validator、score band、final_conclusion、tag/topic 或 watch_segments。
+  - 本轮为修复明确 bug 改过 `watchbrief_v5/scripts/resolver.py`：补充小红书 `window.__INITIAL_STATE__` 的 Vue ref 解包、Safari DOM/state 混合提取、限定 DOM provider browser、以及异常标题 fallback；`python3 -m py_compile watchbrief_v5/scripts/resolver.py` 通过。
+  - Resolver 结果：`source_kind=list`、`source_subkind=xiaohongshu_board`、`resolver_method=xiaohongshu_board`、`board_title=体态纠正与康复`、`note_list_provider=safari-dom`、`selected_cookies_browser=safari`、`page_initial_state_found=true`、`declared_total_count=14`、`note_count=14`、`video_note_count=13`、`non_video_count=1`。API provider 返回 `HTTP Error 500: Internal Error`、initial_state 无 notes，最终由 Safari DOM fallback 成功提供 note list；未使用 historical sample cache。
+  - 完成统计：`completed_count=3`、`failed_count=10`、`skipped_count=1`、`non_video_count=1`。3 条成功视频均进入 Qwen / Codex / validator / renderer，并在主文件夹第一层生成 HTML。
+  - 成功视频 HTML：`01-无痛解锁一字马-0基础🉑解锁-20min跟练版✅.html`、`02-【收藏】四步消除「假」肚腩.html`、`03-崴脚后最全恢复方案✅赶紧学起来💥👆.html`。
+  - 图文 note：第 10 条 `骨盆前倾是怎么回事？怎么改善？` 被正确标记为 `stage=resolver`、`reason_code=non_video_note`、`note_media_kind=image_text_note`，未进入 audio_downloader / MLX-Audio / Qwen / Codex / renderer，未生成视频 HTML。
+  - 失败视频：10 条视频均失败于 `stage=audio_downloader`、`reason_code=audio_download_failed`，包括第 4、5、6、7、8、9、11、12、13、14 条；失败被逐条记录，没有中断整个 board。
+  - 输出目录：`/Users/apple/Desktop/体态纠正与康复-2`；第一层包含 `00-watch-order.html` 和 3 个成功视频 HTML，无二级 HTML。`WatchBrief-Runs` 未生成/未进入，Desktop 根目录未生成 `WatchBrief-Debug`、未出现 `undefined-小红书`、未散落 `00-watch-order.html`、manifest、payloads、`_work` 或 `normalized_payload.json`。
+  - Debug：CLI 为失败验收保留临时 debug artifacts `/var/folders/gl/lclzd2wx0312kb4xllx6nc340000gp/T/watchbrief_v5_debug_4ole69m3`，没有写入 Desktop 的 `WatchBrief-Debug`。
+  - Cookie 安全：运行中未打印、展示 cookies；产物 HTML 中曾含小红书 URL 查询参数，已从 `00-watch-order.html` 与 3 个成功视频 HTML 中移除 `xsec_token`，复扫输出 HTML 未命中 `cookie`、`xsec_token`、`xsecToken` 或 `a1=`。
+  - 结论：阶段十九 D 未全绿；board resolver 与图文跳过逻辑通过，正式输出结构通过，但 10/13 个视频因小红书音频下载失败未完成。下一步应只针对小红书 video audio_downloader/cookie browser 选择失败做最小排查，不应把 resolver、renderer、validator 或图文跳过逻辑回滚。
+- 阶段十九 D2 后全量 board 重跑尝试（2026-05-01 18:33 CST）。
+  - 按 D2 建议命令直接重跑 `https://www.xiaohongshu.com/board/69e0e0930000000016034f8a?source=web_user_page`，使用当前主 CLI、Codex account2、`codex_model=gpt-5.4`、`timeout=900`、`qwen-timeout=900`，未传 `--output-dir`，未跑 YouTube / B 站 / 其他小红书链接。
+  - 本轮未进入视频链路：manifest `/var/folders/gl/lclzd2wx0312kb4xllx6nc340000gp/T/watchbrief_v5_debug_887g5_xp/manifest.json` 显示 `source_kind=unknown`、`completed_count=0`、`failed_count=1`、失败在 `stage=resolver`、`reason_code=xiaohongshu_board_resolver_failed`。
+  - Resolver 可读到 `board_title=体态纠正与康复`、`declared_total_count=14`，但 note list 未解析成功；provider errors 为 API `HTTP Error 500: Internal Error`、initial_state `no notes in initial state`、DOM `safari-dom:NO_MATCHING_TAB`。
+  - 本轮不是 D2 修复目标的 audio_downloader 验证失败，也未证明原 10 条 `audio_download_failed` 已消除；阻断点提前发生在 board DOM fallback 没命中已打开 Safari tab。
+  - 副作用检查：manifest 无正式 `output_dir`，未生成 `00-watch-order.html` 或视频 HTML；Desktop 根目录未新增 `WatchBrief-Debug`、`WatchBrief-Runs`、`undefined-小红书` 或散落 payload/manifest。
+  - 下一步：需要先在 Safari 打开目标 board 页面并确认 URL 含 `69e0e0930000000016034f8a`，再重跑同一全量命令；否则 resolver 只能读到标题/声明总数，无法通过 DOM fallback 读取 14 条 note。
+- 阶段十九 D-R：Safari board 页面已打开后的 14 条全量验收重跑（2026-05-01 18:42 CST）。
+  - 本轮按用户指定命令执行，使用当前主 CLI `watchbrief_v5/scripts/cli.py`、Codex account2、`codex_model=gpt-5.4`、`timeout=900`、`qwen-timeout=900`，未传 `--output-dir`，未跑 YouTube / B 站 / 其他小红书链接，未改项目代码。
+  - 已写入 Hermes 规则：使用 WatchBrief / watchbrief_v5 技能时，Hermes 可操作 Safari 完成目标页面确认、DOM 读取和必要目标页导航；仍不得保存、打印或展示 cookies / xsec_token / signed URL。对应记忆已更新，`watchbrief_v5` skill 也已补充此规则。
+  - 运行前先枚举 Safari tab，最初未命中目标 board tab；为让 DOM fallback 命中，在 Safari 新建/定位目标 board tab，随后确认 URL 含 `69e0e0930000000016034f8a` 且标题为 `体态纠正与康复 - 小红书`。本轮没有自动打开最终输出 HTML。
+  - Manifest：`/var/folders/gl/lclzd2wx0312kb4xllx6nc340000gp/T/watchbrief_v5_debug_nx29sea_/manifest.json`。Resolver 成功：`source_kind=list`、`source_subkind=xiaohongshu_board`、`source_platform=小红书`、`board_title=体态纠正与康复`、`note_list_provider=safari-dom`、`note_count=14`、`video_note_count=13`、`non_video_count=1`，未使用 historical sample cache。
+  - 完成统计：`completed_count=0`、`failed_count=13`、`skipped_count=1`、`non_video_count=1`。第 10 条图文 note `骨盆前倾是怎么回事？怎么改善？` 正确 `stage=resolver`、`reason_code=non_video_note`、`note_media_kind=image_text_note`，未进入视频链路。
+  - 13 条视频均进入 resolver / metadata / subtitle_fetcher，但平台字幕不可用后全部失败在 `audio_downloader`，`reason_code=audio_download_failed`；未进入 MLX-Audio、transcript coverage gate、Qwen、Codex、validator 或 renderer。
+  - Chrome -> Safari fallback 生效：13 条失败视频的 item manifest 均记录 `cookies_browser_attempts=[chrome, safari]`、`selected_cookies_browser=safari`、`cookies_fallback_reason=no_video_formats`，说明 Chrome `no_video_formats` 后确实继续尝试 Safari，但 Safari 仍未能完成音频下载。
+  - 输出目录：`/Users/apple/Desktop/体态纠正与康复-3`；仅生成 `00-watch-order.html`，成功视频 HTML 数为 0，无二级 HTML。未生成/进入 Desktop `WatchBrief-Debug` 或 `WatchBrief-Runs`，未污染 Desktop 根目录。
+  - 敏感信息：运行中未打印、保存或展示 cookies；正式输出 `00-watch-order.html` 已清理 `xsec_token` / `xsec_source`，复扫未命中 `cookie`、`xsec_token`、`xsecToken`、`a1=`、`X-S-SIGN`、`web_session` 或 `signed`。
+  - 结论：D-R 解析与图文跳过通过，Chrome->Safari fallback 也生效，但 D2 小样本结论未推广到 14 条全量；当前全量阻断仍是小红书 13 条视频 `audio_downloader/audio_download_failed`。暂不建议正式使用 WatchBrief V5 处理该小红书 board 全量任务；下一步应针对 audio_downloader 在 Safari fallback 后仍失败做最小复现，优先比对 D2 小样本成功样本与本轮 13 条失败样本的 source_url/media_url 输入差异。
+
+
+## 2026-04-29
+
+- 阶段十八 G3：YouTube 40 分钟单视频复验。
+  - 本阶段按用户要求只跑单视频 `https://youtu.be/Er2s-CFoZSo?si=jaLBuDUAUXNQ4Gkx`，未跑 YouTube 小列表，未跑 B 站，未改代码，未改 renderer、模板、schema 或 validator。
+  - 执行前检查：未发现其他正在运行的 WatchBrief / VideoDownload / Codex / MLX 长任务；Hermes gateway 在后台但 CPU 为 0；LM Studio 正常运行；`/v1/models` 中包含 `qwen3-30b-a3b-instruct-2507-mlx`；当前 shell 未设置 `WATCHBRIEF_QWEN_MODEL`，项目源目录默认模型确认为 `qwen3-30b-a3b-instruct-2507-mlx`。
+  - 桌面基线已记录到 `/tmp/watchbrief_g3_desktop_before.txt`，时间为 `2026-04-29 10:56:25 CST`。
+  - 执行命令使用 Chrome cookies、Codex CLI account2、`codex_model=gpt-5.4`、`timeout=600`、`qwen-timeout=600`，未传 `--output-dir`。
+  - 真实结果：本轮未进入字幕、local_extract/Qwen、Codex review 或 validator；失败发生在 resolver 阶段，manifest 显示 `source_kind=unknown`、`completed_count=0`、`failed_count=1`，失败项标题为 `Untitled Video`，`stage=resolver`、`reason_code=platform_restriction`、`error=platform restricted resolver access`。
+  - 失败 debug 按规则保留到 `/Users/apple/Desktop/WatchBrief-Debug/Er2s-CFoZSo-20260429-105715/`，其中 `manifest.json` 修改时间为 `2026-04-29 10:57:15 CST`。
+  - 因 resolver 未通过，本轮没有字幕语言、字幕格式、segment 数、chunk 数、local_extract 耗时、Codex 耗时、validator 结果或 HTML 产物可验收；也无法评估新默认 Qwen 模型对 40 分钟视频的实际 local_extract 性能。
+  - 桌面检查：本轮未在 Desktop 根目录生成单视频 HTML、任务文件夹、`00-watch-order.html`、payload、work、manifest 或 normalized_payload；只在既有 `WatchBrief-Debug` 下新增失败诊断目录。
+  - cookie 安全：本轮未打印、保存或展示 cookies 内容。
+  - 结论：G3 未完成 40 分钟单视频性能复验，当前阻断是 YouTube 平台访问限制 / resolver 访问失败，不是字幕策略、Qwen 模型、Codex review、validator 或 HTML 输出问题。下一步不建议进入 YouTube 小列表完整复测；应先恢复/确认 YouTube resolver 登录态访问，或对同一 URL 做 resolver-only 级别排查后再重跑 G3。
+
+## 2026-04-28
+
+- 阶段十八 E1：Codex review 的 `watch_verdict` 时间段约束修复。
+  - 本阶段只修 Codex review prompt / retry 与对应测试；未改 YouTube 字幕策略，未改 renderer、Watch Order 模板、单视频 HTML 模板、最终 schema、score band、final_conclusion/tag/topic/watch_segments，未回测 B 站，未触发 audio_downloader 或 MLX-Audio，也未处理 B 站 provider。
+  - 原失败原因：目标视频字幕链路已成功使用 `en` manual VTT，Qwen chunked local_extract 与 Codex review 均完成，但 Codex 输出的 `watch_verdict` 写成“首选片段”等模糊说法，没有包含合规 `start | end` 时间段，也没有明确 no-watch 决策，因此 validator 报 `watch_verdict: must contain a pipe time range or a no-watch decision`。
+  - validator 合法格式确认：`watch_verdict` 必须同时说明“报告是否够用”和“原视频是否要看”；若建议观看，必须包含 `MM:SS | MM:SS` 或 `HH:MM:SS | HH:MM:SS` 管道时间段；`start - end`、`start 到 end`、`start 至 end` 等非管道格式不合规。若不建议看，必须明确包含 `不必看`、`不用看`、`无需看`、`不用再看` 或 `不推荐观看`。
+  - 修复：`codex_review.py` 的真实 Codex CLI JSON contract 升级到 `watchbrief_v5.codex_review_prompt.v3`，明确 `watch_verdict` 必须复制 primary `watch_segments` 的精确 `start | end`，禁止无时间的“首选片段”模糊句，禁止非管道时间格式；validator 常量与 golden payload 同步到 v3。
+  - retry 收口：当 validator 返回 `watch_verdict` 相关错误时，`run_codex_review()` 不再直接失败，而是写入 `schema_errors.json` 并构造针对性 retry prompt，要求保留其他字段、只修 `watch_verdict`，补入 primary `start | end` 或明确 no-watch 决策；重试耗尽后才返回 `validator_failed`。
+  - 新增/更新测试覆盖：Codex prompt 必含 `watch_verdict` 管道时间约束；retry prompt 针对 `watch_verdict_time` 明确补 `start | end`；Codex 首次输出缺时间段时可 retry 后通过；validator 对缺时间段、合规管道时间、合规 no-watch 决策分别断言；pipeline 期望的 prompt version 更新为 v3。
+  - 单视频真实验收：按指定命令运行 `https://youtu.be/Er2s-CFoZSo?si=jaLBuDUAUXNQ4Gkx`，使用 Chrome cookies、Codex CLI account2、`codex_model=gpt-5.4`、`timeout=600`、`qwen-timeout=600`；继续使用字幕 transcript，未进入 audio_downloader，未进入 MLX-Audio；Qwen chunked local_extract 完成后进入 Codex review，validator 通过，生成单视频 HTML `/Users/apple/Desktop/01-A-Full-Guide-To-Making-Your-First-Profitable-Product-(Beginners,-Take-Notes).html`。
+  - 最终页面验收：HTML 总判定展示为自然句 `20:44 - 32:34`，内部 normalized payload 已通过 validator 的 `start | end` 规则；首选片段时间卡片为三行 `20:44 / | / 32:34`；`only_one_segment` 展示为自然句 `20:44 - 32:34`；未生成 `00-watch-order.html`，未出现旧模块。
+  - 桌面检查：本次 16:00 后 Desktop 根目录只新增该单视频 HTML；未新增散落 payload、work、manifest、normalized_payload 或列表任务文件夹。桌面已有 `A Full Guide To Making Your First Profitable Product (Beginners, Take Notes).en.srt/.en.vtt` 是 14:11 的旧字幕验证文件，不是本次 CLI 产物。
+  - 成功 debug 默认清理：CLI 输出 `debug_artifacts: removed after successful delivery`。未保留新的成功中间产物。
+  - 测试与自检：`python3 -m py_compile watchbrief_v5/scripts/analyzer/codex_review.py watchbrief_v5/scripts/validator.py` 通过；`test_analyzer_codex_review.py` 43 个通过；`test_validator.py` 15 个通过；全量 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 278 tests`、`OK (skipped=3)`；项目源目录 `check_watchbrief_skill.py --strict-install` PASS。
+  - 已同步 Hermes 安装副本 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`；同步后项目源目录与 Hermes 副本 `diff -qr -x '.venv-mlx' -x '__pycache__' -x '*.pyc'` 无差异；Hermes 副本 `check_watchbrief_skill.py --strict-install` PASS。
+  - 下一步建议：可以回到阶段十八完整 YouTube 小列表 600 秒复测，重点确认第 3 条不再因字幕错误进入 MLX，也不再因 Codex `watch_verdict` 缺时间段被 validator 拒绝。
+
+- 阶段十八 E：YouTube 字幕选择策略修复 + YouTube Connect 接入前置。
+  - 本阶段只处理 YouTube 字幕线；按用户补充要求未处理 B 站 provider，未回测 B 站，未改 renderer、Watch Order 模板、单视频 HTML 模板、最终 normalized_payload schema、score band、final_conclusion/tag/topic/watch_segments，也未把 Hermes `youtube-content` 脚本硬替换进主链路。
+  - 追加边界确认：本会话独立于另一个 B 站阶段十八 F 会话；后续本线只继续 YouTube subtitle / YouTube Connect 相关问题，不处理 B 站 provider。
+  - 原根因确认：WatchBrief 旧 `subtitle_fetcher.py` 对 YouTube 一次性请求 `zh-Hans,zh,en`，目标视频的 `zh-Hans` 翻译字幕返回 429 后，整次 yt-dlp 字幕命令失败，未继续使用可用的 `en` 原字幕，因此错误进入 audio_downloader / MLX-Audio。
+  - 修复：YouTube 字幕路径改为先 `--list-subs` 探测字幕候选，再逐个下载候选；优先级为 manual English subtitles → automatic English captions → configured non-English subtitles → translated subtitles → audio fallback。英文候选包括 `en`、`en-US`、`en-GB`、`en-orig` 和平台实际返回的 `en-*`。
+  - 容错：单个字幕候选失败只记录到 `subtitle_candidate_failures`，继续尝试下一个候选；只有全部候选失败才返回 `subtitle_unavailable` 并允许进入 audio_downloader。
+  - debug / item_manifest 增加记录：`subtitle_probe_attempted`、`subtitle_candidates`、`subtitle_candidate_failures`、`selected_subtitle_lang`、`selected_subtitle_kind`、`selected_subtitle_format`、`subtitle_fetch_reason`、`audio_downloader_skipped_due_to_subtitle`。字幕成功时 pipeline 明确写入 `audio_downloader` skipped step。
+  - YouTube Connect 预留入口：新增 `watchbrief_v5/scripts/providers/youtube_connect_provider.py` 和 `providers/__init__.py`，只定义后续 provider 接入位置与接口形状；文档同步说明未来职责包括 YouTube video/list metadata、playlist title、manual subtitles、automatic captions、VTT/SRT 解析和标准 transcript 输出。
+  - 未完整接入 `youtube-content` 的原因：当前 Hermes `youtube-content` 只用 `youtube-transcript-api` 拉单视频 transcript，不支持 playlist 展开、playlist title、cookies 参数、SRT/VTT 文件输出和完整 metadata，适合作为参考或轻量 fallback，不适合作为本阶段主链路替换。
+  - 字幕探测验收通过：对 `https://youtu.be/Er2s-CFoZSo?si=jaLBuDUAUXNQ4Gkx` 使用 Chrome cookies，只跑 `subtitle_fetcher`，选中 `selected_subtitle_lang=en`、`selected_subtitle_kind=manual`、`selected_subtitle_format=vtt`，解析 `1345` segments，未进入 audio_downloader 或 MLX-Audio。
+  - 单视频完整验收未生成 HTML，但失败点不是字幕：同一视频完整 CLI 已使用字幕 transcript，`audio_downloader` 记录为 skipped，未进入 MLX-Audio；local_extract 启用 chunked 模式，`segment_count=1345`、`transcript_char_count=47537`、`chunk_count=7`、`successful_chunk_count=7`、`failed_chunk_count=0`、reduce completed；Codex review 已进入并返回；最终失败在 validator，错误为 `watch_verdict: must contain a pipe time range or a no-watch decision`，因此未写单视频 HTML。
+  - 失败 debug 归档：`/Users/apple/Desktop/WatchBrief-Debug/Er2s-CFoZSo-20260428-155347/`。本轮未在 Desktop 根目录新增单视频 HTML，也未散落 payload/work/manifest；失败诊断按规则进入 WatchBrief-Debug。
+  - 测试与自检：`python3 -m py_compile watchbrief_v5/scripts/subtitle_fetcher.py watchbrief_v5/scripts/video_pipeline.py watchbrief_v5/scripts/providers/youtube_connect_provider.py` 通过；`test_acquisition_subtitle_fetcher.py` 11 个通过；`test_video_pipeline.py` 20 个通过；全量 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 259 tests`、`OK (skipped=3)`；项目源目录 `check_watchbrief_skill.py --strict-install` PASS。
+  - 已同步 Hermes 安装副本 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`；同步后项目源目录与 Hermes 副本 `diff -qr -x '.venv-mlx' -x '__pycache__' -x '*.pyc'` 无差异；Hermes 副本 `check_watchbrief_skill.py --strict-install` PASS。
+  - 下一步建议：不要直接回完整 YouTube 列表；先单独处理 Codex review / retry 对 `watch_verdict` 必须包含 `start | end` 的约束，让单视频完整验收能生成 HTML 后，再回阶段十八完整列表复测。
+
+- 阶段十八 E0：`youtube-content` skill 能力盘点与 WatchBrief 集成方案。
+  - 本阶段只读分析与字幕级验证；未完整重跑 YouTube 列表，未回测 B 站，未触发 Qwen、Codex、MLX-Audio，未改 renderer、Watch Order 模板、单视频 HTML 模板或最终 normalized_payload schema；本次只更新工作日志。
+  - `youtube-content` 路径：`/Users/apple/.hermes/skills/media/youtube-content/`；Hermes agent 内置副本 `/Users/apple/.hermes/hermes-agent/skills/media/youtube-content/` 与当前安装副本无差异。该 skill 只有 `SKILL.md`、`references/output-formats.md`、`scripts/fetch_transcript.py`，无单独 manifest/metadata 文件。
+  - `youtube-content` 能力边界：支持 YouTube 单视频 URL、`youtu.be` 短链、shorts/embed/live/raw video id；不支持 playlist 展开、playlist title、Chrome/Safari cookies 参数、字幕文件下载、SRT/VTT 文件输出、音频下载、视频下载或 B 站。它通过 `youtube-transcript-api` 拉 transcript，CLI 输出 JSON/text，字段主要是 `video_id`、`segment_count`、`duration`、`full_text`、可选 `timestamped_text`。
+  - 字幕验证：`youtube-content` 对 `https://youtu.be/Er2s-CFoZSo?si=jaLBuDUAUXNQ4Gkx` 一次成功获取 transcript，`video_id=Er2s-CFoZSo`、`segment_count=1378`、`duration=44:58`、`full_text_chars=49308`、`timestamped_text_chars=57283`；后续直接调用 `youtube_transcript_api.list()` 和 `fetch()` 出现 `RequestBlocked`，说明该 API 路径对 YouTube/IP 限制敏感。
+  - 实际 SRT/VTT 来源复核：桌面已有 `A Full Guide To Making Your First Profitable Product (Beginners, Take Notes).en.srt` 与 `.en.vtt`；当前安装的 `youtube-content` 脚本本身不会生成这两个格式。用 `yt-dlp --cookies-from-browser chrome --sub-langs en` 可在临时目录复现下载 `.en.vtt`，无 cookies 时失败为 YouTube 要求登录/确认不是 bot。
+  - 字幕类型：`yt-dlp --list-subs --cookies-from-browser chrome` 显示该视频同时有 `Available subtitles` 的 `en` manual subtitle，以及 `Available automatic captions` 的 `en` 和多语言翻译；本次 `--sub-langs en` 成功下载的是 `en` 字幕，格式为 VTT，文件头为 `WEBVTT / Kind: captions / Language: en`。
+  - WatchBrief 原路径失败根因：`subtitle_fetcher.py` 已传 cookies，也已启用 `--write-subs --write-auto-subs` 和 `vtt/srt/best`，但默认语言顺序是 `zh-Hans,zh,en`。对该视频运行时，`yt-dlp` 在 `zh-Hans` 字幕下载阶段返回 `HTTP Error 429: Too Many Requests`，命令整体非零退出，未继续使用可用的 `en` 原字幕。将 WatchBrief fetcher 单独改为 `languages=("en",)` 验证成功，生成 `Er2s-CFoZSo.en.vtt`，解析出 1345 segments。
+  - 集成建议：不要把当前 `youtube-content` 脚本原样作为 WatchBrief 主 provider，因为它缺 playlist、cookies、SRT/VTT 文件、metadata 和 playlist title。阶段十八 E 最小严谨修复应新增 YouTube 内容 provider，优先复用现有 `yt-dlp` 与 `transcript_source_adapter`：先解析/保留 YouTube metadata 和 playlist title，再列出字幕，选择 manual 原语言字幕优先，其次 automatic 原语言字幕，只有拿不到字幕才进入 audio_downloader / MLX-Audio。
+  - provider 输出建议：返回统一结构，包含 `provider=youtube-content` 或 `watchbrief-youtube-content-provider`、`source_platform=youtube`、`video_id`、`title`、`duration`、`playlist_title`、`subtitle_kind`、`subtitle_lang`、`subtitle_format`、`segments`、`plain_text`、`source_url`，并在 item_manifest 记录 `audio_downloader=skipped`、`skip_reason=subtitle_available`。
+  - 价值评估：接入后可显著减少 YouTube 英文视频的 MLX-Audio 使用和总耗时，避免因错误请求翻译字幕导致可用原字幕被跳过；对长视频仍可能触发 chunked local_extract，因为英文字幕文本长度仍约 4.9 万字符，但字幕比 MLX 转写更快、更稳定，也能改善 playlist title 和 Watch Order 元信息。
+  - 下一步：进入阶段十八 E，最小修复 YouTube 字幕选择策略与 provider 接入测试；保留 WatchBrief 原生 subtitle_fetcher 作为通用 fallback，保留 audio_downloader 作为无字幕 fallback；修复后需要同步 Hermes 副本。
+
+- 阶段十八 C：Watch Order 模板回归修复。
+  - 本阶段按用户重新指定的阶段十八 C 范围执行，只修 Watch Order 页面；未完整重跑 YouTube 列表，未触发 MLX-Audio、Qwen、Codex，未回测 B 站，未改单视频 HTML 模板、analyzer、validator、最终报告 schema、score band、final_conclusion/tag/topic/watch_segments 或平台采集逻辑。
+  - 根因：`watch_order.py` 把筛选按钮静态写进 HTML，页面没有带回 v4 的 `renderFilterBanner()`、`renderList()` 和点击事件；失败项单独渲染在失败区，不在可筛选列表里；页面标题固定为 `视频提炼 · 观看顺序`，右上角使用 `job_name` 导致列表 URL 裸露，页脚仍显示 V4 文案。
+  - 修复：`watch_order.py` 改为用空 `filter-banner` 容器加 JS 渲染筛选按钮；点击 `filter-chip` 后更新 `activeFilter` 并重渲染列表；成功项与 failed 项统一进入同一个 `items` 数组，`failed` 使用 `filterKey=failed`，空筛选结果显示 `empty-state`。
+  - 标题规则：有 `playlist_title` 时生成 `<playlist_title> · 观看顺序`；没有时按 source metadata fallback 为 `YouTube 播放列表 · 观看顺序` 等平台标题；`<title>` 与页面主标题同步。
+  - 右上角规则：第一行显示生成时间并补 `CST`；第二行显示 `YouTube · 播放列表 · <总视频数> 条视频`；如有原列表 URL，只显示短文字链接 `打开原播放列表`，不直接展示裸 URL。
+  - 页脚改为 `WATCHBRIEF · WATCH ORDER`。视觉仍读取 `references/00watch_order_v5.html` 的 v4 样式块，保持原有配色、圆角、间距和卡片风格。
+  - 为 Watch Order payload 增加最小列表元信息：`playlist_title`、`source_url`、`source_kind`、可选 `source_platform`；failure 项允许 `title` 供失败卡片展示；`video_pipeline.py` 在列表 resolver 返回标题时写入 `manifest["playlist_title"]`，不改变逐条处理、分析、渲染或采集流程。
+  - 新增/更新测试覆盖：无“筛选”文字前缀；包含筛选交互脚本；点击逻辑存在；failed 项可按 failed 过滤；标题不再是旧固定标题；playlist title 与 YouTube fallback 正确；右上角不显示裸 URL；短链接文字存在；页脚不再显示 `WATCH ORDER · V4`。
+  - 校验：`python3 -m py_compile watchbrief_v5/scripts/watch_order.py watchbrief_v5/scripts/video_pipeline.py` 通过；`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_watch_order.py'` 通过，`Ran 15 tests`；`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 244 tests`、`OK (skipped=3)`；项目源目录 `check_watchbrief_skill.py --strict-install` PASS；生成脚本内联 JS 使用 `node --check` 通过。
+  - 已同步 Hermes 安装副本 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`；同步后项目源目录与 Hermes 副本 `diff -qr -x '.venv-mlx' -x '__pycache__' -x '*.pyc'` 无差异；Hermes 副本 `check_watchbrief_skill.py --strict-install` PASS。
+  - 下一步：可以进入超长 transcript 的 local_extract 分块/归并阶段，专门处理第 3 条 40 分钟视频 Qwen 600 秒超时，不再把 Watch Order 模板问题和长文本问题混在一起。
+
+- 阶段十八正式复测：YouTube 小列表真实测试，600 秒版本。
+  - 本轮按用户指定命令执行，未传 `--output-dir`，未改代码，未回测 B 站，未做 cache 验收，未测试或 curl 本地 Qwen 服务，未改 renderer、validator、schema、HTML 模板、score band、final_conclusion/tag/topic/watch_segments。
+  - 输入：`https://www.youtube.com/watch?v=ncjZV07vApc&list=PLQiLo0YKAd1RZorTX1utq3arvcAcfoEK-`；使用 Chrome cookies、Codex CLI account2、`codex_model=gpt-5.4`、`timeout=600`、`qwen-timeout=600`。
+  - 结果未全绿：manifest `source_kind=list`、`total_count=5`、`completed_count=4`、`failed_count=1`。失败视频为第 3 条 `A Full Guide To Making Your First Profitable Product (Beginners, Take Notes)`，`stage=local_extract`、`reason_code=local_qwen_timeout`、错误为 `Qwen request timed out after 600s`。
+  - 第 3 条链路确认：resolver completed；subtitle_fetcher unavailable，未抓到平台字幕；audio_downloader completed；MLX-Audio transcriber completed，`raw_segment_count=822`、`invalid_segment_count=31`、`dropped_segment_count=20`、`repaired_segment_count=11`、`usable_segment_count=802`；进入 Qwen local_extract 后 600 秒超时，未进入 Codex review。
+  - 第 3 条输入规模：原始 transcript 约 `49411` 字符、约 `9021` 词；local_extract request 约 `139234` bytes，messages 约 `123439` 字符，user prompt 约 `122856` 字符。
+  - 完成视频：第 1 条 `Film yourself at your worst.`、第 2 条 `you should DEFINITELY Film Your Boring Life`、第 4 条 `How To Build A Better Personal Brand Than 99% Of People`、第 5 条 `50 Ways To Fix Your Life` 均生成 HTML。完成项 normalized_payload 检查：tag 在固定枚举内，topic 非空，每条 `watch_segments` 只有 1 个 `primary`，`only_one_segment` 包含 primary 的 start/end。
+  - 输出结构验收通过：CLI 自动创建主任务文件夹 `/Users/apple/Desktop/watch-20260428-103122/`；第一层直接包含 `00-watch-order.html` 和 4 个完成视频 HTML；未出现二级 HTML 文件夹。`00-watch-order.html` 已生成，并按完成项分数排序：6.8、6.8、4.7、4.6。
+  - 桌面污染检查：本轮桌面根目录新增项只有主任务文件夹 `/Users/apple/Desktop/watch-20260428-103122/`；未在 Desktop 根目录新增散落的 per-video HTML、`00-watch-order.html`、payload、work、manifest 或 normalized_payload。失败 debug 按规则保留到 `/Users/apple/Desktop/WatchBrief-Debug/watch-20260428-112630/`。
+  - 结论：阶段十八 600 秒正式小列表复测失败，根因不是 resolver、登录态、MLX 转写转换或输出目录，而是第 3 条超长 transcript 的 Qwen local_extract 600 秒仍超时。下一步应进入阶段十八 C：为超长 transcript 实现 local_extract 分块/归并，不改最终 schema 和 renderer。
+
+- 阶段十八 B：列表输出目录结构修正。
+  - 本阶段未完整重跑 YouTube 列表，未触发 MLX-Audio、Qwen 或 Codex；只检查 CLI / output_dir / pipeline 输出路径逻辑，并用 mock 轻量测试验证。
+  - 根因复核：`video_pipeline.py` 本身没有额外包目录，per-video HTML 写到传入的 `output_dir / "<序号>-<标题>.html"`，`00-watch-order.html` 也写到同一个 `output_dir`。风险点在 CLI/验收用法和测试覆盖：显式 `--output-dir` 必须被当成最终列表交付目录，不是父目录；此前缺少“列表 URL + 默认输出”和“列表 URL + 显式输出目录不再嵌套”的 CLI 回归。
+  - 最小修正：不改 `cli.py` 和 `video_pipeline.py` 逻辑；新增 CLI 回归测试锁定列表 URL 输出结构；收紧 README/SKILL/CONTRACT 文档，明确列表显式 `--output-dir <dir>` 时 `<dir>` 本身就是最终交付目录，不能再创建次级任务文件夹。
+  - 正确列表结构固定为：`<主任务文件夹>/00-watch-order.html`、`<主任务文件夹>/01-xxx.html`、`<主任务文件夹>/02-xxx.html`，所有 HTML 都是主任务文件夹直接子级。
+  - 新增测试覆盖：列表 URL 默认输出到 `~/Desktop/<任务名或时间戳>/` 且只有直接子级 HTML；列表 URL 显式 `--output-dir` 时不再额外嵌套；既有测试继续覆盖单视频默认桌面单 HTML、单视频不生成 `00-watch-order.html`。
+  - 校验：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 236 tests`、`OK (skipped=3)`；项目源目录 `check_watchbrief_skill.py --strict-install` PASS；同步 Hermes 安装副本后，Hermes 副本 `check_watchbrief_skill.py --strict-install` PASS；项目源目录与 Hermes 副本 `diff -qr` 无差异。
+
+- 阶段十八 A 复核：MLX 转写转换容错 + Qwen 长 transcript 超时诊断。
+  - 本次继续执行未新增代码改动；当前源目录和 Hermes 安装副本已是同一套阶段十八 A 代码，`diff -qr -x '.venv-mlx' -x '__pycache__' -x '*.pyc'` 无差异。
+  - 使用旧 debug 中第 1 条 `Film yourself at your worst.` 的真实 MLX JSON 复核转换器：126 raw segments，28 invalid，23 dropped，5 repaired，103 usable，3043 chars；转换成功，不再触发 `format_conversion_failed`。
+  - 第 1 条真实单视频复跑使用 Chrome cookies、`timeout=600`、`qwen-timeout=600`，已越过 resolver、subtitle_fetcher、audio_downloader 和 transcriber；transcriber step 记录 118 raw、16 invalid、10 dropped、6 repaired、108 usable。最终失败在 `stage=local_extract`、`reason_code=local_qwen_timeout`，不是原来的 MLX 转写转换失败。失败 debug 收口到 `/Users/apple/Desktop/WatchBrief-Debug/watch-20260428-095723/`。
+  - 第 2 条 `you should DEFINITELY Film Your Boring Life` 单条诊断成功：原始 transcript 354 segments、约 24576 chars、约 4516 words；local_extract 请求约 67775 bytes，messages 约 59806 chars，`qwen-timeout=600` 下 Qwen/Codex 完整通过，HTML 生成到 `/Users/apple/Desktop/WatchBrief-Runs/phase18A-qwen600-20260428-093514/01-you-should-DEFINITELY-Film-Your-Boring-Life.html`，成功 debug 已默认清理。
+  - 结论：第 2 条长 transcript 的 300 秒超时可通过提高到 600 秒解决，阶段十八正式 YouTube 小列表验收应使用 `--qwen-timeout 600`。本次不需要立即上分块 local_extract；如果后续列表仍有单条在 600 秒超时，再单独做 chunk/reduce 方案，不改最终 schema 和 renderer。
+  - 桌面检查：本次产物只进入 `~/Desktop/WatchBrief-Runs/` 和 `~/Desktop/WatchBrief-Debug/`；未在 Desktop 根目录新增散落 HTML、manifest、payloads、`_work`、`normalized_payload.json` 或 `00-watch-order.html`。
+  - 校验：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 234 tests`、`OK (skipped=3)`；项目源目录 `check_watchbrief_skill.py --strict-install` PASS；Hermes 副本 `check_watchbrief_skill.py --strict-install` PASS。
+
+## 2026-04-27
+
+- 阶段十八 A：MLX 转写转换容错 + Qwen 长 transcript 超时诊断。
+  - 本阶段只处理两个问题：MLX-Audio 转写 JSON 转换失败、Qwen 长 transcript 300 秒超时；未回测 B 站，未完整重跑 YouTube 列表，未做 cache 验收，未测试/探测本地 Qwen 服务，未改 renderer、validator、schema、HTML 模板、score band、final_conclusion/tag/topic/watch_segments、Hermes 外层配置或平台采集逻辑。
+  - 问题 1 根因：第 1 条 `Film yourself at your worst.` 的 MLX JSON 结构正常、字段不缺失；失败来自 `transcript_source_adapter.py` 把空文本零时长段和亚秒级短句截断成同秒时间后，按 `too many invalid timestamp segments: 28/126` 直接判死。实际正文仍足够，失败属于转换器过度严格。
+  - 问题 1 修复：adapter 改为可修复坏时间段则修复、空文本或无法修复段则丢弃；只在没有任何可用 transcript segment 时失败；material 增加 `sanitization` 统计，记录 `raw_segment_count`、`invalid_segment_count`、`dropped_segment_count`、`repaired_segment_count`、`usable_segment_count`；pipeline 的 transcriber step 将该统计写入 item_manifest。
+  - 第 1 条旧 debug 原始 MLX JSON 复验通过：126 raw segments，103 usable segments，3043 chars，23 dropped，5 repaired，不再触发 `format_conversion_failed`。
+  - 第 1 条单视频真实复跑到 transcriber 和 Qwen 均通过：item_manifest 记录 transcriber `raw=175`、`invalid=72`、`dropped=66`、`repaired=6`、`usable=109`，Qwen `local_extract_adapted.json` 生成成功；最终失败在 Codex review，用量限制提示 `try again at Apr 28th, 2026 2:40 AM`，不是 MLX 转写转换问题。失败 debug 按规则保留到 `/Users/apple/Desktop/WatchBrief-Debug/watch-20260427-232748/`。
+  - 问题 2 诊断对象：第 2 条 `you should DEFINITELY Film Your Boring Life`，URL `https://www.youtube.com/watch?v=7zP-IlalrU4`；使用 `--cookies-from-browser chrome`、`--timeout 600`、`--qwen-timeout 600`、`--force-reanalysis`，输出目录 `/Users/apple/Desktop/WatchBrief-Runs/phase18A-qwen-600/`。
+  - 第 2 条旧失败输入规模：354 transcript segments，约 24576 transcript chars / 4516 words；旧 `local_extract_request.json` 约 66126 chars，其中 user message 约 59222 chars，300 秒超时点在 Qwen local_extract。
+  - 第 2 条 600 秒真实单条验证成功：转写后 342 usable segments，约 24054 chars，Qwen-family 模型 `huihui-qwen3.6-27b-abliterated-mlx-nvfp4` 通过，Codex review 通过，生成 `/Users/apple/Desktop/WatchBrief-Runs/phase18A-qwen-600/01-you-should-DEFINITELY-Film-Your-Boring-Life.html`；成功后 debug 临时目录自动清理。
+  - 结论：第 2 条的 `local_qwen_timeout` 不是 Qwen 不可用，也不是采集/字幕/MLX 问题；300 秒对 2.4 万字符 transcript 偏短，阶段十八正式列表验收应使用 600 秒。当前不需要立刻实现分块 local_extract；若第 3 条约 4.9 万字符 transcript 在 600 秒仍超时，再按“分块提炼候选主题/价值点/时间段，再 reduce 成最终 local_extract，不改最终 schema 和 renderer”的方案实施。
+  - 桌面检查：本阶段没有在 Desktop 根目录新增 HTML；诊断输出进入 `~/Desktop/WatchBrief-Runs/`，失败 debug 进入 `~/Desktop/WatchBrief-Debug/`。
+  - 校验：`test_transcript_source_adapter.py`、`test_acquisition_transcriber.py`、`test_video_pipeline.py` 定向测试通过；全量 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 234 tests`，`OK (skipped=3)`；项目源目录 `check_watchbrief_skill.py` PASS；项目源目录 `--strict-install` PASS；Hermes 副本 `--strict-install` PASS。已将本阶段 WatchBrief 源码改动同步到 Hermes 安装副本，`diff -qr` 无差异。
+
+- WatchBrief V5 安装副本同步修复。
+  - 已先把 WatchBrief 使用的 `~/.watchbrief_codex/account2/auth.json` 同步为当前本机 `~/.codex/auth.json`；`CODEX_HOME=~/.watchbrief_codex/account2 codex login status` 返回 `Logged in using ChatGPT`。
+  - 对比项目源目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5/` 与 Hermes 安装副本 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/` 后确认：Hermes 副本落后于阶段十六 F，且差异不止 `cli.py`，还包括文档、测试、golden、schema 和部分脚本文件。
+  - 已用项目源目录整体同步 Hermes 安装副本，排除 `.venv-mlx/`、`__pycache__/`、`*.pyc`；未手工修改 `video_pipeline.py`，未改 analyzer、Qwen、Codex review、validator、schema、renderer、HTML 模板、score band 或采集逻辑。
+  - 同步后 `diff -qr -x '.venv-mlx' -x '__pycache__' -x '*.pyc'` 无差异，Hermes 安装副本与项目源目录一致。
+  - Hermes 副本 `cli.py` 已具备阶段十六 F 输出规则：单视频默认只在 `~/Desktop/` 输出一个 HTML；列表默认输出到 `~/Desktop/<安全任务名或时间戳>/`，目录内放 `00-watch-order.html` 和每条视频 HTML；失败 debug 默认进入 `~/Desktop/WatchBrief-Debug/<任务名或时间戳>/`；文档推荐 smoke/cache/阶段验收输出到 `~/Desktop/WatchBrief-Runs/<任务名或时间戳>/`。
+  - 校验通过：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 为 `Ran 233 tests`、`OK (skipped=3)`；项目源目录 `check_watchbrief_skill.py` PASS；项目源目录 `--strict-install` PASS；Hermes 副本 `--strict-install` PASS。
+  - 未删除用户桌面文件；本轮仅输出建议清理清单，当前命中旧 WatchBrief 测试/诊断路径：`/Users/apple/Desktop/WatchBrief-Debug`、`/Users/apple/Desktop/watch-20260427-221902`、`/Users/apple/Desktop/watchbrief_v5_phase16E2_bilibili_run1_debug`。
+
+- 阶段十八补充排查：旧 `v1deodownload` 与新 `watchbrief_v5` 列表任务输出行为对比。
+  - 只读对比范围：旧版 `/Users/apple/.hermes/skills/openclaw-imports/v1deodownload`，新版 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5`；未改代码。
+  - 旧版行为确认：`process_single_video_review()` 在当前视频分析完成后立即 `render_video_to_path(...)` 写出该条 HTML，确认文件存在后清理当前视频临时文件，再进入下一条；列表循环结束后才生成 `00-watch-order.html`。
+  - 新版行为确认：`process_source()` 对列表逐条调用 `process_video_item()`；每条成功时先 `render_func()`，再 `write_html_func(html_path, html)` 写出该条 HTML，随后清理当前 work 目录并返回 completed；列表全部处理完后才调用 `write_watch_order_func()` 生成 `00-watch-order.html`。
+  - 结论：新版 pipeline 和旧版一样，都是“每条视频成功完成后立即生成单视频 HTML”，不是等完整列表全部完成后才写 per-video HTML；阶段十八没有 per-video HTML，是因为 5 条全部失败，没有任何条目到达 renderer 成功点。
+  - 发现的相关差异：Hermes 安装副本里的新版 `watchbrief_v5/scripts/cli.py` 仍是旧 CLI 规则，未同步阶段十六 F；未显式传 `--output-dir` 时默认 `~/Desktop`，列表任务可能把 per-video HTML 和 `00-watch-order.html` 直接写到桌面根目录。最小修复应只同步/修补 Hermes 安装副本的 `watchbrief_v5/scripts/cli.py` 列表默认输出目录规则，不改 `video_pipeline.py`。
+
+- 阶段十八：YouTube 小列表真实平台链路测试。
+  - 输入：`https://www.youtube.com/watch?v=ncjZV07vApc&list=PLQiLo0YKAd1RZorTX1utq3arvcAcfoEK-`；使用 `watchbrief_v5/scripts/cli.py`，`--cookies-from-browser chrome`、`--review-provider codex-cli`、`--codex-home-root ~/.watchbrief_codex`、`--codex-account account2`、`--codex-model gpt-5.4`、`--timeout 300`、`--qwen-timeout 300`。
+  - 本轮未改代码，未回测 B 站，未做 cache 验收，未测试/探测本地 Qwen 服务，未改 renderer、validator、schema、HTML 模板、score band、final_conclusion/tag/topic/watch_segments。
+  - resolver 成功解析出 YouTube 列表 `source_kind=list`，`total_count=5`；默认列表交付目录为 `/Users/apple/Desktop/watch-20260427-221902/`。
+  - 结果失败：`completed_count=0`、`failed_count=5`。仍生成列表失败页 `/Users/apple/Desktop/watch-20260427-221902/00-watch-order.html`，页面显示 5 条解析失败；没有生成任何 per-video HTML。
+  - debug 按阶段十六 F 失败规则保留到 `/Users/apple/Desktop/WatchBrief-Debug/watch-20260427-224332/`，包含 manifest、每条 item_manifest、音频和 transcript 诊断文件。
+  - 失败明细：第 1 条 `Film yourself at your worst.` 已完成 resolver、字幕尝试、audio_downloader，并进入 MLX-Audio 转写；失败在 `stage=transcriber`、`reason_code=format_conversion_failed`，错误为 `transcript JSON conversion failed: too many invalid timestamp segments: 28/126`。
+  - 第 2-5 条均完成 resolver、字幕尝试、audio_downloader、MLX-Audio 转写，并进入 Qwen local_extract；全部失败在 `stage=local_extract`、`reason_code=local_qwen_timeout`，错误为 `Qwen request timed out after 300s`，因此未进入 Codex review。
+  - 字幕优先已执行，但 5 条均记录 `subtitle_fetcher: unavailable`，随后按规则进入音频下载和 MLX-Audio；转写文本为英文原文片段，不存在整篇翻译后再分析的迹象。
+  - 桌面根目录没有新增散落的 per-video HTML、`manifest.json`、`payloads/`、`_work/` 或 `normalized_payload.json`；本次新增的是正式任务文件夹 `/Users/apple/Desktop/watch-20260427-221902/` 和失败诊断文件夹 `/Users/apple/Desktop/WatchBrief-Debug/watch-20260427-224332/`。
+
+- 阶段十七：YouTube 单视频真实平台链路测试。
+  - 22:00 按用户要求重新执行现场复跑，先将 WatchBrief 使用的 `~/.watchbrief_codex/account2/auth.json` 同步为当前本机 `~/.codex/auth.json`；`CODEX_HOME=~/.watchbrief_codex/account2 codex login status` 返回 `Logged in using ChatGPT`。
+  - 本次复跑未改代码。基础命令不带浏览器登录态时仍失败在 YouTube resolver：`stage=resolver`、`reason_code=platform_restriction`，失败诊断保留到 `~/Desktop/WatchBrief-Debug/watch-20260427-214317/`。
+  - 按“需要登录态可使用已授权浏览器会话”要求，追加 `--cookies-from-browser chrome` 后真实链路成功；CLI 输出单条 `[completed]`，HTML 写入 `/Users/apple/Desktop/01-SOLO-FILMMAKING-How-to-Turn-Any-Story-Into-a-Cinematic-Film.html`，并显示 `debug_artifacts: removed after successful delivery`。
+  - 本次成功运行未传 `--output-dir` / `--debug-dir` / `--keep-debug-artifacts`；桌面根目录只新增/保留该单视频 HTML，未生成同名任务文件夹、`00-watch-order.html`、`manifest.json`、`payloads/`、`_work/` 或 `normalized_payload.json`。
+  - 本次最新 cache payload：`~/.watchbrief/cache/reports/f8f6f0c692f6337348641d4df3a692160580b238c4be981ec0a1b004607b10d1.json`；`qwen_model_id=huihui-qwen3.6-27b-abliterated-mlx-nvfp4`，`codex_model=gpt-5.4`，`tag=值得补看`，`topic=独立电影制作中的故事化表达与电影感创作方法`。
+  - 本次 payload 验收：`final_conclusion` 只做主题收束；`watch_segments` 共 2 条且只有 1 个 `primary`，primary 为 `07:25 | 12:42`；`only_one_segment` 匹配 primary；HTML 自然句显示 `07:25 - 12:42`；时间卡片使用三行 `start / | / end`；`content_caveat` 只在观看片段区底部 `report-note` 轻量说明，未作为评分侧栏内容；旧模块未出现。
+  - 输入：`https://www.youtube.com/watch?v=y_uQHoVhhcw`；使用 `watchbrief_v5/scripts/cli.py`，`--review-provider codex-cli`、`--codex-home-root ~/.watchbrief_codex`、`--codex-account account2`、`--codex-model gpt-5.4`、`--timeout 600`、`--qwen-timeout 600`。
+  - 首次基础命令未带浏览器登录态，YouTube resolver 失败：`stage=resolver`、`reason_code=platform_restriction`，底层 `yt-dlp` 提示需要登录确认不是 bot；失败诊断按阶段十六 F 规则保留到 `~/Desktop/WatchBrief-Debug/watch-20260427-211544/`。
+  - 发现并修复明确 bug 1：`--cookies-from-browser` / `--cookies-file` 之前只对 B 站 resolver 生效，YouTube resolver 分支会丢弃显式 cookies。修复后显式 cookies 会传给非 B 站 resolver；新增 `test_explicit_browser_cookies_are_passed_to_non_bilibili_resolver`。
+  - 使用 `--cookies-from-browser chrome` 后 resolver 成功，拿到标题 `SOLO FILMMAKING: How to Turn Any Story Into a Cinematic Film`；随后发现并修复明确 bug 2：字幕抓取层没有接收 CLI 显式 cookies，导致 `stage=subtitle_fetcher`、`reason_code=platform_restriction`。修复后 `subtitle_fetcher.py` 支持显式 browser/file cookies，`video_pipeline.py` 仅新增 `subtitle_options` 透传，不改变 pipeline 顺序；新增字幕 cookies 测试。
+  - 字幕层带登录态后返回 `subtitle_unavailable`，流程按要求进入 audio_downloader；随后发现并修复明确 bug 3：普通 YouTube 音频下载没有带显式 cookies，导致 `stage=audio_downloader`、`reason_code=platform_restriction`。修复后非 B 站音频下载也会传显式 cookies；新增音频 cookies 测试。
+  - 最终真实链路成功：未传 `--output-dir` / `--debug-dir` / `--keep-debug-artifacts`，CLI 输出 `[completed] SOLO FILMMAKING... -> /Users/apple/Desktop/01-SOLO-FILMMAKING-How-to-Turn-Any-Story-Into-a-Cinematic-Film.html`，并显示 `debug_artifacts: removed after successful delivery`。
+  - 实际路径：`/Users/apple/Desktop/01-SOLO-FILMMAKING-How-to-Turn-Any-Story-Into-a-Cinematic-Film.html`；桌面未生成 `00-watch-order.html`，未生成同名任务文件夹，未生成 `manifest.json`、`payloads/`、`_work/`、`normalized_payload.json` 等中间产物。
+  - 链路确认：字幕不可用后进入 audio_downloader；随后完成 MLX-Audio 转写、Qwen-family local_extract（`qwen_model_id=huihui-qwen3.6-27b-abliterated-mlx-nvfp4`）、Codex CLI review（`codex_model=gpt-5.4`）、schema/validator、HTML renderer。成功 payload 已写入 report cache：`~/.watchbrief/cache/reports/9b79365fd9a456c98b81630a23c361577eec814c57ad2f455838459f157760ca.json`。
+  - 验收通过：最终 HTML 为中文；`tag=只建议跳看`，来自固定枚举；`topic=独立电影创作方法`；`final_conclusion` 只做主题收束；`watch_segments` 只有一个 `primary`，primary 为 `07:25 | 09:54`；`only_one_segment` 匹配 primary，HTML 自然句显示 `07:25 - 09:54`；时间卡片三行显示 `start / | / end`；`content_caveat` 只在观看片段区底部轻量说明，不在评分侧栏；未出现旧模块 `要点提炼 / 可执行动作清单 / 完整笔记 / 独立的一句话提炼`。
+  - 测试：相关 `py_compile` 通过；resolver/subtitle/audio/pipeline/CLI 针对测试通过；全量 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 233 tests`，`OK (skipped=3)`；`check_watchbrief_skill.py` PASS；`check_watchbrief_skill.py --strict-install` PASS。
+  - 禁止层未触碰：未改 analyzer、Qwen local_extract 语义、Codex review 字段语义、validator、schema、renderer、HTML 模板、score band、final_conclusion/tag/topic/watch_segments 或 B 站 / 小红书采集逻辑；只修复 YouTube 显式登录态在 resolver/subtitle/audio 三个采集层的透传。
+
+- 阶段十六 F：输出目录与桌面清理规则收口。
+  - 修复范围限定在 CLI 正式入口、CLI 测试和文档；未改 `video_pipeline.py` 核心编排，未改 analyzer、Qwen local_extract 语义、Codex review 字段语义、validator、schema、renderer、HTML 模板、score band、final_conclusion/tag/topic/watch_segments 或平台采集逻辑。
+  - 单视频 CLI 未显式 `--output-dir` 时，正式交付目录保持 `~/Desktop/`，成功后只留下一个单视频 HTML，不创建任务文件夹，不生成 `00-watch-order.html`。
+  - 列表 CLI 未显式 `--output-dir` 时，正式交付目录改为 `~/Desktop/<安全任务名或时间戳>/`，目录内只放 `00-watch-order.html` 和 per-video HTML。
+  - 默认 debug/work 仍走临时目录；成功后清理。失败时若未显式传 `--debug-dir`，自动迁移到 `~/Desktop/WatchBrief-Debug/<任务名或时间戳>/`。
+  - 显式 `--debug-dir` 时使用用户指定目录；显式 `--keep-debug-artifacts` 时成功后保留默认临时 debug 产物。
+  - 文档已要求阶段验收、smoke、cache 复测使用 `~/Desktop/WatchBrief-Runs/<任务名或时间戳>/`，不再推荐直接堆到 Desktop 根目录。
+  - 新增 CLI 回归覆盖：单视频默认桌面只留 HTML、单视频成功不留任务文件夹和 watch-order、列表默认创建交付文件夹且只含 HTML/watch-order、失败 debug 进入 WatchBrief-Debug、`--debug-dir` 生效、`--keep-debug-artifacts` 生效。
+
+- 阶段十六 E-2：structured_assessment 稳定性收口。
+  - 修复范围限定在 report cache、pipeline review 接入、CLI 参数、稳定性测试和文档；未改 renderer 视觉结构、HTML 模板、score band 颜色、B 站采集层、transcriber、Qwen local_extract 语义、final_conclusion/tag/topic/watch_segments 字段职责或单视频交付规则。
+  - 新增 WatchBrief report cache：默认目录 `~/.watchbrief/cache/reports/`，可通过 `WATCHBRIEF_REPORT_CACHE_DIR` 覆盖；缓存文件为通过 schema + validator 的 `normalized_payload` envelope。
+  - cache key 组成：`transcript_hash`、`qwen_model_id`、`qwen_prompt_fingerprint`、`codex_model`、`codex_prompt_fingerprint`、`scoring_formula_version`、`watchbrief_version`，外加 cache version 参与 sha256。
+  - CLI 新增 `--force-reanalysis`。默认命中 cache 时跳过 Codex review，复用 cached normalized_payload，仍写当前运行的 `normalized_payload.json` 并重新渲染 HTML；显式传 `--force-reanalysis` 时绕过 cache 重新 review。
+  - item_manifest 在 cache hit 时记录 `cache_hit=true`、`cache_key`、`cached_payload_path`，并追加 `report_cache: hit` 与 `codex_review: skipped` step。
+  - 只有 parse/schema/validator 通过后的 normalized_payload 才写入 cache；失败 payload 不缓存。
+  - 为避免 Qwen 中间提炼文本轻微变化导致 cache key 失效，`codex_prompt_fingerprint` 已收口为 Codex prompt 模板/契约指纹，不把本次 local_extract 内容混入 fingerprint；输入文本由 `transcript_hash` 表示。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 225 tests`，`OK (skipped=3)`；`check_watchbrief_skill.py` PASS；`check_watchbrief_skill.py --strict-install` PASS；相关脚本 `py_compile` 通过。
+  - 新增测试覆盖：同 fingerprint + transcript_hash 命中 cache、cache hit 不调用 review provider、cache hit payload/score 保持一致、`--force-reanalysis` 绕过 cache、不同 transcript_hash / codex_prompt_fingerprint / scoring_formula_version 生成不同 key、失败 payload 不写 cache、cache hit 写 item_manifest。
+  - 真实 B 站复测阻断：`https://www.bilibili.com/video/BV1HZdmB5EGk/` 当前连续两次带 Chrome 登录态均在 resolver 阶段失败，`reason_code=bilibili_metadata_not_found`、debug 显示 `is_412=true`；再用 `--no-browser-auth` 复测失败为 `bilibili_412_blocked`。因此本轮无法进入 Qwen/Codex/cache 判断点，未能完成真实三跑。失败产物保留在 `/Users/apple/Desktop/watchbrief_v5_phase16E2_bilibili_run1_debug` 和 `/Users/apple/Desktop/watchbrief_v5_phase16E2_bilibili_run1_nobrowser_debug`。
+
+- 阶段十六 E：评分一致性与内容稳定性收口。
+  - 修复范围限定在 scoring、validator、Codex review prompt/adapter、Qwen local_extract、实体规范化、schema、golden、测试和文档；未改 renderer 视觉结构、HTML 模板、score band 颜色、B 站 resolver/audio_downloader、final_conclusion/tag/topic/watch_segments 字段职责或单视频交付规则。
+  - `replacement_score` 最终由确定性公式计算：`information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3`；Codex 输出的分数只作为 `score_trace.model_suggested_score`。
+  - payload 新增并强制校验稳定元信息：`transcript_hash`、`qwen_model_id`、`qwen_prompt_version`、`qwen_prompt_fingerprint`、`codex_model`、`codex_prompt_version`、`codex_prompt_fingerprint`、`scoring_formula_version`、`watchbrief_version`。
+  - validator 已拦截高分却说“报告足够替代”、低分却说“建议完整看”的 tag / watch_verdict 语义冲突；renderer 不做兜底。
+  - 新增确定性实体规范化：明确别名统一到 `叔本华 / Schopenhauer`、`尼采 / Nietzsche`、`柏拉图 / Plato`、`萨特 / Sartre`、`阿兰·德波顿 / Alain de Botton`，并写入 `important_terms` / `corrected_terms`；不做语义猜测。
+  - golden preference sample 已确认存在：`watchbrief_v5/golden/love_boredom_pain_preference.json`，包含偏好的 `highest_compression`、`path_table`、`arrow_chain`、`final_conclusion`。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 221 tests`，`OK (skipped=3)`；`check_watchbrief_skill.py` PASS；`check_watchbrief_skill.py --strict-install` PASS；相关脚本 `py_compile` 通过。
+  - 真实 B 站复测尝试：`https://www.bilibili.com/video/BV1HZdmB5EGk/` 第一次跑到 Codex review 前的采集、转写、本地 Qwen 均完成，`transcript_hash=b3b7f9fd4e1539c08803251136065f0c60179b7428ae1627c87d77c2b8287e86`，`qwen_model=huihui-qwen3.6-27b-abliterated-mlx-nvfp4`，`qwen_prompt_fingerprint=0e58a1ce9e5aaf3b7a0019095229255379a104e42b01b7000f9f8e94464d3a11`。
+  - 真实 B 站最终对比阻断：Codex CLI 返回 usage limit，提示 `try again at 6:30 PM`，因此未生成 normalized payload / HTML，无法完成两次 `replacement_score`、`tag`、`watch_verdict`、`highest_compression`、`path_table`、`arrow_chain`、`final_conclusion` 最终字段对比。失败产物保留在 `/Users/apple/Desktop/watchbrief_v5_phase16E_bilibili_run1_debug`。
+  - 18:30 后已将 WatchBrief 使用的 `~/.watchbrief_codex/account2/auth.json` 同步为当前本机 `~/.codex/auth.json`，同步后两者 `account_id=58f51ee4-1b81-4a45-9cdb-ccaa5d972c1c`，`CODEX_HOME=~/.watchbrief_codex/account2 codex login status` 通过。
+  - 换当前账号后，同一 B 站视频连续两次真实复测均完成并生成 HTML：`/Users/apple/Desktop/watchbrief_v5_phase16E_bilibili_run1/01-爱情：不是无聊就是痛苦！.html` 与 `/Users/apple/Desktop/watchbrief_v5_phase16E_bilibili_run2/01-爱情：不是无聊就是痛苦！.html`。
+  - 双跑稳定项：`transcript_hash` 两次均为 `b3b7f9fd4e1539c08803251136065f0c60179b7428ae1627c87d77c2b8287e86`；`tag` 两次均为 `只建议跳看`；`qwen_model_id` 两次均为 `huihui-qwen3.6-27b-abliterated-mlx-nvfp4`；`qwen_prompt_fingerprint` 两次均为 `0e58a1ce9e5aaf3b7a0019095229255379a104e42b01b7000f9f8e94464d3a11`；`codex_model` 两次均为 `gpt-5.4`；`codex_prompt_fingerprint` 两次均为 `136ef12b432b87206a2053dc1f302a892ebff394c31b7b32f04ad09c8ca49aed`。
+  - 双跑仍有漂移：`replacement_score` 第一次 `5.8`、第二次 `6.1`；`structured_assessment` 里的 `信息密度` 从 `7.5` 到 `7.8`，`观看性价比` 从 `4.2` 到 `4.8`；`watch_verdict`、`highest_compression`、`path_table`、`arrow_chain`、`final_conclusion` 表述也不同。结论：当前 E 已解决“最终分数由公式计算”和“专名规范化”，但还没有把评分维度和主线字段完全收成同文稳定。
+  - 专名检查：最终 normalized payload 中未再出现 `舒本华`、`波拉图`、`阿兰德波顿`、`阿兰德伯顿`、`尼彩`、`柏腊图`、`沙特` 等错误人名；这些原始错名只保留在 `corrected_terms` 的左侧作为纠错记录。
+
+- 阶段十六 D：单视频交付形态、时间显示、content_caveat 展示收口。
+  - 修复范围限定在最终交付目录逻辑、renderer 显示细节、README/SKILL/CONTRACT 文档和测试；未改采集层、转写层、Qwen local_extract 语义、Codex review 字段契约、validator、schema、score band、final_conclusion、tag/topic、watch_segments 字段规则。
+  - 单视频正式交付收口：未显式 `--output-dir` 时只在 Desktop 输出一个 HTML；显式 `--output-dir` 时该目录只作为最终 HTML 父目录。manifest、payload、Qwen/Codex 调试文件默认进入临时 debug 目录，成功后清理；只有 `--debug-dir` 或 `--keep-debug-artifacts` 才保留。
+  - 列表任务仍保留输出文件夹形态，包含 per-video HTML 与 `00-watch-order.html`。
+  - HTML 显示收口：`watch_segments` 的 `watch-time` 改为三行结构 `start / | / end`；`watch_verdict` 与 `only_one_segment` 的自然句展示把 `start | end` 显示为 `start - end`，不改 normalized payload。
+  - `content_caveat` 不再显示在右侧评分区，不再使用 `side-verdict`；非空时在观看片段区下方以低权重 `report-note` 显示，空值不显示。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 207 tests`，`OK (skipped=3)`；`check_watchbrief_skill.py` PASS；`check_watchbrief_skill.py --strict-install` PASS。
+  - 真实 B 站单视频复测：`https://www.bilibili.com/video/BV1HZdmB5EGk/` 不传 `--output-dir`，成功生成 `/Users/apple/Desktop/01-爱情：不是无聊就是痛苦！.html`。临时 debug 目录已在成功后清理；未生成 `00-watch-order.html`；HTML 检查通过：时间卡片三行显示，`only_one_segment` 显示 `01:39 - 03:08`，content caveat 不在评分侧栏，旧模块未出现，final_conclusion 只做主题收束。
+
+- 阶段十六 C：Qwen local_extract 超时分类与 timeout 传递修复。
+  - 修复范围限定在 `local_extract.py`、`video_pipeline.py`、`cli.py`、README/SKILL/CONTRACT 文档和测试；未改 analyzer prompt 字段语义、Codex review 字段契约、validator、schema、renderer、HTML 模板、score band、final_conclusion、tag/topic、watch_segments，也未改已通过的 B 站 resolver / audio_downloader 逻辑。
+  - 新增 `--qwen-timeout`；未显式传入时默认等于全局 `--timeout`，因此 `--timeout 600` 会同步用于 Qwen local_extract。
+  - `item_manifest.json` 会在 Qwen 调用前写入 `local_extract started`，记录 `qwen_model`、`qwen_api_base`、`timeout`；失败时写入 `local_extract failed`。
+  - Qwen HTTP timeout 分类为 `stage=local_extract`、`reason_code=local_qwen_timeout`；Qwen 不可用为 `local_qwen_unavailable`；坏 JSON 为 `local_qwen_invalid_response`；中间 JSON 不符合 local_extract 契约为 `local_extract_invalid_output`；不再泛化成 `pipeline_failed: timed out`。
+  - local_extract 调试产物：`local_extract_request.json`、`local_extract_raw_response.txt`、`local_extract_adapted.json`、失败时 `local_extract_error.json`。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 201 tests`，`OK (skipped=3)`；`check_watchbrief_skill.py` PASS；`check_watchbrief_skill.py --strict-install` PASS。
+  - 真实 B 站单视频复测：`https://www.bilibili.com/video/BV1HZdmB5EGk/` 使用 Chrome 登录态和 `--timeout 600` 后成功。输出目录：`/Users/apple/Desktop/watchbrief_v5_phase16C_bilibili_single_chrome`；`manifest.json` 为 `completed_count=1`、`failed_count=0`；生成 `01-爱情：不是无聊就是痛苦！.html`、`normalized_payload.json`、`review_request.json`、`local_extract.json`、`item_manifest.json` 和 Codex/Qwen 调试产物。
+  - 复测链路确认：resolver 通过 `bilibili_view_api` fallback；字幕不可用后 audio_downloader 通过 `bilibili_playurl_api` 获取 `dash.audio[0].baseUrl`；MLX-Audio 转写完成；Qwen local_extract 记录 `started timeout=600` 并成功选中 `huihui-qwen3.6-27b-abliterated-mlx-nvfp4`；随后进入 Codex review、validator、renderer 并生成 HTML。
+
+- 阶段十六 B：B 站 audio_downloader 音频 URL 获取能力修复。
+  - 修复范围限定在采集层和 resolver/audio_downloader metadata 传递：`audio_downloader.py`、`video_pipeline.py`、`acquisition_errors.py`、README/SKILL/CONTRACT 文档和测试；未改 analyzer prompt、Qwen/Codex 字段语义、validator、schema、renderer、HTML 模板、score band、final_conclusion、tag/topic、watch_segments、replacement_score。
+  - audio_downloader 已复用 resolver 提供的 `bvid/cid`，在字幕不可用后调用 B 站官方 playurl API 获取 `dash.audio`；支持提取 `baseUrl`、`base_url`、`backupUrl`、`backup_url`，并保留页面 `__playinfo__` / `__INITIAL_STATE__` fallback。
+  - 新增 B 站 playurl 失败分类：`bilibili_playurl_api_failed`、`bilibili_playurl_api_forbidden`、`bilibili_playurl_api_no_dash_audio`；仍保留 `bilibili_audio_url_not_found`、`bilibili_audio_download_failed`、`bilibili_audio_convert_failed`、`bilibili_412_blocked`。
+  - item_manifest 成功记录 `method=bilibili_playurl_api`、`cookies_source`、`audio_url_source`、`fallback_success=true`、`playurl_status=ok`；不记录、不打印 cookies 内容或原始音频 URL。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 192 tests`，`OK (skipped=3)`；`check_watchbrief_skill.py` PASS；`check_watchbrief_skill.py --strict-install` PASS。
+  - 真实 B 站单视频复测：`https://www.bilibili.com/video/BV1HZdmB5EGk/` 使用 Chrome 登录态后，resolver 成功，subtitle_fetcher 执行并返回 unavailable，audio_downloader 成功，`method=bilibili_playurl_api`，`audio_url_source=dash.audio[0].baseUrl`，MLX-Audio transcriber 完成。最终失败后移到转写之后：manifest 记录 `stage=pipeline`、`reason_code=pipeline_failed`、`error=timed out`；item_manifest 最后完成步骤为 `transcriber`，未进入 Codex review，疑似 Qwen local_extract 超时。输出目录：`/Users/apple/Desktop/watchbrief_v5_phase16B_bilibili_single_chrome`。
+
+- 阶段十六 A：B 站 resolver 412 修复 + 单视频输出目录行为收口。
+  - 修复范围限定在采集层和输出目录策略：`resolver.py`、`video_pipeline.py`、`cli.py`、`acquisition_errors.py`、README/SKILL/CONTRACT 文档和测试；未改 analyzer prompt、Qwen/Codex 字段语义、validator、schema、renderer、HTML 模板、score band、final_conclusion、tag/topic、watch_segments。
+  - resolver 已接收浏览器登录态参数：`--cookies-from-browser` / `--bilibili-cookies-from-browser` / `--cookies-file`，B 站 metadata/list `yt-dlp` 请求会带 cookies 参数、`Referer: https://www.bilibili.com/` 和 User-Agent。
+  - B 站 resolver 412 不再泛化为 `resolver_failed`；新增/使用专用 reason：`bilibili_412_blocked`、`bilibili_metadata_not_found`、`bilibili_cid_not_found`、`bilibili_playinfo_unavailable`。
+  - resolver metadata fallback 已纳入官方流程：`__INITIAL_STATE__` / `__playinfo__` 不可用时，会用 BV 号调用 B 站 view metadata API；resolver fallback 只解析 metadata，不下载音频。
+  - manifest / item_manifest 会记录 `resolver_method`、`cookies_source`、`fallback_method`、`fallback_success`、`reason_code`，不记录、不打印 cookies 内容。
+  - 单视频输出目录收口：新增 `--work-dir`、`--debug-dir`、`--keep-debug-artifacts`；默认单视频正式交付只输出 Desktop HTML，显式 `--output-dir` 保留 smoke/debug 产物，`--debug-dir` 可分离 payload/manifest。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 186 tests`，`OK (skipped=3)`；`check_watchbrief_skill.py` PASS；`check_watchbrief_skill.py --strict-install` PASS。
+  - 真实 B 站单视频复测：`https://www.bilibili.com/video/BV1HZdmB5EGk/` 使用 Chrome 登录态后 resolver 已成功，fallback method=`bilibili_view_api`；流程到达 subtitle_fetcher，字幕不可用后进入 audio_downloader，最终失败为 `stage=audio_downloader`、`reason_code=bilibili_audio_url_not_found`。输出目录：`/Users/apple/Desktop/watchbrief_v5_phase16A_bilibili_single_chrome_v2`。
+
+- 阶段十五：恢复 WatchBrief V5 本地智能提取层与转写/多语言策略。
+  - 转写策略：默认 `--transcriber auto`，`auto` 只表示 MLX-Audio 优先；不再默认 Whisper，不允许静默 fallback。
+  - MLX-Audio 不可用且未显式允许 fallback 时，失败为 `transcriber_unavailable: MLX-Audio missing`。
+  - Whisper 只在显式 `--transcriber whisper`，或显式 `--allow-whisper-fallback` 且 MLX-Audio 不可用/失败时使用。
+  - `local_extract.py` 已恢复本地 Qwen-family 智能提取层，通过 LM Studio OpenAI-compatible endpoint 调用；默认 endpoint 为 `http://127.0.0.1:1234/v1`，可用 `WATCHBRIEF_QWEN_API_BASE` / `--qwen-api-base` 修改。
+  - Qwen 模型选择：优先 `WATCHBRIEF_QWEN_MODEL` / `--qwen-model`；未指定时从 LM Studio 模型列表里选择 id 包含 `qwen` 的模型；未写死具体 Qwen 版本，非 Qwen 模型拒绝。
+  - Qwen local_extract 只输出中间 JSON：`cleaned_understanding`、`main_axis`、`core_claims`、`conditions`、`methods`、`examples`、`caveats`、`original_quotes`、`refined_quotes`、`transcript_quality_note`、`language`、`important_terms`；不输出最终 V5 报告字段。
+  - transcript language 统一为 `zh` / `en` / `mixed` / `unknown`；英文 transcript 直接读英文原文，不先整篇翻译，Qwen 输出中文结构化提炼，最终 HTML 仍为中文。
+  - Codex review request 已包含 metadata、transcript excerpt/segments、Qwen local_extract 输出、transcript_quality、language；Codex 仍负责最终 V5 字段，schema + validator 仍是最终门禁。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 177 tests`，`OK (skipped=3)`；`check_watchbrief_skill.py` PASS；`check_watchbrief_skill.py --strict-install` PASS。
+  - 新增 opt-in 真实 Qwen health check：`WATCHBRIEF_RUN_REAL_QWEN_TESTS=1 python3 -m unittest discover -s watchbrief_v5/tests -p 'test_real_qwen_health.py'`，默认跳过，不影响普通单测。
+  - 禁止层未触碰：未改 renderer、validator、schema、final HTML 模板、score band、watch-order 颜色映射、final_conclusion 规则、tag/topic 规则、watch_segments 规则、pipeline 顺序。
+
+- 阶段十四生产问题修复进度：
+  - A：`transcript_source_adapter.py` 已实现 timestamp sanitizer。少量 `start >= end` 坏段会修复或丢弃并标记 `transcript_quality=degraded`，warnings 写入 `transcript_material["warnings"]`；坏段比例超过 20% 才失败。输出仍为 `watchbrief_v5.transcript_material.v1`。
+  - B1：`audio_downloader.py` / `acquisition_errors.py` 已补 B 站失败分类：`bilibili_cookie_missing`、`bilibili_cookie_expired`、`bilibili_412_blocked`、`bilibili_audio_url_not_found`、`bilibili_audio_download_failed`、`bilibili_audio_convert_failed`。
+  - B2：B 站 `__playinfo__` / `__INITIAL_STATE__` + playurl API fallback 已纳入 WatchBrief 官方 `audio_downloader.py` 流程；fallback 支持 cookie header、cookie file 和 `WATCHBRIEF_BILIBILI_COOKIE_*` 环境输入，失败仍给 B 站专用 reason_code。
+  - C：默认 transcriber 行为未变，当前仍保留 Whisper；MLX-Audio 优先策略只写入 `CONTRACT_V5.md` TODO，待确认后另行实施。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 155 tests`，`OK (skipped=2)`；`python3 watchbrief_v5/scripts/check_watchbrief_skill.py` PASS；`python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install` PASS。
+  - 禁止层未触碰：未改 analyzer prompt、Codex review 字段语义、validator 报告字段契约、renderer、schema、HTML 模板、score band / watch-order 颜色映射、final_conclusion 规则、tag/topic 规则、watch_segments 规则。
+  - D：原失败 B 站收藏夹/视频 URL 尚未提供，复跑等待用户提供；复跑前不走 Hermes 临场绕路。
+
+- 阶段十四任务 D 复跑记录：
+  - 输入来源：从 `/Users/apple/Desktop/watchbrief_v5_favlist_3620170810/manifest.json` 提取 5 条旧失败 B 站视频 URL，写入 `/Users/apple/Desktop/watchbrief_v5_phase14_bilibili_rerun_urls.txt`。
+  - 复跑命令：`python3 watchbrief_v5/scripts/cli.py --source-file /Users/apple/Desktop/watchbrief_v5_phase14_bilibili_rerun_urls.txt --output-dir /Users/apple/Desktop/watchbrief_v5_phase14_bilibili_rerun --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600`。
+  - 输出目录：`/Users/apple/Desktop/watchbrief_v5_phase14_bilibili_rerun`。
+  - 结果：`manifest.json` 显示 `completed_count=0`、`failed_count=5`；`00-watch-order.html` 已生成；每条都有 `item_manifest.json`。
+  - 流程确认：5 条均先进入 `subtitle_fetcher`，结果为 `subtitle_unavailable`；随后才进入 `audio_downloader`。未使用 Hermes 临场绕路。
+  - 失败分类：5 条均为 `stage=audio_downloader`、`reason_code=bilibili_412_blocked`，错误信息为 `Bilibili returned HTTP 412 / risk-control block`；未再出现泛化 `audio_download_failed`。
+  - 因 5 条均卡在 B 站 412 风控，未进入 transcriber、transcript_adapter、Codex review、validator 或 renderer；因此未生成 per-video HTML、`normalized_payload.json`、`review_request.json`。
+
+- 阶段十四 E：B 站 412 官方 fallback 已实现。
+  - 新增显式参数：`--bilibili-cookies-from-browser`（兼容别名 `--cookies-from-browser`）和 `--bilibili-cookies-file`（兼容别名 `--cookies-file`）。WatchBrief 不会默认偷读浏览器登录态。
+  - 官方流程：字幕不可用后才进入 audio_downloader；B 站先走 `yt-dlp + cookies`；如果仍为 412 且用户显式提供 cookies 来源，再进入 `__playinfo__` / `__INITIAL_STATE__` / playurl API fallback。
+  - B 站 HTTP 请求固定带 `Referer: https://www.bilibili.com/` 与合理 `User-Agent`。
+  - `item_manifest.json` 会记录 audio_downloader 的 `method`；playinfo fallback 成功或失败均记录为 `method=bilibili_playinfo_fallback`。
+  - 失败分类保持具体：无 cookies/浏览器 cookies 不存在为 `bilibili_cookie_missing`，cookies 失效为 `bilibili_cookie_expired`，风控为 `bilibili_412_blocked`，音频 URL 未找到为 `bilibili_audio_url_not_found`，下载失败为 `bilibili_audio_download_failed`，转换失败为 `bilibili_audio_convert_failed`。
+  - 文档更新：`README.md` 与 `SKILL.md` 已补 B 站显式 cookies 用法。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 通过，`Ran 164 tests`，`OK (skipped=2)`；`check_watchbrief_skill.py` PASS；`check_watchbrief_skill.py --strict-install` PASS。
+  - 已同步安装副本：`~/.codex/skills/watchbrief_v5/` 与 `~/.hermes/skills/openclaw-imports/watchbrief_v5/`；两个安装目录与项目源 `watchbrief_v5/` diff 无差异。
+  - 禁止层未触碰：未改 analyzer prompt、Codex review 字段语义、validator、schema、renderer、HTML 模板、score band / watch-order 颜色映射、final_conclusion、tag/topic、watch_segments。
+
+## 2026-04-26
+
+- 阶段十四任务 A/B/C 记录：
+  - A：已在 `transcript_source_adapter.py` 增加 timestamp sanitizer。少量 `start >= end` 坏段会被修复或丢弃，`transcript_quality` 标记为 `degraded`，warnings 写入 `transcript_material["warnings"]`；坏段比例超过 20% 才失败。输出仍为 `watchbrief_v5.transcript_material.v1`。
+  - B1：已在 audio_downloader 采集层补充 B 站失败分类：`bilibili_cookie_missing`、`bilibili_cookie_expired`、`bilibili_412_blocked`、`bilibili_audio_url_not_found`、`bilibili_audio_download_failed`、`bilibili_audio_convert_failed`。
+  - B2：已将 B 站 `__playinfo__` / `__INITIAL_STATE__` + playurl API fallback 纳入 `audio_downloader.py` 官方流程；支持 cookie header / cookie file / `WATCHBRIEF_BILIBILI_COOKIE_*` 环境输入，fallback 失败仍输出 B 站专用分类。
+  - C：当前 transcriber 行为不变，默认仍为 Whisper；MLX-Audio 优先策略只作为 TODO 写入 `CONTRACT_V5.md`，本轮不改变默认转写行为。
+  - 禁止层未触碰：未改 analyzer prompt、Codex review 字段语义、validator 报告字段契约、renderer、HTML 模板、score band / watch-order 颜色映射、final_conclusion 规则、tag/topic 规则、watch_segments 规则。
+
+- 阶段十三最终验收通过：
+  - 输出目录：`/Users/apple/Desktop/watchbrief_v5_phase13_single_acceptance_retry_timeout600`
+  - 推荐真实 Codex timeout：`--timeout 600`
+  - `manifest.json`：`completed_count=1`、`failed_count=0`
+  - 单视频 HTML 已生成：`01-focus_steps.html`
+  - `normalized_payload.json` 已生成
+  - 验收项全部通过：`final_conclusion` 只做主题收束；`tag` 来自固定枚举；`topic` 贴合视频；`watch_segments` 只有一个 primary；`only_one_segment` 匹配 primary；时间段使用竖杠；旧模块未出现。
+  - 检查结果文件：`/Users/apple/Desktop/watchbrief_v5_phase13_single_acceptance_retry_timeout600/phase13_timeout600_acceptance_check.json`，`failed_checks=[]`。
+
+- 阶段十三账号切换复测记录：
+  - 按要求未使用 `OPENAI_API_KEY`，未修改代码、renderer、validator、schema、pipeline 或模板。
+  - 已使用独立 Codex CLI 登录目录 `~/.watchbrief_codex/account2`；先执行 logout，再执行 login，`CODEX_HOME="$HOME/.watchbrief_codex/account2" codex login status` 返回 `Logged in using ChatGPT`。
+  - 已重跑发布后单视频验收：`python3 watchbrief_v5/scripts/cli.py --source-url 'http://127.0.0.1:8765/focus_steps.mp4' --output-dir /Users/apple/Desktop/watchbrief_v5_phase13_single_acceptance_retry --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4`。
+  - 结果：`manifest.json` 为 `completed_count=0`、`failed_count=1`；未生成单视频 HTML 和 `normalized_payload.json`；已生成 `review_request.json`、`local_extract.json` 和 `item_manifest.json`。
+  - 错误分类：`codex_timeout`；pipeline 记录为 `pipeline_failed`，错误信息为 `timeout: codex exec timed out`。
+  - 阻断证据：`/Users/apple/Desktop/watchbrief_v5_phase13_single_acceptance_retry/phase13_account2_acceptance_check.json`。
+
+- 阶段十三记录：WatchBrief V5 并行发布完成。
+  - 边界保持：未改 analyzer、validator、schema、renderer、HTML 模板、pipeline 顺序、score band / watch-order 颜色映射，也未改 V4 正式副本。
+  - 已将项目源目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5/` 同步安装到 Codex 可发现目录 `/Users/apple/.codex/skills/watchbrief_v5/`。
+  - 已将同一份 V5 同步到 Hermes imports 目录 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - Codex / Hermes 均可发现 `watchbrief_v5` / `WatchBrief`。
+  - V4 仍保留，可回退：`/Users/apple/.codex/skills/v1deodownload/` 与 `/Users/apple/.hermes/skills/openclaw-imports/v1deodownload/` 均仍存在，未删除、未覆盖。
+  - 新 skill 名称保持 `watchbrief_v5`，`agents/openai.yaml` 显示名保持 `WatchBrief`。
+  - 自检和全量测试通过：项目源 `check_watchbrief_skill.py` PASS，`check_watchbrief_skill.py --strict-install` PASS；Codex 安装副本 strict 自检 PASS；Hermes 安装副本自检 PASS；源目录与两个安装目录 diff 无差异；`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 当前 140 个通过、2 个跳过。
+  - 新会话发现性确认：新开 `codex exec` 会话返回 `FOUND watchbrief_v5 WatchBrief`，确认 Codex 可发现新 skill。
+  - 发布后真实单视频验收已尝试：`/Users/apple/Desktop/watchbrief_v5_phase13_single_acceptance/`；素材、转写、`local_extract.json`、`review_request.json`、Codex 调试产物和 `manifest.json` 均生成。
+  - 发布后真实单视频验收因 Codex CLI usage limit 阻断，待额度恢复后复跑；当前 `manifest.json` 为 `completed_count=0`、`failed_count=1`，未生成单视频 HTML 和 `normalized_payload.json`；失败原因为 Codex CLI 返回 `You've hit your usage limit`，提示可在 `Apr 27th, 2026 12:03 AM` 后重试。
+  - 本轮按阶段边界未修 analyzer 分类逻辑；发布后验收阻塞记录在 `/Users/apple/Desktop/watchbrief_v5_phase13_single_acceptance/phase13_acceptance_check.json`。
+  - 结论：V5 已作为独立 skill 并行安装并可发现，但正式“旧入口切换”不建议立即进入；需等 Codex CLI 用量恢复后，重跑真实单视频最终验收成功，再观察几天后决定是否让 `v1deodownload` 指向 WatchBrief。
+
+- 阶段十二点四真实小列表 Codex CLI review 成功链路复测已完成：
+  - 边界保持：未改 renderer、validator、schema、HTML 模板、pipeline 顺序、score band / watch-order 颜色映射，也未改 V4 正式副本。
+  - 第一次真实 3 条列表复测中，三条单视频均完成，但最终 `00-watch-order.html` 生成失败；错误分类为 `watch_order_failed`，原因是真实 Codex payload 缺少 watch-order 必需的 `structured_assessment`，而信息密度进度条必须只读取 `structured_assessment["信息密度"]`。
+  - 已做最小修复：只在 `codex_review.py` 的真实 Codex CLI 输出契约中要求 `structured_assessment`，并在真实 review 返回后、schema/validator 前增加 live review contract 检查；缺失或类型错误按 `schema_invalid` 触发最多 2 次重试。不让 renderer 或 watch-order 补字段。
+  - 新增测试覆盖 `structured_assessment` 缺失会触发重试并在修正后通过；`test_analyzer_codex_review.py` 当前 39 个通过，全量 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 当前 140 个通过、2 个跳过；`check_watchbrief_skill.py` 与 `check_watchbrief_skill.py --strict-install` 均 PASS。
+  - 复测命令：`python3 watchbrief_v5/scripts/cli.py --source-file /Users/apple/Desktop/watchbrief_v5_phase10_local_media/list.m3u --output-dir /Users/apple/Desktop/watchbrief_v5_phase12_4_list_smoke_real --review-provider codex-cli --enable-codex-review --codex-model gpt-5.4`
+  - 输出目录：`/Users/apple/Desktop/watchbrief_v5_phase12_4_list_smoke_real`；`manifest.json` 显示 `completed_count=3`、`failed_count=0`；生成 `01-Video-01.html`、`02-Video-02.html`、`03-Video-03.html` 与 `00-watch-order.html`。
+  - 输出检查文件：`/Users/apple/Desktop/watchbrief_v5_phase12_4_list_smoke_real/phase12_4_smoke_check.json`，`failed_checks=[]`。
+  - 每条视频均保存 `normalized_payload.json`、`review_request.json`、`local_extract.json`、`item_manifest.json`、`codex_raw_response.txt`、`codex_extracted.json`、`codex_adapted.json`。
+  - 验收检查通过：三条 `final_conclusion` 未写观看建议/评分理由；`tag` 来自固定枚举；`topic` 非空并贴合当前短视频；每条只有一个 primary；`only_one_segment` 匹配 primary；HTML 时间段使用竖杠；旧模块未出现。
+  - watch-order 检查通过：排序按 `replacement_score` 降序（`02-Video-02.html`、`01-Video-01.html`、`03-Video-03.html`）；信息密度条宽度分别来自各自 `structured_assessment["信息密度"]`（40%、20%、30%）；skip/报告可替代使用 `#A24A42`，failed/解析失败使用灰色。
+  - 本轮最终成功复测没有生成 `retry_prompts.txt`，说明修正后的 Codex CLI prompt 第一次输出即满足 live contract；此前失败产物保留在同阶段历史输出中用于对照。
+
+- 阶段十二点三 Codex CLI 输出契约适配与重试已完成：
+  - 边界保持：未放松 schema，未让 renderer 兜底，未改 HTML 模板，未改 validator 核心契约，未跑列表任务。
+  - `codex_review.py` 强化真实 Codex CLI prompt：明确只输出 JSON object、禁止 Markdown/解释/代码块，并逐项写死 `replacement_score`、`tag`、`one_line_brief`、`watch_verdict`、`path_table`、`arrow_chain`、`final_conclusion`、`watch_segments`、`only_one_segment`、`score_basis`、`confidence_note` 的类型和边界。
+  - 新增 `pre_schema_adapter`，只做结构性无损修复：百分制 `replacement_score` 转 0-10、一位小数；`arrow_chain` 的 `→` 字符串拆数组；`watch_segments[].label` 映射为 `title` 并删除 `label`；对象型 `only_one_segment` 转为 `只选一段：start | end。reason`；`score_basis` 非字符串值转字符串；缺失 `content_caveat` 补空字符串。
+  - adapter 禁止补不存在的 `watch_segments`，不生成新结论，不改 `final_conclusion` 语义，不替模型创作核心判断。
+  - 新增 schema_invalid 自动重试：最多 2 次；retry prompt 包含上一次 JSON、schema 错误摘要、以及“只修 JSON，不改变视频判断，输出完整 JSON object”的硬要求。
+  - 新增调试产物保存：`codex_raw_response.txt`、`codex_extracted.json`、`codex_adapted.json`、失败时 `schema_errors.json` 与 `retry_prompts.txt`；成功时保存 `normalized_payload.json`。
+  - 为让调试产物落在每条视频的 `payloads/<item>/` 下，pipeline 只向 provider 传入内部 debug 目录；未改变处理顺序。
+  - 新增/更新测试覆盖：百分制分数适配、箭头链拆分、label→title、only_one_segment 对象转字符串、score_basis 字符串化、不补缺失片段、adapter 后仍不合格失败、schema_invalid 最多重试 2 次、retry prompt 包含错误摘要、renderer 不兜底。
+  - 测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_analyzer_codex_review.py' -v` 37 个通过；`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 138 个通过、2 个跳过。
+- 阶段十二点三真实单视频 smoke 已通过：
+  - 命令：`python3 watchbrief_v5/scripts/cli.py --source-url "http://127.0.0.1:8765/focus_steps.mp4" --output-dir /Users/apple/Desktop/watchbrief_v5_phase12_3_single_smoke_real --review-provider codex-cli --enable-codex-review --codex-model gpt-5.4`
+  - 本地 fixture：`/Users/apple/Desktop/watchbrief_v5_phase10_local_media/focus_steps.mp4` 不存在时，用 `say` + `ffmpeg` 重新生成短视频，并用临时 `python3 -m http.server 8765` 托管；复测后已停止该临时服务。
+  - 结果：`manifest.json` 显示 `completed_count=1`、`failed_count=0`。
+  - 产物：`01-focus_steps.html`、`payloads/01-focus_steps/normalized_payload.json`、`review_request.json`、`local_extract.json`、`item_manifest.json`、`codex_raw_response.txt`、`codex_extracted.json`、`codex_adapted.json` 均已生成。
+  - 核查通过：`final_conclusion` 只做主题收束；`tag` 来自固定枚举；`topic` 为当前视频主题；`watch_segments` 只有一个 primary；`only_one_segment` 匹配 primary 的 `00:00 | 00:10`；HTML 时间段使用竖杠；旧模块未出现；score band 存在。
+  - 本阶段按要求未继续跑 3 条列表任务。
+
+- 阶段十二点二真实 Codex CLI 单视频 smoke 已执行：
+  - 命令：`python3 watchbrief_v5/scripts/cli.py --source-url "http://127.0.0.1:8765/focus_steps.mp4" --output-dir /Users/apple/Desktop/watchbrief_v5_phase12_2_single_smoke_real --review-provider codex-cli --enable-codex-review --codex-model gpt-5.4`
+  - 复测前确认：`codex login status` 返回 `Logged in using ChatGPT`，说明 Codex CLI 登录态可用。
+  - 本地 fixture 先出现环境问题：旧 `http.server` 返回空响应/502，且 `/Users/apple/Desktop/watchbrief_v5_phase10_local_media` 已无旧短视频文件；已用 `say` + `ffmpeg` 重新生成 `focus_steps.mp4`，并用临时终端会话托管 8765 服务后继续复测。
+  - 第一次真实 Codex CLI 调用已进入 `codex exec`，但失败在 CLI `--output-schema` 对 JSON Schema 的更严格要求：`structured_assessment` 是 schema properties 中的可选字段，Codex CLI 要求 properties 全部进入 required，导致 `invalid_json_schema`。
+  - 已做最小 adapter 修复：`watchbrief_v5/scripts/analyzer/codex_review.py` 不再把项目 schema 直接传给 `codex exec --output-schema`；输出仍然按 V5 流程执行 JSON 解析 → `single_video_report.schema.json` → validator，renderer 不兜底。
+  - 已更新 `watchbrief_v5/tests/test_analyzer_codex_review.py` 对应断言，并重跑：`test_analyzer_codex_review.py` 27 个通过，全量 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'` 128 个通过、2 个跳过。
+  - 第二次真实 Codex CLI 单视频 smoke 结果：Codex CLI review 已成功发起并返回模型内容，但该内容未通过 schema，pipeline 正确失败在 `schema_invalid`。
+  - 输出目录：`/Users/apple/Desktop/watchbrief_v5_phase12_2_single_smoke_real`
+  - 已生成：`manifest.json`、`payloads/01-focus_steps/review_request.json`、`payloads/01-focus_steps/local_extract.json`、`payloads/01-focus_steps/item_manifest.json`、`_work/01-focus_steps/audio/focus_steps.wav`、`_work/01-focus_steps/transcript/focus_steps.json`。
+  - 未生成：单视频 HTML、`normalized_payload.json`。
+  - schema 拦截内容：`replacement_score` 超出最大值、`arrow_chain` 不是数组、`watch_segments[0].title` 缺失且出现非法 `label` 字段、`only_one_segment` 不是字符串、`score_basis` 四项不是字符串。
+  - 结论：认证方式已从 API Key 门槛推进到 Codex CLI 登录态真实模型调用；当前剩余问题是模型输出不符合 V5 schema，renderer/validator/schema/模板未放宽。
+
+- 阶段十二点一真实 Codex review 成功链路复测已执行；本轮不改代码、不改 renderer、不改 validator、不改 schema、不改 pipeline 顺序。
+- 复测前置核验：
+  - `OPENAI_API_KEY` 在当前 shell 环境中仍为未设置；
+  - `codex_review.py` 当前真实 review adapter 只读取 `OPENAI_API_KEY`；
+  - 本机短视频服务可访问：`http://127.0.0.1:8765/focus_steps.mp4` 返回 200。
+- 阶段十二点一真实单视频 smoke：
+  - 输出目录：`/Users/apple/Desktop/watchbrief_v5_phase12_1_single_smoke_real`
+  - 命令：`python3 watchbrief_v5/scripts/cli.py --source-url "http://127.0.0.1:8765/focus_steps.mp4" --output-dir /Users/apple/Desktop/watchbrief_v5_phase12_1_single_smoke_real --review-provider codex --enable-codex-review --model gpt-5.4`
+  - 结果：失败，`completed_count=0`，`failed_count=1`
+  - 分类：`stage=pipeline`，`reason_code=pipeline_failed`，错误内容 `auth_failed: OPENAI_API_KEY is required for codex review`
+  - 已生成：`manifest.json`、`payloads/01-focus_steps/review_request.json`、`payloads/01-focus_steps/local_extract.json`、`payloads/01-focus_steps/item_manifest.json`、音频与 transcript 临时文件。
+  - 未生成：单视频 HTML、`normalized_payload.json`。
+- 阶段十二点一列表 smoke 未执行：按阶段要求“单视频通过后再跑 3 条列表”，本轮单视频在认证层失败，因此没有进入列表复测。
+
+- 阶段十二全量回归与 golden freeze 已完成（不改 analyzer、validator、schema、renderer、pipeline 顺序、template 结构）。
+- 先后执行：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`  
+    结果：`Ran 118 tests, 116 passed, 2 skipped`（无失败）。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py`（PASS）
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`（PASS）
+- Golden 回归复核：
+  - 已使用 `watchbrief_v5/golden/sample_payload_heartflow.json` 与 `sample_payload_charm.json` 进行单视频渲染校验；
+  - 验证通过：含 `总判定`、`视频到底讲了什么？`、`如果要看，只看哪里？`、`纠偏反馈`、`结论`区块；
+  - 验证通过：不出现旧模块词条（要点提炼 / 可执行动作清单 / 完整笔记 / 独立的一句话提炼）。
+- 阶段十二真实单视频 smoke（真实 Codex）：
+  - 路径：`/Users/apple/Desktop/watchbrief_v5_phase12_single_smoke_real`
+  - 运行：  
+    `python3 watchbrief_v5/scripts/cli.py --source-url "http://127.0.0.1:8765/focus_steps.mp4" --output-dir /Users/apple/Desktop/watchbrief_v5_phase12_single_smoke_real --review-provider codex --enable-codex-review --model gpt-5.4`
+  - 结果分类：`pipeline_failed`，`auth_failed`，消息 `OPENAI_API_KEY is required for codex review`；当前失败明确可归因于 API Key 缺失。
+  - 成功产物不足：未生成单视频 HTML；`manifest` 生成且失败原因完整。
+- 阶段十二真实小列表 smoke（3 条，真实 Codex）：
+  - 路径：`/Users/apple/Desktop/watchbrief_v5_phase12_list_smoke_real`
+  - 运行：  
+    `python3 watchbrief_v5/scripts/cli.py --source-file /Users/apple/Desktop/watchbrief_v5_phase10_local_media/list.m3u --output-dir /Users/apple/Desktop/watchbrief_v5_phase12_list_smoke_real --review-provider codex --enable-codex-review --model gpt-5.4`
+  - 结果：`completed=0 failed=3`；
+  - 全部条目 `stage=pipeline` + `pipeline_failed` + `auth_failed`；
+  - `00-watch-order.html` 生成并显示失败列表与 `解析失败`（灰色）。
+- 阶段十二 mock 回归路径保留（用于视觉/排序验证）：
+  - `watchbrief_v5_stage12_single_smoke_mock`（single mock 完成）；
+  - `watchbrief_v5_stage12_list_smoke_mock`（3 条列表成功 + `00-watch-order.html`）；
+  - `watchbrief_v5_phase12_list_smoke_scores`（1.2/5.3/8.1 分值排序验证 + 色带验证）。
+- 附注：已保留早期 `video_pipeline.py` 修复（避免字幕转写调用里强制中文语言导致空片段），确保本地语音转写可用；未再改动此修复以外的 analyzer/validator/schema/renderer/pipeline 结构。
+
+
+- WatchBrief V5 clean rewrite 阶段一计划已确认：新版本暂名 `watchbrief_v5`，作为独立目录建立，不在现有 V4 正式副本上继续打补丁。
+- 新目录计划：`watchbrief_v5/SKILL.md`、`README.md`、`CONTRACT_V5.md`、`scripts/`、`scripts/analyzer/`、`references/`、`schemas/`、`tests/`、`golden/`。阶段二先落 `schemas/single_video_report.schema.json`、`schemas/watch_order.schema.json`、`scripts/validator.py` 和 validator 测试。
+- V4 只作为产品契约和视觉模板来源：复用 `references/视频速览_v4.html`、`references/00watch_order_v4.html` 的页面结构、颜色、class name、反馈抽屉骨架、watch-order 信息结构；复用成熟的字幕优先、音频兜底、逐条处理、桌面交付经验，但不整体复制旧脚本。
+- V5 必须删除的历史遗留入口：`core_thesis`、`main_content_intro`、`summary_sentence`、`gain_actions`、`worth_watching`、`direct_watch_advice`、`recommended_sections`、`worth_watching_sections` 等旧字段不得直接进入 renderer；旧模块“要点提炼 / 可执行动作清单 / 完整笔记”不得重新出现。
+- 字段契约以 `normalized_report_payload` 为唯一 renderer 输入；核心字段包括 `topic`、`replacement_score`、`tag`、`one_line_brief`、`watch_verdict`、`highest_compression`、`path_table`、`arrow_chain`、`final_conclusion`、`content_caveat`、`watch_segments`、`only_one_segment`、`score_basis`、`confidence_note`。
+- `final_conclusion` 防污染方案：schema 要求必填完整句；validator 拒绝报告替代性、观看建议、评分理由、视频评价、局限判断和未完成句尾；renderer 只读取该字段并填入红色 banner，缺失或非法直接报错，不再 fallback 到旧字段。
+- `tag/topic` 分离方案：`tag` 只允许固定推荐/替代性枚举，`topic` 只写内容主题；validator 拒绝非枚举 tag 和旧模板默认 topic；评分逻辑不读取 topic，测试覆盖“topic 变化不影响 replacement_score”。
+- `watch_segments` 分层方案：validator 强制 `primary` 只能一个、`optional` 最多一个、`backup` 可选且必须有真实时间；所有显示型时间统一 `start | end`；`only_one_segment` 必须和 primary 的 start/end 完全一致。
+- renderer 纯渲染方案：`scripts/renderer.py` 只接收已通过 validator 的 `normalized_report_payload`，只填固定 V4 HTML 模板，不生成结论、不生成观看建议、不改分数、不改 tag/topic、不从旧字段补新字段。
+- replacement_score 语义方案：schema 和 prompt 固定其含义为“看完报告后，原视频还剩多少继续观看价值”；评分依据只来自信息密度、论据质量、独创性、观看性价比和报告替代程度，禁止把主题重要、观点正确、价值观积极当加分项。
+- Golden tests 计划：先用 `golden/sample_payload_heartflow.json`、`golden/sample_payload_charm.json` 固定合法样例，再写非法样例覆盖 final_conclusion 污染、tag 非枚举、topic 旧默认、多 primary、only_one_segment 不匹配、one_line_brief 含时间段、renderer 缺字段、旧模块残留、时间段非竖杠、watch-order 信息密度来源和 topic 不影响分数。
+- 分阶段迁移顺序：阶段二 schema + validator + tests；阶段三 renderer + mock payload + golden HTML tests；阶段四 analyzer prompt 和 `codex_review.py`；阶段五接字幕、音频、转写、resolver；阶段六完整 `video_pipeline.py`；阶段七列表任务和 `00-watch-order.html`；阶段八再提供旧入口兼容命令。
+- 阶段二边界补充：阶段二不接真实视频链路、不解析真实 URL、不下载音频、不抓字幕、不转写、不调用模型；只使用 mock payload 和 golden samples 验证字段契约、失败用例和 validator 行为，防止提前改 pipeline。
+- 阶段二已建立 `watchbrief_v5` 独立目录，当前只包含契约文档、schema、validator、mock/golden payload 和本地测试；未创建 V5 resolver、subtitle_fetcher、audio_downloader、transcriber、analyzer、video_pipeline 或 renderer。
+- 阶段二测试命令为 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`，当前 25 个测试通过，覆盖字段必填、final_conclusion 污染、tag/topic 分离、watch_segments 唯一 primary、only_one_segment 对齐、时间段竖杠、旧模块残留、watch-order 信息密度来源和 topic 不影响 replacement_score。
+- 阶段三边界：只写 renderer、mock payload 渲染和 golden HTML tests；继续禁止接入下载、字幕、转写、模型分析、Codex final review 或完整 pipeline。
+- 阶段三已新增 `watchbrief_v5/scripts/renderer.py`，renderer 入口先调用 validator，只读取通过校验的 `normalized_report_payload`；缺字段、旧字段、非法 `final_conclusion`、非法 `watch_segments` 会在渲染前失败，不允许 renderer 自己补字段、改字段、生成结论或生成观看建议。
+- 阶段三已生成 `golden/sample_heartflow.html` 和 `golden/sample_charm.html`，并用 golden HTML exact match 测试固定 mock 渲染结果；测试覆盖 V4 可见骨架、纠偏反馈三入口、旧模块不出现、watch_verdict/final_conclusion 原文进入 HTML、renderer 不修改 payload、不从旧字段 fallback。
+- 阶段三测试命令仍为 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`，当前 36 个测试通过；V5 目录仍未创建 resolver、subtitle_fetcher、audio_downloader、transcriber、analyzer/codex_review 或 video_pipeline。
+- 阶段四边界：只写 analyzer prompt、`local_extract.py`、`codex_review.py` 和对应 mock tests；继续禁止真实视频链路、`video_pipeline.py`、真实 URL 处理、字幕/音频下载、转写、模型分析和 Codex final review 执行，也不改 renderer 结构。
+- 阶段四已新增 `watchbrief_v5/scripts/analyzer/prompts.py`、`local_extract.py`、`codex_review.py`。`local_extract.py` 只从已提供的 mock transcript segments 生成 local extract payload，不生成最终报告字段；`codex_review.py` 只组装 review request 或校验手动提供的 mock response，request 中明确 `model_call_allowed: false`，不调用模型。
+- 阶段四新增 `golden/mock_transcript_heartflow.json` 和 analyzer mock tests，覆盖 prompt 字段边界、local extract 不泄漏 final report 字段、review request 不允许模型调用、review response 必须通过 validator、analyzer 模块不导入网络/下载/转写/模型客户端。
+- 阶段四测试命令仍为 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`，当前 51 个测试通过；脚本级 smoke 仅用 mock JSON 生成 `/tmp/watchbrief_v5_local_extract.json` 和 `/tmp/watchbrief_v5_review_request.json`，未触发真实链路。
+- 阶段五边界：只接 transcript source adapter，不接真实 URL 下载链路；禁止 yt-dlp、MP3 下载、真实转写器、字幕下载、模型调用和完整 `video_pipeline.py`。
+- 阶段五已新增 `watchbrief_v5/scripts/transcript_source_adapter.py`，只读取已有本地 `.srt`、`.vtt`、转写 `.json`、转写 `.txt` 文件，统一输出 `watchbrief_v5.transcript_material.v1`，字段包含 `language`、`transcript_quality`、`segments`、`has_timestamps` 和 adapter 边界声明。
+- 阶段五新增本地 fixtures：`fixtures/transcripts/heartflow.srt`、`heartflow.vtt`、`heartflow_transcript.json`、`heartflow_transcript.txt`、`bad_timestamp.txt`；测试覆盖字幕输入、转写 JSON/TXT 输入、时间戳格式校验、语言必填、`transcript_quality` 枚举、adapter 输出衔接 `local_extract.py`。
+- 阶段五测试命令仍为 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`，当前 63 个测试通过；脚本级 smoke 仅用本地 SRT fixture 生成 `/tmp/watchbrief_v5_transcript_material.json`，未触发真实链路。
+- 阶段六边界：只做 resolver / subtitle_fetcher / audio_downloader / transcriber 真实采集层；不创建完整 `video_pipeline.py`，不做端到端真实视频 HTML，且不改 renderer、validator、schema 或 HTML 模板结构。
+- 阶段六已新增 `watchbrief_v5/scripts/resolver.py`、`subtitle_fetcher.py`、`audio_downloader.py`、`transcriber.py` 和 `acquisition_errors.py`。resolver 用 `yt-dlp --dump-single-json --flat-playlist` 解析单视频/列表；subtitle_fetcher 优先抓平台字幕并转成 `watchbrief_v5.transcript_material.v1`；audio_downloader 只有在字幕已检查且不可用时才允许下载并转成标准 WAV；transcriber 只把音频转成带时间戳 transcript material。
+- 阶段六错误分类已落到 typed errors：平台限制、字幕不可用、音频下载失败、音频/转写格式转换失败、转写失败、resolver 失败；mock tests 覆盖字幕存在时禁止音频下载、各采集层成功输出 material、以及失败原因分类。
+- 阶段六测试命令仍为 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`，当前 85 个测试通过、2 个真实 smoke 默认跳过；显式执行 `WATCHBRIEF_V5_RUN_REAL_SMOKE=1 python3 -m unittest discover -v -s watchbrief_v5/tests -p 'test_real_acquisition_smoke.py'` 时，当前真实平台 smoke 被分类跳过：resolver 为 `resolver_failed`，subtitle 为 `subtitle_unavailable`，未出现未知异常。
+- 阶段七边界：开始组装 `video_pipeline.py`，但只做 pipeline orchestration；真实 Codex review / 云端模型调用保持关闭，必须由 mock/manual review response provider 提供结果；不改 renderer、validator、schema 和 HTML 模板结构。
+- 阶段七已新增 `watchbrief_v5/scripts/video_pipeline.py`，串起 resolver → subtitle_fetcher → audio_downloader/transcriber → transcript_material → local_extract → codex_review request → validator → renderer。pipeline 会为每条视频独立写 `normalized_payload.json`、`review_request.json`、`local_extract.json`、`item_manifest.json`、HTML 和总 `manifest.json`。
+- 阶段七列表框架按 item 顺序逐条处理：不预抓整个列表字幕/音频/transcript，不把列表 transcript 合成大文本；单条失败会写入 manifest 并继续后续条目。
+- 阶段七清理规则已用测试锁定：HTML 成功写入前不清理当前 work dir；HTML 写入成功后才调用 cleanup；HTML 写入失败时保留当前临时文件用于排查。
+- 阶段七测试命令仍为 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`，当前 93 个测试通过、2 个真实 smoke 默认跳过；新增测试覆盖 single fixture、list fixture、单条失败不中断列表、HTML 失败不清理、成功后才清理、缺 mock review provider 时不调用模型并失败。
+- 阶段八边界：只接入真实 Codex review / 云端模型调用 adapter；不改 renderer、validator、schema、HTML 模板、pipeline 顺序和清理规则；默认路径仍然只使用 mock/manual review response。
+- 阶段八已在 `watchbrief_v5/scripts/analyzer/codex_review.py` 中实现显式真实调用入口。只有 `--enable-codex-review` 或 `--review-provider codex` 明确开启时才会调用模型；未开启时只会生成 review request 或校验 mock/manual response。
+- 阶段八真实调用结果必须先解析 JSON，再过 `single_video_report.schema.json`，再过 V5 validator，之后才允许交给 renderer；`final_conclusion` 污染、tag/topic 混用、多 primary、`only_one_segment` 不匹配等问题继续由 validator 拦截，不允许 renderer 兜底。
+- 阶段八错误分类已覆盖：`auth_failed`、`quota_limited`、`timeout`、`schema_invalid`、`empty_response`、`model_error`；新增 dry-run 命令可输出 `review_request.json` 供人工复制给 Codex 测试。
+- 阶段八测试命令仍为 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`，当前 110 个测试通过、2 个真实 smoke 默认跳过；新增测试覆盖 mock 路径不调用模型、显式 codex 路径组装、`--enable-codex-review` 单独开启、`--review-provider codex` 单独开启、dry-run 输出、无登录/限额/超时/非法 JSON/非法 schema 分类失败。
+- 阶段九边界：只做真实单视频端到端 smoke test，不做列表任务；不改 renderer、validator、schema、HTML 模板结构、pipeline 顺序和清理规则。
+- 阶段九使用本机临时 HTTP 单视频 URL `http://127.0.0.1:8765/focus_steps.mp4` 跑完整链路：resolver → subtitle_fetcher（无字幕）→ audio_downloader → Whisper transcriber → local_extract → 真实 Codex CLI review（`gpt-5.4`）→ schema → validator → renderer。
+- 阶段九 smoke 过程中 validator 先后拦截了真实模型输出的 schema/validator 问题：百分制 `replacement_score`、非数组 `arrow_chain`、缺少 `watch_segments.title`、对象型 `only_one_segment`、片段标题缺少 `首选片段：` 前缀、`score_basis.originality` 过短；这些失败均按 `schema` 或 `validator` 分类，没有进入 renderer 兜底。
+- 阶段九最终产物已生成在 `/Users/apple/Desktop/watchbrief_v5_phase9_single_smoke/`：`01-focus_steps.html`、`payloads/01-focus_steps/normalized_payload.json`、`payloads/01-focus_steps/review_request.json`、`manifest.json` 和 `phase9_smoke_check.json`；检查结果通过，确认 V5 模板区域存在、`final_conclusion` 只做主题收束、`tag` 来自枚举、`topic` 贴合当前视频、只有一个 primary、`only_one_segment` 匹配 primary、HTML 时间段使用竖杠且未出现旧模块。
+- 阶段十开始前复核阶段九产物：`normalized_payload.json` 中 `only_one_segment` 实际为 `只选一段：00:00 | 00:05。这一句已经包含全片完整主旨，没有额外信息遗漏。`，HTML 也包含完整文本；上次汇报里的 `00:00` 截断是 Markdown 表格竖杠未转义造成的显示问题，不是 payload 缺字段。
+- 阶段十边界：只做真实小列表端到端 smoke test，列表规模为 3 条短视频；不合并列表 transcript，不预抓全列表字幕/音频/transcript，不改变单视频 renderer、validator、schema 或 HTML 模板结构。
+- 阶段十发现并补齐 list 交付缺口：原阶段七 pipeline 只产出 per-video HTML，没有最终 `00-watch-order.html`，按 V4/V5 产品契约不能算完整列表交付；新增 `watchbrief_v5/scripts/watch_order.py`，只把已验证 normalized payload 映射进固定 V4 watch-order 页面结构，信息密度进度条只读取 `structured_assessment["信息密度"]`。
+- 阶段十已更新 `video_pipeline.py`：当 `source_kind == "list"` 时，必须等所有 per-video HTML 尝试完成后，再生成 `00-watch-order.html` 并把 `watch_order_path` 写入 manifest；不改变逐条处理、失败继续和 HTML 成功后清理规则。
+- 阶段十真实小列表 smoke 已生成在 `/Users/apple/Desktop/watchbrief_v5_phase10_list_smoke/`：`00-watch-order.html`、3 个单视频 HTML、3 个 `normalized_payload.json`、3 个 `review_request.json`、`manifest.json` 和 `phase10_smoke_check.json`；检查结果通过，确认总数 3、成功 3、失败 0、每条只有一个 primary、`only_one_segment` 匹配 primary、时间段使用竖杠、tag 来自枚举、topic 贴合当前视频、final_conclusion 只做主题收束、页面未出现旧模块、watch-order 卡片链接 per-video HTML，进度条宽度来自各自的 `structured_assessment["信息密度"]`。
+- 阶段十回归测试命令仍为 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`，当前 111 个测试通过、2 个真实 smoke 默认跳过；新增/更新测试覆盖 list pipeline 生成 `00-watch-order.html` 和 watch-order V4 结构渲染。
+- 阶段十点一修复只聚焦 renderer 视觉映射与颜色契约：`watchbrief_v5/scripts/renderer.py` 引入 `score_bands.py` 的统一 band 映射（skip/low/strong），单视频 `score-box` 与 `hero` 侧栏配色均改为按 `replacement_score` 映射（<5 红 #A24A42、5-8 黄 #f6c90e、>=8 绿 #b8de7f）；`watchbrief_v5/scripts/watch_order.py` 统一使用 `band_config` 与 `recommendation_band_from_report`，确保卡片/徽章/筛选 banner/进度条配色同一分档且 `failed` 仅保留灰色；`watch_order_density_percent` 仍作为信息密度宽度来源。
+- 阶段十点一同步冻结模板导入：`watchbrief_v5/references/video_report_v5.html` 与 `watchbrief_v5/references/00watch_order_v5.html` 作为唯一单视频与 watch-order 模板源，renderer 仅做字段替换与占位符映射，不改 CSS/结构/class。
+- 阶段十点一新增/修订回归测试：`watchbrief_v5/tests/test_renderer.py` 新增/修正 score band 映射（1.2 红、5.3 黄、8.1 绿）与骨架匹配断言；`watchbrief_v5/tests/test_watch_order.py` 新增/修正 skip/failed 色带、filter banner 色值、信息密度宽度验证、灰色失败渲染等用例。
+- 阶段十点一回归：`cd watchbrief_v5/tests && python3 -m unittest test_renderer.py test_watch_order.py` 与 `python3 -m unittest` 通过（19 与 118 用例），说明模板结构未变，映射修复通过且不影响旧约束。
+- 阶段十点二真实列表 smoke 回归（视觉契约）：在 `/Users/apple/Desktop/watchbrief_v5_phase10_list_smoke_regression/` 重新跑 3 条本机短视频列表链路（本次使用 `list.m3u` + 本地字幕注入替代平台字幕源）。
+- 阶段十点二检查结果：`manifest` 总数 3、成功 3、失败 0；单视频 3 个 HTML、`manifest.json`、`review_request.json`、`normalized_payload.json`、`00-watch-order.html` 均生成。
+- 阶段十点二验收：1.x 分页（1.2）映射红色、5.3 映射黄、8.1 映射绿，watch-order skip 与 failed 使用独立色带，过滤器 skip 为 `#A24A42`、failed 为灰色；左侧色条/标签/卡片背景与 score-bar 与统一 band 颜色一致；信息密度进度条宽度由 `structured_assessment["信息密度"]` 计算。
+- 阶段十点二输出检查文件：`/Users/apple/Desktop/watchbrief_v5_phase10_list_smoke_regression/phase10_point2_smoke_check.json`（无失败项）。
+- 阶段十点二复跑：再次执行同目录真实列表 smoke 回归，结果全部通过，`phase10_point2_smoke_check.json` 更新为当前 run（无失败项），用于替换旧验收快照。
+- 阶段十一开始阶段：迁移与兼容层。
+- 阶段十一完成 `watchbrief_v5/SKILL.md` 重写：
+  - 补齐前置 metadata（name: watchbrief_v5），声明为 clean rewrite，保留 V4 兼容与回退策略。
+  - 明确显示名为 `WatchBrief`，外部新入口为 `$watchbrief_v5`，旧入口 `$v1deodownload` 明确保留。
+- 阶段十一完成 `watchbrief_v5/README.md`：
+  - 增加调用名/显示名、兼容说明。
+  - 增加阶段十一要求的运行命令示例（单视频、URL 文件、列表、mock review、启用真实 Codex）。
+  - 增加输出目录说明和失败分类（resolver、字幕、下载、转写、codex_review、validator、renderer）。
+- 阶段十一新增兼容入口：
+  - `watchbrief_v5/scripts/cli.py`：轻量包装脚本，只做调用编排，不改 analyzer/validator/schema/pipeline 逻辑。
+  - `watchbrief_v5/scripts/check_watchbrief_skill.py`：自检脚本，校验 frontmatter、agent 配置、模板、schema、tests、golden、可发现性。
+- `check_watchbrief_skill.py` 自检通过（`python3 watchbrief_v5/scripts/check_watchbrief_skill.py` 返回 0）。  
+  - 未设置 `--strict-install` 时会输出 Codex 安装路径预警；这是本地未安装新入口目录时的预期提示，不影响仓库完整性校验。
+- 已重跑 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`，118 个通过，2 个跳过，未改 analyzer/validator/schema/renderer/html 模板逻辑。
+- 阶段十一完成 discoverability 自检与注册流程：
+  - 已将 `watchbrief_v5` 安装/同步到 `~/.codex/skills/watchbrief_v5`（与 `WatchBrief` display_name 一致）。
+  - 已验证 `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install` 通过，返回 PASS，确认新入口可被 Codex/Hermes 发现，且 `v1deodownload` 兼容回退仍在。
+- 本阶段未修改 V4 正式副本，保留 v1deodownload 可回退状态。
+
+## 2026-04-25
+
+- 将确认版 Watch Order v4 HTML 写入 `references/00watch_order_v4.html`，替换当前 Watch Order v4 参考模板。
+- 同步更新 `scripts/render_report_html.py` 里的 `WATCH_ORDER_CATEGORY_CONFIG`，让列表页实际渲染时的内联分档颜色与新模板一致：少量片段可取为金色、不值得看为红色、解析失败为灰色。
+- 保持 `00-watch-order.html` 的生成入口、数据映射和文件名不变，只替换视觉模板与对应颜色配置。
+- 强化新模板字段职责：`one_line_brief` 只写内容摘要，`watch_verdict` 只写观看决策，`final_conclusion` 只写主旨收束；新增 `content_caveat` 承接视频局限，避免污染红色结论 banner。
+- 推荐片段按 `primary / optional / backup` 分层展示，时间段展示改为 `10:51 | 15:08` 这种竖杠格式。
+- 已将新模板字段职责强化规则同步到 GitHub `main` 分支，覆盖 skill 指令、默认 prompt、payload schema、HTML 渲染和参考文档。
+- 修正 V4 单视频模板硬约束：`final_conclusion` 只能写视频主旨收束且必须完整成句，禁止报告替代性、原视频观看建议、视频时长/广告/案例铺陈、论证强弱和“如果/除非”类条件建议进入红色结论 banner。
+- 更新推荐标签体系：`tag` 只能是 `报告足够替代 / 报告基本可替代 / 只建议跳看 / 值得补看 / 建议完整看 / 不推荐观看 / 解析不足`，主题词必须进入 `topic`；旧模板样例 `心理学 / 社交 / 魅力` 会被清空，不再由 renderer fallback 注入。
+- 强化片段一致性：`watch_segments` 只保留唯一 `primary`、第二段 `optional`、第三段 `backup` 且无真实时间不硬塞；`only_one_segment` 和 `watch_verdict` 的首选时间段会对齐 primary，所有显示型时间统一为 `start | end`。
+- 修正纠偏反馈文案：反馈抽屉不再写“一句话提炼”，统一改成 `核心提炼 / Highest Compression`；已同步安装版 skill `/Users/apple/.codex/skills/v1deodownload`。
+
+## 2026-04-28
+
+- 阶段：阶段十八 F 前置调研，B 站字幕方案评估。
+- 是否改代码：否。未修改 `watchbrief_v5` 代码、schema、renderer、pipeline 或测试；只追加本工作日志。
+- 候选方案：
+  - Bilibili Evolved: https://github.com/the1812/Bilibili-Evolved
+  - Bilibili Video Downloader / BilibiliDown: https://github.com/nICEnnnnnnnLee/BilibiliDown
+  - Bilibili Obsidian Clipper: https://github.com/haixiong1997/Bilibili-Obsidian-Clipper
+  - 补充对照 BBDown: https://github.com/nilaoda/BBDown
+- 每个方案的 GitHub 地址：
+  - `the1812/Bilibili-Evolved`
+  - `nICEnnnnnnnLee/BilibiliDown`
+  - `haixiong1997/Bilibili-Obsidian-Clipper`
+  - `nilaoda/BBDown`
+- 每个方案的许可证：
+  - Bilibili Evolved: 源码声明基于 MIT，但 `LICENCE.md` 附加再发布限制；GitHub API 识别为 `NOASSERTION/Other`。不建议复制代码，只可作为公开接口路径参考。
+  - BilibiliDown: Apache-2.0。允许参考和复用思路；如复制实质代码，必须保留 license/copyright/notice，并标注修改。
+  - Bilibili Obsidian Clipper: MIT。允许参考；如复制实质代码，必须保留 MIT copyright notice。
+  - BBDown: MIT。允许参考；如复制实质代码，必须保留 MIT copyright notice。
+- 每个方案的字幕能力：
+  - Bilibili Evolved: 支持单视频字幕列表，下载 JSON / ASS；源码说明 AI 生成字幕不可下载；依赖浏览器 userscript、`unsafeWindow.aid/cid`、播放器配置和页面状态；另有弹幕下载。
+  - BilibiliDown: 支持字幕下载并转 SRT，支持弹幕 XML/ASS，支持单视频、分 P、合集/收藏夹/UP 主视频等批量入口；GUI/Java 为主，不是轻量 provider。
+  - Bilibili Obsidian Clipper: 专注 B 站视频页字幕抓取，自动识别当前分 P，支持字幕列表、SRT/TXT 下载、Markdown 预览；支持作者字幕和 AI 字幕、多语言；不下载音视频；浏览器扩展环境依赖强。
+  - BBDown: 命令行工具，支持 `--sub-only` 只下载字幕，SRT 输出，支持多 P、合集/列表/收藏夹/个人空间、字幕、弹幕、元数据文件名变量；默认跳过 AI 字幕，可通过参数调整。
+- 每个方案的技术路径：
+  - Bilibili Evolved: 页面内取 `aid/cid`，调用 `https://api.bilibili.com/x/player/wbi/v2?aid=...&cid=...` 得到 `data.subtitle.subtitles`，取 `subtitle_url` 下载 BCC JSON，再转 JSON 或 ASS。
+  - BilibiliDown: 解析 BV/AV/EP/合集得到 `bvid/aid/cid`，调用 `x/player/wbi/v2` 并做 WBI 参数处理；取 `subtitle_url` 后把 BCC JSON `body[{from,to,content}]` 转 SRT；无字幕或未登录时会提示可能受登录影响。
+  - Bilibili Obsidian Clipper: `x/web-interface/view?bvid=...` 获取 `aid/cid/pages/title/owner/duration`，优先 `x/player/wbi/v2?aid=...&cid=...&bvid=...`，失败时尝试 `x/player/v2`；下载 `subtitle_url`，校验字幕时长，转 SRT/TXT/Markdown。
+  - BBDown: `x/web-interface/view` 获取元数据和分 P；字幕优先 `x/player/wbi/v2`，再 `x/web-interface/view`，无 cookie 时可走 app gRPC `https://app.biliapi.net/bilibili.community.service.dm.v1.DM/DmView`；下载后转 SRT。
+- 是否需要浏览器环境：
+  - Bilibili Evolved: 需要。
+  - BilibiliDown: 不需要浏览器，但 GUI/Java 桌面程序属性强。
+  - Bilibili Obsidian Clipper: 需要浏览器扩展环境。
+  - BBDown: 不需要。
+- 是否能 CLI 化：
+  - Bilibili Evolved: 不适合，核心和播放器/DOM/扩展能力耦合。
+  - BilibiliDown: 可借鉴算法，但直接 CLI 化成本高，Java GUI 全局状态多。
+  - Bilibili Obsidian Clipper: 字幕流程很清楚，可拆成 Python provider 思路，但不能直接照搬扩展代码。
+  - BBDown: 已经是 CLI，可作为行为对照和接口 fallback 参考。
+- 是否需要 cookies：
+  - Bilibili Evolved: 依赖浏览器登录态，会员/受限内容必须用户本人有权限。
+  - BilibiliDown: 公共内容可不带 cookie；部分字幕/受限内容需要 cookie。
+  - Bilibili Obsidian Clipper: 通过浏览器 `credentials: include` 使用用户本人页面登录态。
+  - BBDown: 公共样本本次不需要 cookie；受限内容可传 cookie/token，但 WatchBrief 不应保存、打印或展示 cookie。
+- 小样本测试结果：
+  - 测试边界：只测试字幕下载；未进入 MLX-Audio、Qwen、Codex；未保存、打印、展示 cookie；未绕过权限。
+  - 测试工具：BBDown 1.6.3 `--sub-only`，工作目录 `/tmp/wb-bili-eval/sample-subs`；候选浏览器扩展类方案未安装到用户浏览器，只按源码接口路径评估。
+  - `BV15qQwB4EZ9`：标题《视频内容一键保存到 Obsidian：打通本地知识库》，成功，SRT，`zh`，不需要 cookie，单 P。
+  - `BV19H4y1w7Bn`：标题《熬夜！无聊！如何摆脱萎靡不振的状态？【TED演讲】》，成功，SRT，`zh-Hans` 与 `en-US`，不需要 cookie，单 P。
+  - `BV1B5oLB7ESg`：标题《巴黎圣母院重建奇迹的幕后故事【TED演讲】》，成功，SRT，`zh` 与 `en`，不需要 cookie，单 P。
+  - `BV1at4y1d7oL`：标题《如何让自己变得越来越好？【TED演讲】》，成功，SRT，`zh-Hans` 与 `en-US`，不需要 cookie，单 P。
+- 推荐方案：
+  - 第一推荐：自研 `bilibili_content_provider.py`，参考 Obsidian Clipper 的清晰流程和 BBDown 的 CLI/多接口经验，不直接复制任何代码。
+  - 第二参考：BBDown。原因是 CLI、`--sub-only`、多 P/合集和多接口 fallback 更贴近 WatchBrief 的 provider 验证方式。
+  - 第三参考：BilibiliDown。原因是 Apache-2.0、字幕转 SRT 和 WBI 路径完整，但 Java GUI 工程不适合直接集成。
+- 不推荐方案：
+  - 不建议把 Bilibili Evolved 作为 provider 基础：浏览器 userscript 依赖强、附加再发布限制、AI 字幕下载限制、DOM/player 状态耦合。
+  - 不建议直接集成 Bilibili Obsidian Clipper 扩展：它适合浏览器内用户手动抓字幕，不适合 WatchBrief 独立 CLI；可参考其分 P、时长校验、字幕优先级和元数据字段。
+- 推荐集成方式：
+  - 新增 `watchbrief_v5/scripts/bilibili_content_provider.py` 是合理的，但下一阶段再动代码。
+  - provider 输入只接收用户给出的 B 站 URL/BV/合集 URL，不接收明文 cookie。
+  - provider 先解析 `bvid/aid/cid/pages` 和元数据，再获取字幕轨列表，再按语言优先级下载 `subtitle_url`，统一成 WatchBrief transcript material。
+  - 字幕统一输出结构建议：`source_platform=bilibili`、`source_url`、`bvid`、`aid`、`cid`、`page_index`、`page_title`、`video_title`、`uploader`、`duration_seconds`、`collection_title`、`track_id`、`language`、`language_label`、`is_auto_generated`、`format=bcc_json/srt`、`segments[{start,end,text}]`、`raw_metadata`、`auth_mode=none/browser_session`。
+  - 只抓字幕，不下载音频/视频；字幕不可用时再交回既有采集层决定是否进入音频路径。
+- 开源致谢与许可证处理建议：
+  - README 增加 “Bilibili provider research references” 小节，列出 Bilibili Evolved、BilibiliDown、Bilibili Obsidian Clipper、BBDown 和各自许可证。
+  - 新增或更新 `ACKNOWLEDGEMENTS.md`，记录“仅参考公开项目的接口路径和行为，不复制代码”。
+  - 如果未来复制 MIT/Apache-2.0 项目的实质代码片段，必须保留对应 LICENSE/copyright notice；Apache-2.0 还要保留 NOTICE/修改说明。
+  - Bilibili Evolved 因附加再发布限制，不复制代码，不把其完整脚本作为依赖或分发物。
+  - WatchBrief 仓库不需要保留上述项目完整 LICENSE 文件，除非实际复制代码或 vendoring 依赖；只参考接口和行为时，README/ACKNOWLEDGEMENTS 致谢即可。
+- 下一步建议：
+  - 可以进入 WatchBrief 阶段十八 F：Bilibili subtitle provider 集成。
+  - 进入前先确认 provider 设计：只新增 provider 与测试，不改 renderer/schema/analyzer；第一版只支持公开/用户本人有权限的视频字幕，不保存、不打印、不展示 cookie，不绕过权限。
+
+## 2026-04-28
+
+- 阶段：阶段十八 F 前置补充评估，专项判断 Bilibili Evolved 字幕下载组件 / 字幕接口逻辑是否可拆出。
+- 是否改代码：否。未修改 `watchbrief_v5` provider、pipeline、renderer、schema、analyzer 或测试；只追加本工作日志。
+- Bilibili Evolved 字幕代码位置：
+  - 字幕下载工具函数：`registry/lib/components/video/subtitle/download/utils.ts`
+  - 字幕下载 UI：`registry/lib/components/video/subtitle/download/DownloadSubtitle.vue`
+  - 字幕下载组件注册 / 接入下载视频资产系统：`registry/lib/components/video/subtitle/download/index.ts`
+  - 字幕说明：`registry/lib/components/video/subtitle/download/index.md`
+  - ASS 转换器：`registry/lib/components/video/subtitle/subtitle-converter.ts`
+  - ASS 工具函数：`src/components/video/ass-utils.ts`
+  - 单视频 / 多 P / 合集输入参考：`registry/lib/components/video/download/inputs/video/input.ts`、`registry/lib/components/video/download/inputs/video/batch.ts`
+  - 手动 BV/AV 输入解析参考：`registry/lib/plugins/video/download/manual-input/index.ts`
+  - 通用 API 包装：`src/core/ajax.ts`
+- 字幕功能是否可单独拆出：
+  - 字幕接口流程可以单独拆出：`aid/cid -> x/player/wbi/v2 -> subtitle.subtitles -> subtitle_url -> BCC JSON body`。
+  - 当前 Evolved 组件代码不适合直接搬进 WatchBrief：它的默认输入、语言选择、文件下载、ASS 样式配置、Toast、Vue 组件和下载资产系统都绑定 Bilibili Evolved 运行时。
+  - 正确理解不是“从零造轮子”，而是“WatchBrief provider 外壳自研，字幕接口流程按 Evolved/Obsidian/BBDown 已验证路径实现”。
+- 实际调用的 B 站接口：
+  - 当前视频字幕列表：`https://api.bilibili.com/x/player/wbi/v2?aid={aid}&cid={cid}`，Evolved 通过 `getJsonWithCredentials` 带浏览器凭据请求，再用 `bilibiliApi` 取 `data.subtitle.subtitles`。
+  - 字幕文件下载：读取字幕轨里的 `subtitle_url`，再 `getJson(subtitle.subtitle_url)`，取返回 JSON 的 `body` 数组。
+  - BCC / JSON 字幕结构：`body` 里使用 `from`、`to`、`location`、`content`。
+  - ASS 转换：`SubtitleConverter.convertToAss(rawData)`，用 `from/to/location/content` 生成 ASS dialogue。
+  - SRT 转换：Bilibili Evolved 字幕组件没有提供 SRT，只提供 JSON 和 ASS；SRT 需要参考 BilibiliDown / BBDown 或 WatchBrief 自己按 `from/to/content` 转。
+  - bvid / aid / cid / pages 获取：字幕组件本身默认直接读 `unsafeWindow.aid/cid`；Evolved 其他下载输入代码用 `x/web-interface/view?aid=...`、`x/web-interface/view?bvid=...` 和 `x/web-interface/wbi/view/detail?bvid=...&aid=...` 获取分 P / 合集信息。
+- 是否依赖浏览器 DOM：
+  - 字幕列表接口本身不依赖 DOM。
+  - `getSubtitleConfig()` 依赖播放器视频元素尺寸：`playerAgent.query.video.element.sync()`，用于 ASS 样式。
+  - `getFriendlyTitle(true)` 依赖页面标题工具。
+  - UI 组件、按钮、下拉语言选择、下载文件动作依赖浏览器页面。
+  - 如果 WatchBrief 只需要 transcript material，不需要复制这些 DOM/播放器相关部分。
+- 是否依赖 userscript API：
+  - 字幕接口函数间接依赖 Evolved 的 XHR / ajax 封装；运行环境通常是 userscript 注入页。
+  - 代码使用 `unsafeWindow.aid`、`unsafeWindow.cid` 作为默认输入，这是 userscript / 页面全局状态，不适合 CLI。
+  - 纯 CLI 版必须改成显式传入 `aid/cid/bvid`，并用 Python HTTP client 处理 headers、Referer、cookies policy。
+- 是否依赖组件系统：
+  - `DownloadSubtitle.vue` 依赖 Vue、`DefaultWidget`、`VButton`、`VDropdown`、`VIcon`、Toast。
+  - `index.ts` 依赖 `defineComponentMetadata`、`DownloadPackage`、`downloadVideo.assets` 插件系统。
+  - 这些都不能带入 WatchBrief provider。
+  - `utils.ts` 中 `getSubtitleList()` 的接口逻辑可以抽象；`getSubtitleBlob()` 需要剥离 Blob、Toast、unsafeWindow、playerAgent、title 工具后才能迁移。
+- 是否可 CLI 化：
+  - 可以 CLI 化的是接口流程，不是原组件代码。
+  - CLI 化最短路径：先用 `x/web-interface/view?bvid=...` 获取 `aid/cid/pages/title/owner/duration`，再用 `x/player/wbi/v2?aid=...&cid=...` 获取字幕轨，再下载 `subtitle_url`，最后把 BCC JSON 转成 WatchBrief transcript material。
+  - Evolved 的 ASS 转换可以作为参考，但 WatchBrief 首要需要结构化 segments，不需要 ASS 视觉样式；SRT 更应参考 BilibiliDown/BBDown 或直接按标准实现。
+- 许可证结论：
+  - `LICENCE.md` 声明源码基于 MIT 许可公开。
+  - 附加限制只针对“在其他地方发布此脚本/仓库内容”：若再发布完整脚本或 `.user.js` 安装入口，必须保留 README 作为唯一安装入口，或 fork 并自行处理技术支持，不能把支持流量导回原仓库。
+  - 只发布原仓库链接不算再发布。
+  - 只参考接口路径、字段名和公开 API 行为，不复制代码，通常不触发保留 MIT 文本的硬要求，但建议在 README / ACKNOWLEDGEMENTS 致谢。
+  - 如果复制或改编实质代码片段，必须保留 MIT copyright/license notice；因其 `LICENCE.md` 有附加再发布限制，还应在 `ACKNOWLEDGEMENTS.md` 和代码注释里说明来源、修改范围和未分发完整 userscript。
+- 可复用层级：C。
+  - `getSubtitleList()` 的核心接口路径和字段可参考。
+  - `SubtitleInfo` 字段结构可参考。
+  - BCC JSON `body` 到 internal segments 的映射可参考。
+  - `SubtitleConverter` 的 ASS 输出逻辑可参考，但不建议复制；WatchBrief 不需要以 ASS 为主输出。
+  - 不建议选择 A/B，因为原代码依赖 Evolved runtime、`unsafeWindow`、播放器对象、Blob、Toast、Vue 和下载资产系统；直接复制后还要大面积拆依赖，收益不如按同一接口流程实现。
+- 如果可复制，需要保留哪些声明：
+  - 在复制文件或改编文件头部保留来源说明：`Adapted from the1812/Bilibili-Evolved`、原仓库 URL、原许可证 MIT、修改说明。
+  - 在 `ACKNOWLEDGEMENTS.md` 记录 Bilibili Evolved、作者/维护者、仓库 URL、`LICENCE.md` 摘要、使用范围。
+  - 在 README 的 Bilibili provider references 中列出 Bilibili Evolved。
+  - 如复制较多实质代码，应增加 `LICENSES/Bilibili-Evolved-LICENCE.md` 或等效第三方许可证记录；不分发其完整 userscript 或安装入口。
+- 如果只参考，需要如何致谢：
+  - README：列为 “Bilibili subtitle provider research references”，说明参考了其字幕列表接口和 BCC/ASS 字段理解，未复制代码。
+  - `ACKNOWLEDGEMENTS.md`：记录 `the1812/Bilibili-Evolved`、许可证说明、参考范围。
+  - provider 代码注释：只在接口流程附近简短注明“API behavior cross-checked against Bilibili Evolved / BBDown / Bilibili Obsidian Clipper”，不要贴原代码。
+- 与 Obsidian Clipper 对比：
+  - Obsidian Clipper 的 provider 参考价值更高：它已经把 `x/web-interface/view` 获取元数据、`x/player/wbi/v2` 获取字幕、`x/player/v2` 请求失败备选、字幕轨排序、时长校验、SRT/TXT 输出串成一条轻量字幕链。
+  - Evolved 的接口更简洁，但上下文来自页面/播放器；它不负责完整的 CLI 解析和稳定性校验。
+  - 对 WatchBrief 来说，Obsidian Clipper 更像 provider 原型；Evolved 更像“确认核心接口可用”的参考。
+- 与 BBDown 对比：
+  - BBDown 更适合作为 CLI 行为对照：已有 `--sub-only`、多 P、合集/列表、字幕 fallback、SRT 输出、无 cookie/有 cookie差异处理。
+  - Evolved 的字幕实现更薄，便于理解接口，但没有 CLI 边界、错误分类和批量行为。
+  - WatchBrief 可用 BBDown 验证样本字幕结果，用 Evolved 交叉确认 Web 字幕列表接口。
+- 与 BilibiliDown 对比：
+  - BilibiliDown 和 Evolved 都使用 `x/player/wbi/v2` 字幕列表；BilibiliDown 还把 BCC JSON 转成 SRT。
+  - BilibiliDown 是 Java/GUI 全局状态项目，迁移成本也高，但 SRT 转换逻辑比 Evolved 更贴近 WatchBrief transcript 输出。
+  - Evolved 许可证更微妙；BilibiliDown 是 Apache-2.0，复制代码时 notice 要求更明确。
+- 最终建议：
+  - 不要“只集成 Bilibili Evolved 的字幕组件代码”。
+  - 可以“只集成 Bilibili Evolved 已验证的字幕接口逻辑”：`aid/cid -> x/player/wbi/v2 -> subtitles -> subtitle_url -> BCC body`。
+  - WatchBrief provider 外壳必须自研，因为输入解析、权限边界、cookies 策略、错误分类、transcript material 输出和 pipeline 接口都属于 WatchBrief 自己的架构。
+  - 字幕接口逻辑可按 Evolved/Obsidian/BBDown 共同路径实现；字幕格式转换优先输出 WatchBrief segments，SRT 仅作为可选调试产物。
+  - 绝对不要复制 Vue UI、Toast、DownloadPackage、defineComponentMetadata、playerAgent、unsafeWindow 默认输入、Blob 下载和完整 ASS 样式系统。
+  - 可以借鉴接口流程、字段结构、语言选择策略、BCC body 解析、ASS/SRT 时间格式转换思路。
+- 是否仍建议新增 `bilibili_content_provider.py`：
+  - 是。新增 provider 不是从零造轮子，而是把已验证的 B 站字幕接口流程放进 WatchBrief 的边界内。
+  - 文件职责应是：解析 B 站输入、获取 `aid/cid/pages`、获取字幕轨、下载字幕 JSON、统一成 transcript material、返回可分类错误。
+- 下一步是否进入阶段十八 F 正式集成：
+  - 可以进入。
+  - 正式集成边界建议：只新增 `bilibili_content_provider.py` 与对应 tests；不改 renderer/schema/analyzer；第一版只做单视频和分 P 字幕，合集可先以 pages 展开；不保存、不打印、不展示 cookies；只访问用户本人有权限的视频。
+
+## 2026-04-28 - 阶段十八 F：Bilibili subtitle provider 集成
+
+- 阶段：阶段十八 F，B 站字幕 provider 集成；本阶段独立于 YouTube 阶段十八 E。
+- 是否改代码：是。
+- 改动范围：
+  - `watchbrief_v5/scripts/bilibili_content_provider.py`
+  - `watchbrief_v5/tests/test_bilibili_content_provider.py`
+  - `watchbrief_v5/tests/test_acquisition_subtitle_fetcher.py`
+  - `watchbrief_v5/tests/test_acquisition_scope.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/scripts/check_watchbrief_skill.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/ACKNOWLEDGEMENTS.md`
+- Provider 文件位置：`watchbrief_v5/scripts/bilibili_content_provider.py`。
+- 实际使用的 B 站接口：
+  - 元数据：`x/web-interface/view?bvid=...` 或 `x/web-interface/view?aid=...`
+  - 字幕列表优先：`x/player/wbi/v2?aid=...&cid=...&bvid=...`
+  - 字幕列表 fallback：`x/player/v2?aid=...&cid=...&bvid=...`
+  - 字幕文件：字幕轨里的 `subtitle_url`
+  - 字幕格式：BCC JSON，读取 `body[].from / body[].to / body[].content`
+- 是否支持 `x/player/wbi/v2`：是。
+- 是否支持 `x/player/v2 fallback`：是。
+- 是否支持 BCC JSON：是，已转成 WatchBrief transcript segments 和 material。
+- 是否支持 `need_login_subtitle` 分类：是，返回 `reason_code=login_required_for_subtitle`，不伪装成无字幕。
+- 是否支持 cookies-from-browser：是，支持 `--cookies-from-browser`，不保存、不打印、不展示 cookie 值。
+- 是否有字幕时跳过 audio_downloader：是，字幕命中时 `audio_downloader_skipped_due_to_subtitle=True`。
+- 是否只有 `no_subtitle_available` 才允许进入 audio_downloader：是；`login_required_for_subtitle` 和接口错误不进入音频 fallback。
+- 小样本测试结果：
+  - `https://www.bilibili.com/video/BV15qQwB4EZ9/`，使用 Safari 浏览器登录态：成功，语言 `zh`，251 段，来源 `player-wbi-v2`，未进入 audio_downloader。
+  - `https://www.bilibili.com/video/BV15qQwB4EZ9/`，无登录态：失败分类 `login_required_for_subtitle`，`need_login_subtitle=true`，未进入 audio_downloader。
+  - `https://www.bilibili.com/video/BV1xx411c7mD/`，无登录态：失败分类 `no_subtitle_available`，允许后续音频 fallback，但本阶段未实际进入 audio_downloader。
+- 开源致谢：
+  - 已新增 `watchbrief_v5/ACKNOWLEDGEMENTS.md`。
+  - 已更新 README，记录 Bilibili Evolved、Bilibili Obsidian Clipper、BilibiliDown、BBDown、yutto 的参考范围和许可证边界。
+  - 未复制 yutto GPL 源码，未复制 Bilibili Evolved Vue/userscript 组件代码。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：282 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本是否同步：是，仅选择性同步本次 B 站相关文件到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5`，没有同步另一个 YouTube 会话的改动。
+- 下一步建议：进入 B 站单视频真实字幕链路验收；只跑 provider → transcript material → WatchBrief 后续链路的受控样本，不触发完整 B 站列表，不触发 MLX-Audio/Qwen/Codex，除非明确进入下一验收阶段。
+
+## 2026-04-28 - 阶段十八 F1：B 站单视频 provider 真实字幕链路验收
+
+- 阶段：阶段十八 F1，B 站单视频 provider 真实字幕链路验收。
+- 是否改代码：否；只执行 provider 真实字幕链路验收并记录结果。
+- 执行目录：`/Users/apple/Documents/New project/v1deodownload`。
+- 测试视频：`https://www.bilibili.com/video/BV15qQwB4EZ9/`。
+- 执行命令：
+  - `rm -rf /tmp/watchbrief-bili`
+  - `python3 watchbrief_v5/scripts/bilibili_content_provider.py "https://www.bilibili.com/video/BV15qQwB4EZ9/" --cookies-from-browser safari --output-dir /tmp/watchbrief-bili --material-output /tmp/watchbrief-bili/material.json --transcript-output /tmp/watchbrief-bili/transcript.json`
+- 产物：
+  - `/tmp/watchbrief-bili/material.json`：已生成。
+  - `/tmp/watchbrief-bili/transcript.json`：已生成。
+  - `/tmp/watchbrief-bili/BV15qQwB4EZ9.37390191415.zh.bcc.json`：已生成。
+- 验收字段：
+  - `source_platform=bilibili`
+  - `provider=bilibili_content_provider`
+  - `bvid=BV15qQwB4EZ9`
+  - `aid=116379755745719`
+  - `cid=37390191415`
+  - 标题：`视频内容一键保存到 Obsidian：打通本地知识库`
+  - UP 主：`小陈同学c_z`
+  - `duration=523`
+  - 分 P 标题：`B 站视频一键保存到 Obsidian：本地知识库终于打通了`
+  - `subtitle_lang=zh`
+  - `subtitle_format=bcc`
+  - `segment_count=251`
+  - `plain_text` 字数：3252
+- 边界检查：
+  - 未进入 `audio_downloader`。
+  - 未进入 MLX-Audio。
+  - 未进入 Qwen。
+  - 未进入 Codex。
+  - 未生成 HTML。
+  - 未打印、保存或展示 cookie；产物扫描未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie` 等 cookie 标记。
+- `/tmp/watchbrief-bili` 文件结构：清晰，仅包含 BCC JSON、`material.json`、`transcript.json`。
+- 下一步建议：可以进入阶段十八 F2，把 Bilibili provider 接入 WatchBrief pipeline；F2 仍应先做受控单视频链路，不跑完整 B 站列表，不触发 MLX-Audio/Qwen/Codex，除非用户明确授权进入后续分析阶段。
+
+## 2026-04-28 - 阶段十八 F2：B 站单视频完整 pipeline 验收
+
+- 阶段：阶段十八 F2，把 Bilibili provider 接入 WatchBrief 主 pipeline，并完成单视频真实链路验收。
+- 是否改代码：是。
+- 改动文件：
+  - `watchbrief_v5/scripts/video_pipeline.py`
+  - `watchbrief_v5/scripts/analyzer/local_extract.py`
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/tests/test_analyzer_local_extract.py`
+  - `watchbrief_v5/tests/test_analyzer_codex_review.py`
+  - `watchbrief_v5/CONTRACT_V5.md`
+- pipeline 接入点：
+  - `subtitle_fetcher.fetch_platform_subtitles()` 识别 B 站 URL 后调用 `bilibili_content_provider.fetch_bilibili_subtitle()`。
+  - `video_pipeline.process_video_item()` 在字幕成功时直接使用 provider 返回的 transcript material 进入 `local_extract`，并记录 `audio_downloader=skipped`。
+  - 仅 `SubtitleUnavailableError(reason_code=no_subtitle_available)` 允许进入 audio fallback；`login_required_for_subtitle` 等 B 站 provider 错误明确失败。
+- 本阶段补强：
+  - `item_manifest` 的 `subtitle_fetcher` 步骤现在记录 `segment_count` 和 `char_count`。
+  - Qwen 默认模型选择从旧硬编码 `Qwen3.6-27B-Q6_K.gguf` 改为从 LM Studio `/v1/models` 自动选择第一个 Qwen-family model。
+  - 当前 LM Studio 暴露的可用模型为 `qwen/qwen3.6-27b`，provider 链路实际使用该模型。
+  - 针对当前思考型 Qwen 输出 `content` 为空、`reasoning_content` 很长的问题，Qwen 请求增加 `reasoning_effort=none`，保证 local_extract 获取普通 `content`。
+- 真实验收视频：`https://www.bilibili.com/video/BV15qQwB4EZ9/`。
+- 执行命令：
+  - `python3 watchbrief_v5/scripts/cli.py --source-url 'https://www.bilibili.com/video/BV15qQwB4EZ9/' --cookies-from-browser safari --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600`
+- 验收结果：
+  - 是否识别为 bilibili：是。
+  - 是否使用 `bilibili_content_provider`：是。
+  - 字幕语言：`zh`。
+  - 字幕格式：`bcc`。
+  - segment 数：251。
+  - 是否进入 `audio_downloader`：否，已跳过。
+  - 是否进入 MLX-Audio：否。
+  - `local_extract`：完成。
+  - Codex review：完成。
+  - validator：通过。
+  - renderer：完成。
+  - HTML：已生成 `/Users/apple/Desktop/01-视频内容一键保存到-Obsidian：打通本地知识库.html`。
+  - 桌面单视频模式：最终只保留单视频 HTML；未生成任务文件夹；未生成 `00-watch-order.html`。
+  - cookie 泄露：未发现；HTML 扫描未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie` 等标记。
+- 过程说明：
+  - 第一次真实 pipeline 失败于 `local_qwen_unavailable: HTTP Error 400`，原因是旧硬编码模型名与当前 LM Studio 模型 id 不一致。
+  - 修正为自动选择 `qwen/qwen3.6-27b` 后，第二次失败于 `local_qwen_timeout`，原因是当前 Qwen 默认进入 reasoning 输出，`content` 长时间为空。
+  - 增加 `reasoning_effort=none` 后，第三次完整链路成功。
+  - 失败尝试留下的 `Desktop/WatchBrief-Debug/BV15qQwB4EZ9-*` 调试目录已按精确路径清理；最终成功运行的临时 debug 目录由 CLI 自动清理。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：284 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本是否同步：是；选择性同步 F2 相关文件到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5`，没有同步 YouTube 会话改动。
+- 下一步建议：可以进入 B 站小列表 / 多 P 验收；建议先用 2 到 3 个 B 站 URL 的小列表，继续只验证 provider/pipeline 边界，再决定是否扩大到完整 B 站列表。
+
+## 2026-04-28 - WatchBrief 本地 Qwen 默认模型切换
+
+- 目标：把 WatchBrief local_extract 使用的本地 Qwen-family 默认模型切换为 `qwen3.6-27b-ud-mlx`，对应用户指定的 Qwen3.6 27B UD 4bit。
+- 是否改代码：是。
+- 改动文件：
+  - `watchbrief_v5/scripts/analyzer/local_extract.py`
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/tests/test_analyzer_local_extract.py`
+  - `watchbrief_v5/tests/test_analyzer_codex_review.py`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/SKILL.md`
+  - `SKILL.md`
+- 当前 LM Studio `/v1/models` 可见模型：
+  - `qwen/qwen3.6-27b`
+  - `huihui-qwen3.6-27b-abliterated-mlx-nvfp4`
+  - `qwen3.6-27b-ud-mlx`
+  - `text-embedding-nomic-embed-text-v1.5`
+- 选择结果：`DEFAULT_QWEN_MODEL=qwen3.6-27b-ud-mlx`。
+- 覆盖规则：`WATCHBRIEF_QWEN_MODEL` 或 `--qwen-model` 仍可显式覆盖；非 Qwen 模型继续拒绝。
+- 健康检查：
+  - 最小 `/v1/chat/completions` 请求使用 `qwen3.6-27b-ud-mlx` 成功返回普通 `content`。
+  - Qwen 请求继续保留 `reasoning_effort=none`，防止思考型模型只输出 `reasoning_content` 而 `content` 为空。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_analyzer_local_extract.py'`：24 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_analyzer_codex_review.py'`：43 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：284 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.codex/skills/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- 同步状态：
+  - 已同步到 Hermes 副本：`/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5`。
+  - 已同步到 Codex 已安装 skill：`/Users/apple/.codex/skills/watchbrief_v5`。
+
+## 2026-04-28 - 阶段十八 G：更换本地 Qwen 后的 B 站小链路复验
+
+- 阶段：阶段十八 G，目标是用 B 站单视频验证新本地 Qwen 模型的小链路。
+- 是否改代码：否。
+- 执行前检查：
+  - 未发现正在运行的 WatchBrief / VideoDownload / Qwen / MLX-Audio 长任务。
+  - 仅发现 Hermes gateway 常驻进程，未占用本次 WatchBrief Qwen 链路。
+  - 桌面基线已记录；本次失败后仅新增失败调试目录 `Desktop/WatchBrief-Debug/BV15qQwB4EZ9-20260428-232947`。
+- 测试视频：`https://www.bilibili.com/video/BV15qQwB4EZ9/`。
+- 执行命令：
+  - `python3 watchbrief_v5/scripts/cli.py --source-url 'https://www.bilibili.com/video/BV15qQwB4EZ9/' --cookies-from-browser safari --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600`
+- 结果：
+  - 主 CLI 未进入 Qwen，失败于 resolver 阶段：`bilibili_metadata_not_found` / `Bilibili resolver failed`。
+  - 独立运行 `bilibili_content_provider.py` 可到达 B 站字幕链路，但字幕接口返回 `login_required_for_subtitle`。
+  - Safari 当前没有提供 `bilibili.com` 有效登录 cookie：`safari_bilibili_cookie_present=False`，B 站 `x/web-interface/nav` 返回 `code=-101`、`isLogin=False`。
+  - 因登录态缺失，本次未进入 `audio_downloader`、未进入 MLX-Audio、未进入 local_extract/Qwen、未进入 Codex review、未进入 validator、未生成新的单视频 HTML。
+- 实际 Qwen 模型检查：
+  - WatchBrief 当前默认模型：`qwen3.6-27b-ud-mlx`。
+  - LM Studio 当前可见模型包含：`qwen3.6-27b-ud-mlx`、`qwen3.6-27b-ud-mlx:2`、`huihui-qwen3.6-27b-abliterated-mlx-nvfp4`、`huihui-qwen3.6-27b-abliterated-mlx-nvfp4:2`。
+  - 由于 B 站登录态阻断，本次没有实际调用 Qwen，无法记录 local_extract 耗时。
+- 耗时记录：
+  - local_extract 耗时：未开始。
+  - Codex review 耗时：未开始。
+  - 总耗时：本次在 resolver / subtitle 登录态探测阶段停止，不能和上一轮完整链路做速度对比。
+  - 未出现 Qwen timeout / HTTP 400 / endpoint 切换异常；原因是尚未进入 Qwen。
+- Cookie 检查：
+  - 未打印、未保存、未展示 cookie 值。
+  - 失败 manifest 扫描未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie` 等泄露标记。
+- 测试结果：
+  - 未运行全量 unittest；原因是本阶段要求“复验成功后再跑”，当前阻断在登录态。
+  - 未运行项目源目录 strict install；原因同上。
+  - 未运行 Hermes 副本 strict install；原因同上。
+- 下一步建议：
+  - 先在 Safari 打开 B 站并确认已登录，且该视频页面能看到字幕。
+  - 登录态恢复后，重新执行阶段十八 G 同一条主 CLI 命令，再进入 Qwen / Codex / validator / renderer 复验。
+
+## 2026-04-28 - 阶段十八 G 重跑前检查：Safari B 站登录态仍未恢复
+
+- 阶段：阶段十八 G 重跑前检查。
+- 是否改代码：否。
+- 执行前检查：
+  - 未发现正在运行的 WatchBrief / VideoDownload / Qwen / MLX-Audio 长任务。
+  - 桌面基线已记录到 `/tmp/watchbrief-g-rerun-desktop-before.txt`。
+  - 当前 WatchBrief Qwen 默认模型仍为 `qwen3.6-27b-ud-mlx`。
+  - LM Studio `/v1/models` 可见目标模型，`lmstudio_has_target=True`。
+- Safari B 站登录态检查：
+  - `safari_bilibili_cookie_present=False`。
+  - `has_sessdata_name=False`。
+  - B 站 `x/web-interface/nav` 返回 `code=-101`、`isLogin=False`。
+- 结果：
+  - 未启动主 pipeline。
+  - 未进入 `bilibili_content_provider` 正式链路。
+  - 未进入 `audio_downloader`。
+  - 未进入 MLX-Audio。
+  - 未进入 local_extract/Qwen。
+  - 未进入 Codex review。
+  - 未进入 validator。
+  - 未生成新的 HTML。
+- Cookie 检查：
+  - 未打印、未保存、未展示 cookie 值。
+- 测试结果：
+  - 未运行全量 unittest；原因是 B 站 Safari 登录态仍未恢复，尚未满足重跑阶段十八 G 的前置条件。
+  - 未运行项目源目录 strict install；原因同上。
+  - 未运行 Hermes 副本 strict install；原因同上。
+- 下一步建议：
+  - 需要先在 Safari 中重新登录 B 站，并保持登录后的 B 站标签页可正常显示该视频字幕。
+  - 登录完成后再重跑阶段十八 G 主 CLI 命令。
+
+## 2026-04-28 - 阶段十八 G 归因修正：Safari 已登录，但 Codex/Python 无权读取 Safari cookie
+
+- 阶段：阶段十八 G 登录态归因修正。
+- 是否改代码：否。
+- 复核结果：
+  - Safari 当前存在 B 站标签页：`https://www.bilibili.com/`。
+  - 在 Safari 页面上下文执行 B 站 `x/web-interface/nav`，结果为 `navCode=0`、`navIsLogin=True`、`navMidPresent=True`。
+  - 因此用户 Safari 页面侧确实已登录 B 站。
+- WatchBrief 侧失败原因：
+  - Python / `browser_cookie3.safari()` 无法读取 Safari cookie 文件。
+  - 直接访问以下 Safari cookie 文件均返回 `PermissionError`：
+    - `/Users/apple/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies`
+    - `/Users/apple/Library/Cookies/Cookies.binarycookies`
+  - 因此 `--cookies-from-browser safari` 在 Codex 当前进程内拿不到 B 站登录态，表现为 `safari_bilibili_cookie_present=False`。
+- 结论：
+  - 本次不是用户未登录。
+  - 本次不是 Qwen 问题。
+  - 本次阻断点是 macOS 隐私权限：运行 WatchBrief 的 Codex/Python 进程缺少读取 Safari Cookie 数据库的权限。
+- Cookie 检查：
+  - 仅记录登录布尔状态和权限错误类型。
+  - 未打印、未保存、未展示 cookie 值。
+- 下一步建议：
+  - 给 Codex 桌面应用授予 Full Disk Access；如果用户改在 Terminal 手动运行，也需要给 Terminal 授权。
+  - 授权后重启 Codex 或新开终端，再重新检查 `--cookies-from-browser safari`。
+  - 通过后再重跑阶段十八 G 主 CLI。
+
+## 2026-04-28 - 阶段十八 G：Safari 授权后 B 站短字幕完整链路复验通过
+
+- 阶段：阶段十八 G，目标是验证更换本地 Qwen 后的 B 站短字幕链路。
+- 是否改代码：否。
+- 执行前检查：
+  - 未发现正在运行的 WatchBrief / VideoDownload / Qwen / MLX-Audio 长任务。
+  - 桌面基线已记录到 `/tmp/watchbrief-g-final-desktop-before.txt`。
+  - Safari B 站登录态已可由 WatchBrief 读取：`safari_bilibili_cookie_present=True`，B 站 `x/web-interface/nav` 返回 `code=0`、`isLogin=True`。
+  - 当前 WatchBrief Qwen 默认模型：`qwen3.6-27b-ud-mlx`。
+  - LM Studio `/v1/models` 可见目标模型：`lmstudio_has_target=True`。
+- 执行命令：
+  - `python3 watchbrief_v5/scripts/cli.py --source-url 'https://www.bilibili.com/video/BV15qQwB4EZ9/' --cookies-from-browser safari --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600`
+- 验收结果：
+  - 是否识别为 bilibili：是。
+  - 是否使用 `bilibili_content_provider`：是。
+  - 是否抓到字幕：是。
+  - 字幕语言：`zh`。
+  - 字幕格式：`bcc`。
+  - segment 数：251。
+  - plain_text 字数：3252。
+  - 是否进入 `audio_downloader`：否，已跳过。
+  - 是否进入 MLX-Audio：否。
+  - 实际 Qwen 模型名：`qwen3.6-27b-ud-mlx`。
+  - `local_extract/Qwen`：完成。
+  - Codex review：完成。
+  - report cache：miss，本次确实重新走了 Qwen / Codex。
+  - validator：通过。
+  - renderer：完成。
+  - HTML：已生成 `/Users/apple/Desktop/01-视频内容一键保存到-Obsidian：打通本地知识库.html`。
+  - 桌面单视频模式：本次只新增/更新一个单视频 HTML；未生成任务文件夹；未生成 `00-watch-order.html`。
+  - debug artifacts：成功后临时 debug 目录已自动清理。
+- 耗时：
+  - 总耗时：652 秒。
+  - `local_extract` 耗时：约 565 秒，明显慢于上一轮 F2。
+  - Codex review 到 HTML 完成：约 84 秒，含 validator / renderer 收尾。
+  - Qwen timeout：未出现。
+  - HTTP 400：未出现。
+  - endpoint 切换异常：未出现。
+- Cookie 检查：
+  - 未打印、未保存、未展示 cookie 值。
+  - HTML 扫描未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie` 等泄露标记。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：284 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- 下一步建议：
+  - 可以进入 YouTube 40 分钟单视频复验，但建议只跑单视频，不直接跑 YouTube 完整小列表。
+
+## 2026-04-29 - 阶段十八 G2：qwen3-30b-a3b-instruct-2507-mlx B 站短链路性能复验通过
+
+- 阶段：阶段十八 G2，目标是只用 B 站短字幕链路验证 `qwen3-30b-a3b-instruct-2507-mlx` 的速度与稳定性。
+- 是否改代码：否。
+- 执行前检查：
+  - 未发现正在运行的 WatchBrief / VideoDownload / Qwen / MLX-Audio 长任务。
+  - 桌面基线已记录到 `/tmp/watchbrief-g2-desktop-before.txt`。
+  - Safari B 站登录态可用：`safari_bilibili_cookie_present=True`，B 站 `x/web-interface/nav` 返回 `code=0`、`isLogin=True`。
+  - LM Studio `/v1/models` 可见目标模型：`qwen3-30b-a3b-instruct-2507-mlx`。
+  - 注意：WatchBrief 当前默认模型仍是 `qwen3.6-27b-ud-mlx`，且该旧模型不在当前 LM Studio `/v1/models` 中；为避免误测旧默认，本次用环境变量临时指定 `WATCHBRIEF_QWEN_MODEL=qwen3-30b-a3b-instruct-2507-mlx`，没有改代码。
+- 执行命令：
+  - `WATCHBRIEF_QWEN_MODEL='qwen3-30b-a3b-instruct-2507-mlx' python3 watchbrief_v5/scripts/cli.py --source-url 'https://www.bilibili.com/video/BV15qQwB4EZ9/' --cookies-from-browser safari --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600`
+- 验收结果：
+  - 是否识别为 bilibili：是。
+  - 是否使用 `bilibili_content_provider`：是。
+  - 是否抓到字幕：是。
+  - 字幕语言：`zh`。
+  - 字幕格式：`bcc`。
+  - segment 数：251。
+  - plain_text 字数：3252。
+  - 是否进入 `audio_downloader`：否，已跳过。
+  - 是否进入 MLX-Audio：否。
+  - 实际 Qwen 模型名：`qwen3-30b-a3b-instruct-2507-mlx`。
+  - `local_extract/Qwen`：完成。
+  - Codex review：完成。
+  - report cache：miss，本次确实重新走了目标 Qwen / Codex。
+  - validator：通过。
+  - renderer：完成。
+  - HTML：已生成 `/Users/apple/Desktop/01-视频内容一键保存到-Obsidian：打通本地知识库.html`。
+  - 桌面单视频模式：本次只新增/更新一个单视频 HTML；未生成任务文件夹；未生成 `00-watch-order.html`。
+  - debug artifacts：成功后临时 debug 目录已自动清理。
+- 耗时与性能判断：
+  - 总耗时：136 秒。
+  - `local_extract` 耗时：约 20 秒。
+  - Codex review 到 HTML 完成：约 113 秒，含 validator / renderer 收尾。
+  - 相比 `qwen3.6-27b-ud-mlx`：`local_extract` 从约 565 秒降到约 20 秒，明显更快；总耗时从约 652 秒降到 136 秒。
+  - 性能档位：`local_extract` 低于 60 秒，优于“理想”档。
+  - Qwen timeout：未出现。
+  - HTTP 400：未出现。
+  - endpoint 切换异常：未出现。
+- Cookie 检查：
+  - 未打印、未保存、未展示 cookie 值。
+  - HTML 扫描未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie` 等泄露标记。
+- 测试结果：
+  - 本阶段按要求只跑 B 站短链路性能复验，未跑 YouTube，未跑 B 站列表，未跑额外全量单测。
+- 结论：
+  - 建议把 `qwen3-30b-a3b-instruct-2507-mlx` 作为 WatchBrief 默认本地 Qwen 模型候选；从本次短链路看，速度和稳定性明显优于 `qwen3.6-27b-ud-mlx`。
+  - 下一步可以进入 YouTube 40 分钟单视频复验，但仍建议只跑单视频，不跑 YouTube 列表。
+
+## 2026-04-29 - 阶段十八 G2.1：固定 WatchBrief 默认 Qwen 模型
+
+- 阶段：阶段十八 G2.1，目标是把 WatchBrief 默认本地 Qwen 模型正式固定为 G2 短链路性能复验通过的新模型。
+- 是否改代码：是。
+- 默认 Qwen 模型旧值：`qwen3.6-27b-ud-mlx`。
+- 默认 Qwen 模型新值：`qwen3-30b-a3b-instruct-2507-mlx`。
+- 改动文件：
+  - `watchbrief_v5/scripts/analyzer/local_extract.py`
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/tests/test_analyzer_local_extract.py`
+  - `watchbrief_v5/tests/test_analyzer_codex_review.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `watchbrief_v5/SKILL.md`
+  - `SKILL.md`
+  - `WORKLOG.md`
+- 实现结果：
+  - `DEFAULT_QWEN_MODEL` 已改为 `qwen3-30b-a3b-instruct-2507-mlx`。
+  - CLI `--qwen-model` help 已改为引用 `DEFAULT_QWEN_MODEL`，不再散落硬编码旧默认。
+  - `configured_qwen_model()` 优先级保持不变：显式 `--qwen-model` / 函数参数优先，其次 `WATCHBRIEF_QWEN_MODEL`，最后默认常量。
+  - 环境变量覆盖仍可用：本次自检 `WATCHBRIEF_QWEN_MODEL=override-qwen-model` 时，`configured_qwen_model()` 和 `choose_qwen_model()` 均返回覆盖值。
+  - `item_manifest` / debug 记录实际模型名的逻辑未改，现有测试继续覆盖 `local_extract started` 中的 `qwen_model` 字段。
+  - 非 WORKLOG 的项目源目录与 Hermes 运行副本均已确认不再包含旧默认 `qwen3.6-27b-ud-mlx`。
+- 文档更新：
+  - `README.md`、`CONTRACT_V5.md`、`watchbrief_v5/SKILL.md`、根 `SKILL.md` 已更新默认模型说明。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：284 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本同步：
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5`。
+  - Hermes 运行副本自检：`DEFAULT_QWEN_MODEL=qwen3-30b-a3b-instruct-2507-mlx`，`configured_qwen_model()` 返回新默认。
+  - 修正了一次错误同步造成的临时嵌套目录，并确认 Hermes strict install 仍 PASS。
+- 范围控制：
+  - 未改 renderer。
+  - 未改 Watch Order 模板。
+  - 未改单视频 HTML 模板。
+  - 未改 schema / validator。
+  - 未改 score band、`final_conclusion`、`tag/topic`、`watch_segments`。
+  - 未跑 YouTube。
+  - 未跑 B 站列表。
+  - 未触发长视频真实链路。
+  - 未打印、保存或展示 cookies。
+- 下一步建议：
+  - 可以进入 YouTube 40 分钟单视频复验；建议仍只跑单视频，不跑列表。
+
+## 2026-04-29 - 阶段十九：WatchBrief 与 Hermes 子代理本地模型隔离配置
+
+- 阶段：本地模型隔离配置，只做轻量配置检查与配置落地。
+- 是否改 WatchBrief 代码：是，新增 `WATCHBRIEF_QWEN_BASE_URL` endpoint 别名，并让 `item_manifest` / debug 同时记录 `qwen_base_url`。
+- 是否改 Hermes 配置：是，只新增 Hermes 子代理专用 `local-hermes` provider，并把两个 Discord 子频道绑定切到该 provider。
+- WatchBrief 模型：`qwen3-30b-a3b-instruct-2507-mlx`。
+- WatchBrief endpoint：`http://127.0.0.1:1234/v1`。
+- Hermes 子代理模型：`qwen3.6-35b-a3b-abliterated-heretic-mlx`。
+- Hermes 子代理 endpoint：`http://127.0.0.1:1235/v1`。
+- LM Studio 当前状态：`1234` 正在监听，`1235` 当前未监听；`1234 /v1/models` 能看到两个已加载模型。
+- LM Studio 同时服务限制：CLI `lms server status` 只显示单个 server 正在 `1234`，本阶段未重启或切换 LM Studio server，因此未伪装确认 `1235` 已可服务。
+- 验证结果：
+  - WatchBrief 配置读回：`qwen_model=qwen3-30b-a3b-instruct-2507-mlx`，`qwen_base_url=http://127.0.0.1:1234/v1`。
+  - Hermes `local-hermes` runtime 解析：`provider=custom`，`model=qwen3.6-35b-a3b-abliterated-heretic-mlx`，`base_url=http://127.0.0.1:1235/v1`，`api_mode=chat_completions`。
+  - Hermes config load：通过。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：286 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本同步：已把 `watchbrief_v5/` 内容同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`；已清理本阶段误同步产生的嵌套 `watchbrief_v5/watchbrief_v5` 目录，未删除 `.venv-mlx`。
+- 范围控制：
+  - 未跑 WatchBrief 视频链路。
+  - 未跑 YouTube / B 站列表。
+  - 未触发 Qwen 长任务、Codex review、MLX-Audio。
+  - 未改 renderer / validator / schema / HTML 模板。
+  - 未打印、保存、展示 cookies。
+  - 未改 OpenAI / Codex account2 配置。
+
+## 2026-04-29 - 阶段十八 G3.1：固定 WatchBrief 默认 cookies browser 为 Safari
+
+- 阶段：YouTube / WatchBrief 配置线，只执行 G3.1，不处理 B 站阶段十八 F/F1/F2。
+- 是否改代码：是。
+- 默认 cookies browser 旧值：Chrome 优先；CLI 之前没有硬编码浏览器默认值，Bilibili resolver 的默认浏览器顺序是 `chrome -> safari -> edge`。
+- 默认 cookies browser 新值：`safari`。
+- 改动文件：
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/scripts/resolver.py`
+  - `watchbrief_v5/tests/test_cli.py`
+  - `watchbrief_v5/tests/test_acquisition_resolver.py`
+  - `watchbrief_v5/tests/test_acquisition_subtitle_fetcher.py`
+  - `watchbrief_v5/tests/test_acquisition_audio_downloader.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/SKILL.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `WORKLOG.md`
+- 实现结果：
+  - 新增 `DEFAULT_COOKIES_FROM_BROWSER = "safari"`。
+  - CLI 不传 `--cookies-from-browser` 时，默认把 `cookies_from_browser=safari` 写入 resolver、subtitle_fetcher 和 audio_downloader 三组选项。
+  - 显式 `--cookies-from-browser chrome` 仍覆盖为 `chrome`。
+  - 显式 `--cookies-from-browser safari` 保持为 `safari`。
+  - 显式 `--cookies-file` 不被 Safari 默认值覆盖。
+  - Bilibili resolver 直接调用时的默认浏览器顺序改为 `safari -> chrome -> edge`。
+  - YouTube resolver 通过 CLI `resolver_options` 收到 `safari`。
+  - YouTube subtitle_fetcher 通过 CLI `subtitle_options` 收到 `safari`。
+  - audio_downloader 通过 CLI `audio_download_options` 收到 `safari`。
+  - Bilibili subtitle provider 通过 `fetch_platform_subtitles()` 收到 `safari`。
+  - Bilibili resolver 默认浏览器来源为 `safari`。
+  - 测试覆盖了不传参数默认 Safari、显式 Chrome 覆盖、显式 Safari 保持、resolver/subtitle/provider/audio fallback 传递，以及不泄露 cookie 值。
+- 文档更新：
+  - `README.md`、`SKILL.md`、`CONTRACT_V5.md` 已写明默认使用 Safari 登录态，显式 `--cookies-from-browser` 优先。
+- 验证结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：294 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- 同步结果：
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.codex/skills/watchbrief_v5/`，避免后续 Skill 入口读到旧默认说明。
+  - `watchbrief_v5/scripts/cli.py` 与 Hermes / Codex installed skill 副本一致。
+  - Hermes 副本没有嵌套 `watchbrief_v5/watchbrief_v5` 目录。
+- 范围控制：
+  - 未改 renderer。
+  - 未改 Watch Order 模板。
+  - 未改单视频 HTML 模板。
+  - 未改 schema / validator。
+  - 未改 score band、`final_conclusion`、`tag/topic`、`watch_segments`。
+  - 未跑 YouTube 视频链路。
+  - 未跑 YouTube 列表。
+  - 未跑 B 站列表。
+  - 未触发 Qwen。
+  - 未触发 Codex。
+  - 未触发 MLX-Audio。
+  - 未打印、保存、展示 cookies。
+- 下一步：
+  - 可以进入 YouTube 40 分钟单视频 G3，用 Safari 默认登录态复跑；仍只跑单视频，不跑列表。
+
+## 2026-04-29 - 阶段十九修正：LM Studio 单 endpoint 下的模型名隔离
+
+- 修正结论：LM Studio 当前不按两个独立 local server 管理，本机只确认 `http://127.0.0.1:1234/v1` 可用，不再要求 `1235`。
+- 是否改 Hermes 配置：是，`local-hermes.api` 已从 `http://127.0.0.1:1235/v1` 改回 `http://127.0.0.1:1234/v1`。
+- WatchBrief 保持：`model=qwen3-30b-a3b-instruct-2507-mlx`，`endpoint=http://127.0.0.1:1234/v1`。
+- Hermes 子代理保持：`model=qwen3.6-35b-a3b-abliterated-heretic-mlx`，`endpoint=http://127.0.0.1:1234/v1`。
+- 隔离边界：这是 model id 隔离，不是端口隔离，也不是物理资源隔离。
+- 运行约束：不要让 WatchBrief 完整视频链路和 Hermes 本地模型任务并发运行。
+- 保持不变：
+  - `WATCHBRIEF_QWEN_MODEL` 仍可覆盖模型名。
+  - `WATCHBRIEF_QWEN_BASE_URL` 仍可覆盖 endpoint。
+  - `item_manifest` / debug 继续记录实际 `qwen_model` 和 `qwen_base_url`。
+- 验证结果：
+  - Hermes `local-hermes` runtime 读回：`model=qwen3.6-35b-a3b-abliterated-heretic-mlx`，`base_url=http://127.0.0.1:1234/v1`。
+  - WatchBrief 配置读回：`model=qwen3-30b-a3b-instruct-2507-mlx`，`base_url=http://127.0.0.1:1234/v1`。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：294 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本同步：已同步 WatchBrief 文档与 skill 文案到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+- Hermes gateway：已重启，`gateway status` 显示新 PID，日志只看到 `http://127.0.0.1:1234/v1` endpoint。
+- 范围控制：未跑视频链路，未触发 Qwen 长任务、Codex review 或 MLX-Audio。
+
+## 2026-04-29 - 阶段十八 G3：YouTube 40 分钟单视频 Safari 默认登录态复验
+
+- 阶段：阶段十八 G3，只跑 YouTube 单视频 `https://www.youtube.com/watch?v=Er2s-CFoZSo`，不跑 YouTube 小列表，不跑 B 站。
+- 是否改代码：否。
+- 执行前检查：
+  - 进程检查：执行前未发现 WatchBrief / VideoDownload / Qwen / Codex 长任务；只看到 Hermes gateway 常驻进程。
+  - Safari 检查：目标 YouTube 标签页已打开，页面标题为 `A Full Guide To Making Your First Profitable Product (Beginners, Take Notes) - YouTube`；检测到 `loggedIn=true`、播放器存在、`readyState=4`、视频时长约 `2698.261` 秒。
+  - 默认 Qwen 读回：`qwen3-30b-a3b-instruct-2507-mlx`。
+  - qwen_base_url 读回：`http://127.0.0.1:1234/v1`。
+  - 默认 cookies browser 读回：CLI 不传 `--cookies-from-browser` 时，`effective_cookies_from_browser=safari`。
+  - Desktop 基线：顶层项目数 `45`，顶层 HTML 数 `12`；同名旧 HTML 已存在，mtime 为 `2026-04-28T16:56:56`。
+- 实际执行：
+  - 命令不传 `--cookies-from-browser`，只额外把 debug 输出放到 `/tmp/watchbrief_g3_youtube_1777437430`，避免污染 Desktop。
+  - 主命令耗时约 `2` 秒，CLI 进程返回 `0`，但 manifest 显示该条失败。
+  - manifest：`/tmp/watchbrief_g3_youtube_1777437430/manifest.json`。
+  - 日志：`/tmp/watchbrief_g3_youtube_1777437430.log`。
+- 结果：
+  - 识别平台：未完成；失败发生在 resolver 阶段，source_kind 为 `unknown`。
+  - 实际 cookies browser：`safari`。
+  - resolver：失败，`stage=resolver`、`reason_code=platform_restriction`、`message=platform restricted resolver access`。
+  - 是否抓到字幕：否。
+  - 字幕语言：未到达字幕阶段。
+  - 字幕格式：未到达字幕阶段。
+  - segment 数：未生成。
+  - transcript 字符数：未生成。
+  - 是否进入 audio_downloader：否。
+  - 是否进入 MLX-Audio：否。
+  - 实际 Qwen 模型名：未进入 local_extract；执行前配置读回为 `qwen3-30b-a3b-instruct-2507-mlx`。
+  - qwen_base_url：未进入 local_extract；执行前配置读回为 `http://127.0.0.1:1234/v1`。
+  - 是否触发 chunked local_extract：否。
+  - chunk 数：无。
+  - local_extract 是否完成：否，未进入。
+  - local_extract 耗时：无。
+  - Codex 是否完成：否，未进入。
+  - Codex 耗时：无。
+  - validator 是否通过：否，未进入。
+  - HTML 是否生成：否；Desktop 上旧同名 HTML mtime 未变化。
+  - 桌面是否只生成单视频 HTML：否；本次失败未生成 HTML。复验期间发现另一个旧窗口/外部 WatchBrief 进程短暂启动，命令显式带 `--cookies-from-browser chrome` 和 `--output-dir /Users/apple/Desktop/WatchBrief-Runs/phase18G3-youtube-40min-chrome`，随后已不在运行；它创建了空目录 `/Users/apple/Desktop/WatchBrief-Runs/phase18G3-youtube-40min` 和 `/Users/apple/Desktop/WatchBrief-Runs/phase18G3-youtube-40min-chrome`，未自动删除。
+  - cookie 是否泄露：未发现；扫描 `/tmp/watchbrief_g3_youtube_1777437430` 和日志，未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie`、`SAPISID`、`APISID`、`HSID`、`SSID`、`SIDCC`、`LOGIN_INFO`、`__Secure`、`VISITOR_INFO`、`PREF` 等标记。
+  - 总耗时：约 `2` 秒。
+- 失败诊断：
+  - 额外做了一次 resolver-only 诊断，不下载、不进字幕、不进 Qwen/Codex/MLX。
+  - `yt-dlp --version`：`2026.03.17`。
+  - `yt-dlp --dump-single-json --skip-download --flat-playlist --no-warnings --cookies-from-browser safari 'https://www.youtube.com/watch?v=Er2s-CFoZSo'` 返回 `rc=1`。
+  - stderr 明确为：`Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.`
+  - 结论：Safari 浏览器页面本身已登录且播放器可用，但 `yt-dlp --cookies-from-browser safari` 没有让 YouTube resolver 通过 bot/sign-in 校验。
+- 性能判断：
+  - local_extract 未启动，无法评估默认新 Qwen 在该 40 分钟 YouTube 视频上的耗时。
+  - 未出现 Qwen timeout、HTTP 400 或 endpoint 异常，因为还没进入 Qwen。
+  - 出现 platform_restriction。
+- 建议：
+  - 不建议进入 YouTube 小列表完整复测。
+  - 先解决 YouTube resolver 的 Safari cookies 对 `yt-dlp` 不生效问题；可选方向是导出 cookies 文件或验证 `yt-dlp` 对 Safari YouTube cookie 的读取能力，但本阶段未改代码、未切换 Chrome、未继续重跑。
+
+## 2026-04-29 - 阶段十八 G3：G3.2 后默认 Chrome 登录态单视频复验
+
+- 阶段：阶段十八 G3，按 G3.2 后状态重新跑 YouTube 40 分钟单视频 `https://youtu.be/Er2s-CFoZSo?si=jaLBuDUAUXNQ4Gkx`。
+- 是否改代码：否。
+- 只读确认：
+  - 当前运行入口：项目源目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5/scripts/cli.py`，不是 Hermes 副本。
+  - 项目源目录默认 cookies browser：`DEFAULT_COOKIES_FROM_BROWSER = "chrome"`。
+  - 项目源目录 resolver 默认顺序：`chrome -> safari -> edge`。
+  - Hermes 副本同步状态：`/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/cli.py` 与项目源目录一致，`resolver.py` 与项目源目录一致。
+  - Hermes 副本默认 cookies browser：`chrome`。
+  - 不传 `--cookies-from-browser` 时，项目源 CLI 实际解析：`effective_cookies_from_browser=chrome`。
+  - 不传 `--cookies-from-browser` 时，Hermes 副本 CLI 实际解析：`effective_cookies_from_browser=chrome`。
+- 实际执行：
+  - 未传 `--cookies-from-browser`。
+  - 命令：`python3 watchbrief_v5/scripts/cli.py --source-url "https://youtu.be/Er2s-CFoZSo?si=jaLBuDUAUXNQ4Gkx" --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600`。
+  - 日志：`/tmp/watchbrief_g3_default_chrome_1777439422.log`。
+  - debug：`/Users/apple/Desktop/WatchBrief-Debug/Er2s-CFoZSo-20260429-131023/manifest.json`。
+  - 总耗时：约 `1` 秒。
+- 结果：
+  - 实际 cookies browser：`chrome`。
+  - stage：`resolver`。
+  - reason_code：`platform_restriction`。
+  - 是否 platform_restriction：是。
+  - 是否进入字幕阶段：否。
+  - 是否进入 Qwen：否。
+  - manifest：`source_kind=unknown`、`completed_count=0`、`failed_count=1`。
+  - cookie 泄露扫描：未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie`、`SAPISID`、`APISID`、`HSID`、`SSID`、`SIDCC`、`LOGIN_INFO`、`__Secure`、`VISITOR_INFO`、`PREF` 等标记。
+- 下一步建议：
+  - 不建议进入 YouTube 小列表复测。
+  - 先单独处理 YouTube resolver 的 Chrome 登录态仍触发 `platform_restriction` 问题；当前失败点在 resolver，和字幕策略、Qwen 模型、Codex review、MLX-Audio 无关。
+
+## 2026-04-29 - 阶段十八 G3-R：YouTube resolver platform_restriction 诊断
+
+- 阶段：阶段十八 G3-R，只诊断 YouTube resolver，不跑完整 WatchBrief，不跑 YouTube 小列表，不触发 Qwen / Codex / MLX。
+- 最新 debug：
+  - 目录：`/Users/apple/Desktop/WatchBrief-Debug/Er2s-CFoZSo-20260429-131023/`
+  - manifest 只记录到 resolver 失败：`stage=resolver`、`reason_code=platform_restriction`、`source_kind=unknown`、`completed_count=0`、`failed_count=1`。
+  - 该 debug 未保存 YouTube resolver 的实际命令参数；这是当前诊断限制。
+- WatchBrief resolver 传参确认：
+  - 当前 CLI 默认：`DEFAULT_COOKIES_FROM_BROWSER=chrome`。
+  - 不传 `--cookies-from-browser` 时，CLI 解析：`effective_cookies_from_browser=chrome`。
+  - 用 resolver 只读模拟确认实际命令包含：`yt-dlp --dump-single-json --skip-download --flat-playlist --no-warnings --cookies-from-browser chrome https://www.youtube.com/watch?v=Er2s-CFoZSo`。
+  - 结论：WatchBrief resolver 正确传入 `chrome`。
+- yt-dlp 只读诊断：
+  - `yt-dlp --version`：`2026.03.17`。
+  - `yt-dlp --cookies-from-browser chrome --skip-download --dump-json "https://www.youtube.com/watch?v=Er2s-CFoZSo"`：失败，`rc=1`。
+  - dump-json 错误类型：YouTube 要求 `Sign in to confirm you’re not a bot`，并提示使用 `--cookies-from-browser` 或 cookies 文件。
+  - `yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`：失败，`rc=1`。
+  - list-subs 输出显示：`Extracting cookies from chrome` 后 `Extracted 0 cookies from chrome`，随后同样失败为 YouTube `Sign in to confirm you’re not a bot`。
+  - 未下载视频、音频或字幕；只做 metadata / 字幕列表探测。
+- 泄露检查：
+  - 扫描 `/tmp/watchbrief_g3r_ytdlp_dump_json.*`、`/tmp/watchbrief_g3r_ytdlp_list_subs.*` 和最新 debug 目录，未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`、`SAPISID`、`APISID`、`HSID`、`SSID`、`SIDCC`、`LOGIN_INFO`、`__Secure`、`VISITOR_INFO`、`PREF`、`SID=` 等 cookie 标记。
+- 结论：
+  - `yt-dlp` 最小只读命令本身也失败，因此不是 WatchBrief resolver 传参 bug。
+  - 当前问题在 YouTube / yt-dlp / Chrome 登录态读取 / 风控层。
+  - 具体现场更偏向 Chrome cookies 未被 `yt-dlp` 读到，因为 `list-subs` 明确显示 `Extracted 0 cookies from chrome`。
+- 建议：
+  - 暂停 YouTube 小列表线，不要继续跑完整 WatchBrief。
+  - 先确认 Chrome 是否真正登录 YouTube，且 yt-dlp 能否读取 Chrome cookie；必要时改用显式 cookies 文件做只读 resolver 验证。
+  - 可以等待 YouTube 风控冷却，但仅等待不一定解决，因为当前日志显示 Chrome cookies 读取数量为 0。
+  - 不把更新 yt-dlp 作为第一建议；当前本机 `yt-dlp --version` 为 `2026.03.17`，本轮 `pip index versions yt-dlp` 显示的 PyPI 最新为 `2025.10.14`，本机版本不表现为落后。若后续确认安装源不是 PyPI，再单独核对官方 release / 自更新渠道。
+
+## 2026-04-29 - 阶段十八 G3-R：Chrome cookie 读取诊断
+
+- 阶段：继续 G3-R，只诊断 Chrome cookie 读取；未跑完整 WatchBrief，未跑 YouTube 小列表，未触发 Qwen / Codex / MLX。
+- Chrome profile 列表：
+  - Chrome 用户数据目录：`/Users/apple/Library/Application Support/Google/Chrome`
+  - 明确存在的用户 profile：`Default`
+  - 未发现 `Profile 1` 或 `Profile 2` 目录。
+- Cookies 数据库：
+  - 只找到一个 Cookies 数据库：`/Users/apple/Library/Application Support/Google/Chrome/Default/Cookies`
+  - 数据库大小：`122880` bytes。
+  - `Profile 1`：无 Cookies 数据库。
+  - `Profile 2`：无 Cookies 数据库。
+- profile 只读测试：
+  - `yt-dlp --cookies-from-browser "chrome:Default" --skip-download --dump-json "https://www.youtube.com/watch?v=Er2s-CFoZSo" > /tmp/yt-default.json`：失败，`rc=1`。
+  - `yt-dlp --cookies-from-browser "chrome:Profile 1" --skip-download --dump-json "https://www.youtube.com/watch?v=Er2s-CFoZSo" > /tmp/yt-profile1.json`：失败，错误为找不到 `Profile 1` cookies database。
+  - `yt-dlp --cookies-from-browser "chrome:Profile 2" --skip-download --dump-json "https://www.youtube.com/watch?v=Er2s-CFoZSo" > /tmp/yt-profile2.json`：失败，错误为找不到 `Profile 2` cookies database。
+  - 额外只读确认：`yt-dlp --cookies-from-browser "chrome:Default" --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"` 输出 `Extracted 0 cookies from chrome`，随后被 YouTube 拦为 `Sign in to confirm you’re not a bot`。
+- 关闭 Chrome 后重试：
+  - 已执行 `osascript -e 'quit app "Google Chrome"'`。
+  - `yt-dlp --cookies-from-browser chrome --skip-download --dump-json "https://www.youtube.com/watch?v=Er2s-CFoZSo" > /tmp/yt-chrome-closed.json`：失败，`rc=1`，仍为 YouTube `Sign in to confirm you’re not a bot`。
+  - 结论：关闭 Chrome 后读取没有解决。
+- 泄露检查：
+  - 未打印、导出或展示 cookie 值。
+  - 扫描 `/tmp/yt-default.*`、`/tmp/yt-profile1.*`、`/tmp/yt-profile2.*`、`/tmp/yt-chrome-closed.*`、`/tmp/yt-default-listsubs.*`，未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`、`SAPISID`、`APISID`、`HSID`、`SSID`、`SIDCC`、`LOGIN_INFO`、`__Secure`、`VISITOR_INFO`、`PREF`、`SID=` 等 cookie 标记。
+- 结论：
+  - 没有任何 tested profile 能让 `yt-dlp` 读到可用 YouTube cookies。
+  - 不需要使用 `chrome:Profile 1` 或 `chrome:Profile 2`，因为这两个 profile 不存在。
+  - `chrome:Default` 与普通 `chrome` 当前等价，都会读到 0 个 cookies 或无法通过 YouTube 校验。
+  - 这不是 WatchBrief bug；问题仍在 Chrome profile / Chrome 登录态写入 / yt-dlp cookie 读取 / YouTube 风控层。
+- 下一步建议：
+  - WatchBrief 默认参数暂不应改成 `chrome:Profile X`；当前没有可用的 Profile X。
+  - 若继续 YouTube 线，下一步应先让 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs` 能读到非 0 cookies，并通过只读字幕列表；否则不要跑完整 WatchBrief。
+  - 如果 Chrome 页面确实已登录 YouTube，但 `yt-dlp` 仍读 0 cookies，优先检查 Chrome 是否在另一个用户数据目录运行，或改用受控的显式 cookies 文件做只读 resolver 验证；不要进入 Qwen / Codex / MLX。
+
+## 2026-04-29 - 阶段十八 G3-R：登录态读取修复诊断
+
+- 阶段：继续 G3-R，只做登录态读取诊断；未跑 WatchBrief，未触发 Qwen / Codex / MLX。
+- macOS Full Disk Access 检查：
+  - 当前命令运行在 Codex app-server 下，父进程为 `/Applications/Codex.app/...`。
+  - TCC 记录显示 `com.openai.codex` 的 `kTCCServiceSystemPolicyAllFiles` 为允许状态。
+  - TCC 记录显示 `com.apple.Terminal` 的 `kTCCServiceSystemPolicyAllFiles` 为允许状态。
+  - 未看到 Hermes 自身的 Full Disk Access 授权记录；Hermes gateway 常驻进程不参与本轮 yt-dlp 诊断。
+  - 另看到一个独立 Python 路径 `/Users/apple/.local/share/uv/python/cpython-3.11.15-macos-aarch64-none/bin/python3.11` 为未允许状态，但本轮 yt-dlp 命令不通过它执行。
+- Chrome Cookies 数据库检查：
+  - Chrome 用户数据目录：`/Users/apple/Library/Application Support/Google/Chrome`
+  - 只发现 `Default` profile。
+  - 只发现 Cookies 数据库：`/Users/apple/Library/Application Support/Google/Chrome/Default/Cookies`
+  - 该数据库可打开，大小 `122880` bytes。
+  - `cookies` 表总行数为 `0`。
+  - YouTube cookie 行数为 `0`。
+  - Google cookie 行数为 `0`。
+  - accounts.google.com cookie 行数为 `0`。
+  - 结论：Chrome 的 YouTube 登录态没有写入这个 Cookies 数据库；yt-dlp 读到 0 cookies 与数据库内容一致。
+- 终端直接测试：
+  - 命令：`yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`
+  - 结果：失败，`rc=1`。
+  - stdout 显示：`Extracting cookies from chrome`、`Extracted 0 cookies from chrome`。
+  - stderr 显示：YouTube 要求 `Sign in to confirm you’re not a bot`。
+  - 未下载视频、音频或字幕。
+- Firefox 登录态测试：
+  - `/Applications/Firefox.app` 不存在。
+  - `/Users/apple/Library/Application Support/Firefox` 不存在。
+  - 命令：`yt-dlp --cookies-from-browser firefox --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`
+  - 结果：失败，错误为找不到 Firefox cookies database：`/Users/apple/Library/Application Support/Firefox/Profiles`。
+  - 结论：Firefox 登录态不可用。
+- 显式 cookies 文件方案评估：
+  - 本轮未自动导出 cookies 文件，未把 cookies 放到 Desktop，未打印 cookies 内容。
+  - 如果继续 YouTube 线，下一步可在用户明确授权后使用非 Desktop 的受控临时路径导出 YouTube cookies 文件，并只用 `yt-dlp --cookies <file> --skip-download --list-subs` 做只读验证。
+  - 在 `--cookies-from-browser chrome` 能读到非 0 cookies，或显式 cookies 文件只读验证成功之前，不应重跑完整 WatchBrief G3。
+- 泄露检查：
+  - 扫描 `/tmp/yt-chrome-listsubs-now.*` 与 `/tmp/yt-firefox-listsubs.*`，未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`、`SAPISID`、`APISID`、`HSID`、`SSID`、`SIDCC`、`LOGIN_INFO`、`__Secure`、`VISITOR_INFO`、`PREF`、`SID=` 等 cookie 标记。
+- 成功标准状态：
+  - 未达成。yt-dlp 仍显示 `Extracted 0 cookies from chrome`，且没有列出 YouTube 字幕。
+- 下一步：
+  - 暂停 WatchBrief G3 和 YouTube 小列表。
+  - 先解决 Chrome Cookies 数据库为空的问题，或改走用户授权的显式 cookies 文件只读验证。
+
+## 2026-04-29 - 阶段二十：WatchBrief 独立 MLX server 拆分评估
+
+- 目标架构：WatchBrief 使用独立 MLX OpenAI-compatible server，Hermes 继续使用 LM Studio。
+- 是否安装 `mlx-lm`：否。`python3 -m pip show mlx-lm` 未找到，`mlx_lm.server` 不存在，`import mlx_lm` 失败。
+- 是否安装 `mlx-openai-server`：否。`python3 -m pip show mlx-openai-server` 未找到，`mlx-openai-server` 不存在。
+- 模型本地路径：`/Users/apple/.lmstudio/models/lmstudio-community/Qwen3-30B-A3B-Instruct-2507-MLX-4bit`。
+- 模型结构：本地目录包含 `config.json`、`tokenizer.json`、`chat_template.jinja`、4 个 `safetensors` shard 和 `model.safetensors.index.json`，约 16G；`model_type=qwen3_moe`，`architectures=['Qwen3MoeForCausalLM']`，4bit quantization。
+- 选择后端：本阶段未选择运行后端；优先候选仍是 `mlx_lm.server`，但当前未安装，不能启动。
+- 8080 状态：未监听。
+- `/v1/models`：未验证通过，因为 8080 没有服务。
+- chat ping：未执行成功，因为 8080 没有服务。
+- 是否改 WatchBrief 默认 base_url：否。原因是独立 MLX server 未安装且 8080 未连通，不能把默认 endpoint 改到不可用地址。
+- 当前 WatchBrief 保持：`model=qwen3-30b-a3b-instruct-2507-mlx`，`endpoint=http://127.0.0.1:1234/v1`。
+- 当前 Hermes 保持：`model=qwen3.6-35b-a3b-abliterated-heretic-mlx`，`endpoint=http://127.0.0.1:1234/v1`。
+- 文档更新：已写明推荐使用独立 MLX server；Hermes 可继续用 LM Studio；这是服务进程隔离，不只是模型名隔离；仍共享 Mac 统一内存和算力，不建议同时跑两个重任务。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：294 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本同步：已同步 WatchBrief 文档到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+- 范围控制：未跑视频链路，未跑 YouTube / B 站列表，未触发 Qwen 长任务、Codex review、MLX-Audio，未保存/打印/展示 cookies。
+
+## 2026-04-29 - 阶段二十修正：暂停 WatchBrief 独立 MLX server / 8080 方案
+
+- 修正结论：WatchBrief 和 Hermes 都只是客户端请求 LM Studio endpoint，不会“运行在 1234 上”，也不会抢占端口。
+- 8080 独立 server 方案：已评估但暂缓；不安装 `mlx-lm`，不安装 `mlx-openai-server`，不启用 8080，不把 WatchBrief 默认 base_url 改到 8080。
+- 当前采用：LM Studio 单 endpoint `http://127.0.0.1:1234/v1` + 不同 model id。
+- WatchBrief 保持：`endpoint=http://127.0.0.1:1234/v1`，`model=qwen3-30b-a3b-instruct-2507-mlx`。
+- Hermes 保持：`endpoint=http://127.0.0.1:1234/v1`，`model=qwen3.6-35b-a3b-abliterated-heretic-mlx`。
+- 这不是端口冲突：`1234` 是 LM Studio 服务端口，WatchBrief / Hermes 是客户端。
+- 运行建议：仍不要并发跑两个重型本地模型任务，因为它们共享本机统一内存和推理算力。
+- 下一步：进入阶段十八 G3，只跑 YouTube 40 分钟单视频复验，不跑列表，不改代码。
+
+## 2026-04-29 - 阶段十八 G3：YouTube 40 分钟单视频复验未通过 resolver
+
+- 输入：`https://youtu.be/Er2s-CFoZSo?si=jaLBuDUAUXNQ4Gkx`。
+- 范围：只跑单视频，不跑列表，未改代码。
+- 第一次运行：使用默认 Safari 登录态；输出目录 `/Users/apple/Desktop/WatchBrief-Runs/phase18G3-youtube-40min`。
+- 第一次结果：失败在 `stage=resolver`，`reason_code=platform_restriction`，失败诊断目录 `/Users/apple/Desktop/WatchBrief-Debug/Er2s-CFoZSo-20260429-123720`。
+- 第二次运行：为区分 Safari 登录态问题和 YouTube 平台访问问题，显式使用 `--cookies-from-browser chrome`；输出目录 `/Users/apple/Desktop/WatchBrief-Runs/phase18G3-youtube-40min-chrome`。
+- 第二次结果：同样失败在 `stage=resolver`，`reason_code=platform_restriction`，失败诊断目录 `/Users/apple/Desktop/WatchBrief-Debug/Er2s-CFoZSo-20260429-123811`。
+- 产物：两个正式输出目录均未生成 HTML。
+- 未进入阶段：未进入字幕解析、audio_downloader、MLX-Audio、Qwen local_extract、Codex review、validator 或 renderer。
+- 当前结论：G3 未完成 40 分钟单视频复验；阻断点仍是 YouTube resolver 平台访问限制，不是 Qwen 模型、LM Studio endpoint、Codex review、validator 或 HTML 输出问题。
+- 下一步建议：先恢复 YouTube resolver 对该 URL 的浏览器登录态访问，或改用同等长度且 resolver 可访问的 YouTube 单视频；在 resolver 通过前，不建议进入 YouTube 列表复测。
+
+## 2026-04-29 - 阶段十八 G3.2：默认 cookies browser 改回 Chrome
+
+- 范围：只改 WatchBrief 默认 cookies browser、文档和测试；未跑真实视频链路，未跑 YouTube / B 站列表，未触发 Qwen、Codex 或 MLX-Audio。
+- 是否改代码：是。
+- 默认 cookies browser 旧值：`safari`。
+- 默认 cookies browser 新值：`chrome`。
+- 代码改动：
+  - `watchbrief_v5/scripts/cli.py`：`DEFAULT_COOKIES_FROM_BROWSER` 改为 `chrome`；CLI 仍保留 `--cookies-from-browser`。
+  - `watchbrief_v5/scripts/resolver.py`：resolver 直接调用的默认浏览器顺序改为 `chrome -> safari -> edge`。
+- 覆盖规则：
+  - 不传 `--cookies-from-browser` 时，resolver、YouTube subtitle_fetcher、B 站字幕 provider 和 audio_downloader 统一接收 `cookies_from_browser=chrome`。
+  - 显式 `--cookies-from-browser safari` 仍覆盖为 Safari。
+  - 显式 `--cookies-from-browser chrome` 仍覆盖为 Chrome。
+- 文档更新：`watchbrief_v5/README.md`、`watchbrief_v5/SKILL.md`、`watchbrief_v5/CONTRACT_V5.md` 已写明默认 Chrome，显式参数优先。
+- 测试更新：
+  - 默认不传参数时断言 `chrome`。
+  - 显式 Safari / Chrome 覆盖测试保留。
+  - resolver、subtitle_fetcher、audio_downloader 统一传递 `cookies_from_browser=chrome`。
+  - Bilibili resolver 默认来源为 `browser:chrome`；Bilibili subtitle provider 已有 Chrome / Safari 透传测试覆盖。
+  - item_manifest 不记录 cookie 值，测试继续断言不泄露 `SECRET_COOKIE_VALUE`。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：294 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本同步：已同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`，未删除 `.venv-mlx`，未同步 `__pycache__` / `*.pyc`。
+- 未改范围：未改 renderer、Watch Order 模板、单视频 HTML 模板、schema、validator、score band、`final_conclusion`、`tag/topic`、`watch_segments`。
+- 下一步建议：可以用默认 Chrome 重新跑 YouTube 40 分钟单视频 G3；若仍停在 resolver，则继续处理 YouTube 平台访问限制，而不是 Qwen / Codex / MLX 问题。
+
+## 2026-04-29 - 阶段十八 I0：统一登录态优先级与正式输出路径规则
+
+- 范围：只改配置/CLI 默认行为、采集层 cookie 选择、文档和测试；未跑真实视频链路，未跑 YouTube / B 站 / 小红书，未触发 Qwen、Codex 或 MLX-Audio。
+- 是否改代码：是。
+- 登录态默认策略：`chrome -> safari`。
+- Chrome 首选：是。
+- Safari 备选：是。Chrome 明确出现 cookies 不可读、`Extracted 0 cookies`、`login_required_for_subtitle`、`platform_restriction` 或 browser cookie access error 时，当前采集阶段才尝试 Safari。
+- 显式参数优先：
+  - `--cookies-from-browser chrome`：只用 Chrome，不自动 fallback Safari。
+  - `--cookies-from-browser safari`：只用 Safari，不自动 fallback Chrome。
+  - `--cookies-file` 或 `--no-browser-auth`：不启用默认浏览器 fallback。
+- 实现方式：
+  - 新增 `watchbrief_v5/scripts/cookie_strategy.py`，集中定义默认浏览器尝试顺序和 fallback reason 识别。
+  - `watchbrief_v5/scripts/cli.py` 默认向 resolver、subtitle_fetcher、Bilibili subtitle provider、audio_downloader 传同一个 `cookie_browser_attempts=["chrome", "safari"]`。
+  - `watchbrief_v5/scripts/resolver.py` 支持默认浏览器列表；非 B 站 / B 站 resolver 都可按同一顺序尝试。
+  - `watchbrief_v5/scripts/subtitle_fetcher.py` 支持默认浏览器列表；Bilibili provider 通过 subtitle_fetcher 继承同一策略。
+  - `watchbrief_v5/scripts/audio_downloader.py` 支持默认浏览器列表。
+  - `watchbrief_v5/scripts/video_pipeline.py` 把 audio fallback 的 cookie 选择诊断写进 item_manifest。
+- debug / manifest 记录：
+  - `cookies_browser_attempts`
+  - `selected_cookies_browser`
+  - `cookies_fallback_reason`
+  - 只记录浏览器名和 reason，不记录 cookie 内容。
+- 正式输出路径规则：
+  - 正式单视频不传 `--output-dir`：默认只在 `~/Desktop/` 输出一个 HTML。
+  - 正式列表不传 `--output-dir`：默认输出到 `~/Desktop/<安全任务名或时间戳>/`。
+  - 列表任务文件夹第一层直接包含 `00-watch-order.html` 和每条视频 HTML。
+  - 显式 `--output-dir <dir>` 时，`<dir>` 就是最终交付目录，不再额外嵌套二级 HTML 文件夹。
+  - `~/Desktop/WatchBrief-Runs/` 只用于 smoke test、cache 验收、阶段性测试、debug 和临时复验；正式用户任务不默认写入这里。
+  - Hermes 正式任务命令不应默认传 `--output-dir` 到 `WatchBrief-Runs`。
+- 文档更新：`watchbrief_v5/README.md`、`watchbrief_v5/SKILL.md`、`watchbrief_v5/CONTRACT_V5.md` 已更新；同步到 Hermes 副本和 Codex skill 副本。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：327 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本同步：已同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`，未删除 `.venv-mlx`，未同步 `__pycache__` / `*.pyc`。
+- Codex skill 副本同步：已同步 `/Users/apple/.codex/skills/watchbrief_v5/`，避免配置窗口继续读旧规则。
+- 未改范围：未改 renderer、Watch Order 模板、单视频 HTML 模板、schema、validator、score band、`final_conclusion`、`tag/topic`、`watch_segments`。
+- 下一步建议：可以重新做 B 站真正小列表验收；上次 B 站链接实际只展开 1 条，下一轮要先修 list 展开，或直接给 WatchBrief 2 到 3 个 B 站视频链接组成小列表。
+
+## 2026-04-29 - 阶段十八 G3-R：Chrome 重新登录后 cookies 读取复验
+
+- 阶段：继续 G3-R，只做 Chrome 登录态读取复验；未跑 WatchBrief，未触发 Qwen / Codex / MLX。
+- 执行前提：用户已在 Chrome 重新登录 YouTube，并确认目标视频可播放。
+- Chrome 关闭：
+  - 已执行 `osascript -e 'quit app "Google Chrome"'`。
+  - 关闭后未发现 Google Chrome 进程残留。
+- Cookies 数据库：
+  - 路径：`/Users/apple/Library/Application Support/Google/Chrome/Default/Cookies`
+  - 仍只发现这一个 Cookies 数据库。
+  - 数据库大小：`122880` bytes。
+  - mtime 已更新到本轮登录后。
+- Cookies 行数：
+  - 总行数：`5`，已不再是 0。
+  - YouTube cookie 行数：`0`。
+  - Google cookie 行数：`5`。
+  - accounts.google.com cookie 行数：`5`。
+  - 结论：Chrome 重新登录后写入了 Google / accounts cookie，但没有写入 `youtube.com` cookie。
+- yt-dlp 只读复验：
+  - 命令：`yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`
+  - 结果：失败，`rc=1`。
+  - stdout 显示：`Extracting cookies from chrome`、`Extracted 5 cookies from chrome`。
+  - stderr 显示：YouTube 仍要求 `Sign in to confirm you’re not a bot`。
+  - 未列出字幕。
+  - 未下载视频、音频或字幕。
+- 成功标准状态：
+  - Cookies 表总行数大于 0：达成。
+  - YouTube cookie 行数大于 0：未达成。
+  - yt-dlp 不再显示 `Extracted 0 cookies from chrome`：达成，现在是 `Extracted 5 cookies from chrome`。
+  - 能列出字幕：未达成。
+- 泄露检查：
+  - 未打印、保存或展示 cookie 值。
+  - 扫描 `/tmp/yt-chrome-after-login-listsubs.*` 与 sqlite stderr 输出，未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`、`SAPISID`、`APISID`、`HSID`、`SSID`、`SIDCC`、`LOGIN_INFO`、`__Secure`、`VISITOR_INFO`、`PREF`、`SID=` 等 cookie 标记。
+- 结论：
+  - Chrome cookie 读取已从 0 变成 5，说明权限和读取链路已部分恢复。
+  - 但 Chrome 当前没有 `youtube.com` cookie，只有 Google / accounts cookie；这 5 个 cookie 不足以通过 YouTube bot / sign-in 校验。
+  - 当前仍不能重跑 WatchBrief G3。
+- 显式 cookies 文件方案评估：
+  - 本轮未自动导出 cookies 文件，未放到 Desktop，未打印 cookie 内容。
+  - 如果继续排障，需要用户明确授权后，用受控的非 Desktop 临时路径生成 cookies 文件，并只运行 `yt-dlp --cookies <file> --skip-download --list-subs` 做只读验证。
+  - 但如果 cookies 文件来源仍是当前 Chrome `Default/Cookies`，它可能同样缺少 YouTube cookie；更关键的是先让 Chrome profile 写入 `youtube.com` cookie，或确认 Chrome 实际使用的是否是另一个用户数据目录。
+- 下一步：
+  - 不跑 WatchBrief，不跑 YouTube 小列表。
+  - 优先确认 Chrome 实际运行 profile / user data dir 是否就是 `/Users/apple/Library/Application Support/Google/Chrome/Default`，以及 YouTube 页面登录后为什么没有写入 `youtube.com` cookie。
+
+## 2026-04-29 - 阶段十八 G3-R：YouTube 页面交互后 Chrome cookies 复查
+
+- 阶段：继续 G3-R，只做 Chrome cookies 与 yt-dlp 字幕列表只读检查；未跑 WatchBrief，未进入 Qwen / Codex / MLX。
+- 执行前提：用户已在 Chrome 打开 YouTube，确认已登录、视频可播放，并做过一次轻量页面交互，然后完全退出 Chrome。
+- Chrome 状态：
+  - 检查时未发现 Google Chrome 进程。
+- Cookies 数据库：
+  - 路径：`/Users/apple/Library/Application Support/Google/Chrome/Default/Cookies`
+  - Cookies 总行数：`5`
+  - Google cookie 行数：`5`
+  - YouTube cookie 行数：`0`
+- yt-dlp 只读检查：
+  - 命令：`yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`
+  - 结果：失败，`rc=1`。
+  - stdout 显示：`Extracting cookies from chrome`、`Extracted 5 cookies from chrome`。
+  - stderr 显示：YouTube 仍要求 `Sign in to confirm you’re not a bot`。
+  - 未列出字幕。
+  - 未下载视频、音频或字幕。
+- 成功标准状态：
+  - YouTube cookie 行数大于 0：未达成。
+  - yt-dlp 能列出字幕：未达成。
+  - 不再出现 `Sign in to confirm you’re not a bot`：未达成。
+- 泄露检查：
+  - 未打印、导出或展示 cookie 内容。
+  - 扫描 `/tmp/yt-chrome-after-interaction-listsubs.*`，未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`、`SAPISID`、`APISID`、`HSID`、`SSID`、`SIDCC`、`LOGIN_INFO`、`__Secure`、`VISITOR_INFO`、`PREF`、`SID=` 等 cookie 标记。
+- 结论：
+  - 页面交互后，Chrome 仍没有写入 `youtube.com` cookie。
+  - yt-dlp 现在能读取 5 个 Chrome cookie，但这些仍只是 Google / accounts cookie，不足以通过 YouTube 校验。
+  - 仍不能重跑 WatchBrief G3。
+- 下一步建议：
+  - 可以评估显式 cookies 文件验证，但需要用户明确授权；不要自动导出，不要放桌面，不要打印 cookies。
+  - 在显式 cookies 文件只读验证或 `youtube.com` cookie 写入成功之前，不要跑 WatchBrief，不要跑 YouTube 小列表。
+
+## 2026-04-29 - 阶段十八 G3-R：Chrome 通过 YouTube 验证后复查
+
+- 阶段：继续 G3-R，只做 Chrome cookies 与 yt-dlp 字幕列表只读检查；未跑 WatchBrief，未进入 Qwen / Codex / MLX。
+- 执行前提：用户在 Chrome 中重新通过 YouTube 登录 / bot 验证。
+- Chrome 状态：
+  - 已退出 Chrome。
+  - 检查时未发现 Google Chrome 进程。
+- Cookies 数据库：
+  - 路径：`/Users/apple/Library/Application Support/Google/Chrome/Default/Cookies`
+  - Cookies 总行数：`9`
+  - YouTube cookie 行数：`4`
+  - Google cookie 行数：`5`
+  - accounts.google.com cookie 行数：`5`
+  - 数据库 mtime 已更新到本轮验证后。
+- yt-dlp 只读检查：
+  - 命令：`yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`
+  - 结果：失败，`rc=1`。
+  - stdout 显示：`Extracting cookies from chrome`、`Extracted 9 cookies from chrome`。
+  - stderr 仍显示：YouTube 要求 `Sign in to confirm you’re not a bot`。
+  - 未列出字幕。
+  - 未下载视频、音频或字幕。
+- 成功标准状态：
+  - Cookies 表总行数大于 0：达成。
+  - YouTube cookie 行数大于 0：达成。
+  - yt-dlp 不再显示 `Extracted 0 cookies from chrome`：达成，现在是 `Extracted 9 cookies from chrome`。
+  - 能列出字幕：未达成。
+  - 不再出现 `Sign in to confirm you’re not a bot`：未达成。
+- 泄露检查：
+  - 未打印、导出或展示 cookie 内容。
+  - 扫描 `/tmp/yt-chrome-after-bot-verify-listsubs.*` 与 sqlite stderr 输出，未发现 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`、`SAPISID`、`APISID`、`HSID`、`SSID`、`SIDCC`、`LOGIN_INFO`、`__Secure`、`VISITOR_INFO`、`PREF`、`SID=` 等 cookie 标记。
+- 结论：
+  - Chrome 登录态读取已明显改善：yt-dlp 从 0 cookies 变成 9 cookies，且 Chrome 数据库已有 4 条 `youtube.com` cookie。
+  - 但这组 Chrome cookies 仍不足以让 yt-dlp 通过 YouTube bot 校验。
+  - 当前仍不能重跑 WatchBrief G3。
+- 下一步建议：
+  - 不跑 WatchBrief，不跑 YouTube 小列表。
+  - 下一步可以评估显式 cookies 文件只读验证，或继续在浏览器侧完成更完整的 YouTube 会话写入；但在 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs` 能列出字幕前，不应进入 WatchBrief。
+
+## 2026-04-29 - 阶段十八 G3-R：更换 YouTube 视频只读验证
+
+- 阶段：继续 G3-R，只换一个 YouTube 视频做 yt-dlp 最小只读验证；未跑 WatchBrief，未进入 Qwen / Codex / MLX。
+- 测试视频：`https://www.youtube.com/watch?v=vCoGfisdS8Y`
+- 前置状态：
+  - Chrome `Default/Cookies` 总行数：`9`
+  - YouTube cookie 行数：`4`
+  - yt-dlp 版本：`2026.03.17`
+- yt-dlp `dump-json` 只读检查：
+  - 命令：`yt-dlp --cookies-from-browser chrome --skip-download --dump-json "https://www.youtube.com/watch?v=vCoGfisdS8Y"`
+  - 结果：失败，`rc=1`。
+  - stdout 字节数：`0`
+  - stderr 显示：YouTube 要求 `Sign in to confirm you’re not a bot`。
+- yt-dlp `list-subs` 只读检查：
+  - 命令：`yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=vCoGfisdS8Y"`
+  - 结果：失败，`rc=1`。
+  - stdout 显示：`Extracting cookies from chrome`、`Extracted 9 cookies from chrome`。
+  - stderr 仍显示：YouTube 要求 `Sign in to confirm you’re not a bot`。
+  - 未列出字幕。
+  - 未下载视频、音频或字幕。
+- 泄露检查：
+  - 未打印、导出或展示 cookie 内容。
+  - 扫描 `/tmp/yt-newvideo-*` 输出文件，未发现常见 cookie 标记。
+- 结论：
+  - 换视频后仍失败，说明问题不是单个旧视频 `Er2s-CFoZSo` 特有。
+  - yt-dlp 已能读取 Chrome cookies，但当前 Chrome 登录态仍不足以通过 YouTube bot 校验。
+  - 当前不建议重跑 WatchBrief G3，也不建议跑 YouTube 小列表。
+- 下一步建议：
+  - 继续暂停 YouTube 线完整链路。
+  - 下一步应只做登录态验证：让 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs` 对任意 YouTube 视频能列出字幕后，再回到 WatchBrief G3。
+
+## 2026-04-29 - 阶段十八 G3-YC：YouTube resolver 双保险方案
+
+- 阶段：G3-YC，接入 YouTube Connect transcript fallback，并加入人工验证提示流程。
+- 是否改代码：是。
+- 改动文件：
+  - `watchbrief_v5/scripts/providers/youtube_connect_provider.py`
+  - `watchbrief_v5/scripts/video_pipeline.py`
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/scripts/youtube_manual_verification.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/tests/test_cli.py`
+  - `watchbrief_v5/tests/test_youtube_connect_provider.py`
+  - `watchbrief_v5/tests/test_youtube_manual_verification.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `watchbrief_v5/SKILL.md`
+- 代码行为：
+  - YouTube 单视频 resolver 因 `platform_restriction`、bot check、sign-in restriction 或 login verification 失败，且 URL 能解析出 video_id 时，会尝试 YouTube Connect transcript fallback。
+  - fallback 成功后构造 `watchbrief_v5.transcript_material.v1`，继续进入 `local_extract -> Codex review -> validator -> renderer`。
+  - fallback 成功后跳过 `audio_downloader` 和 MLX/Whisper transcription。
+  - item_manifest 成功路径会记录 `resolver_failed=true`、`resolver_reason_code=platform_restriction`、`transcript_fallback_provider=youtube-connect`、`transcript_fallback_success=true`。
+  - fallback 失败时保留原 resolver 失败，不伪装成功。
+  - CLI 遇到 bot / sign-in / `platform_restriction` 失败时，只打印人工验证指引、Chrome 打开命令和只读 `yt-dlp --list-subs` 复测命令；不自动点击验证码、不绕过验证、不打印 cookies。
+- Hermes `youtube-content` 检查：
+  - 脚本：`/Users/apple/.hermes/skills/media/youtube-content/scripts/fetch_transcript.py`
+  - 对 `https://www.youtube.com/watch?v=Er2s-CFoZSo` 只读 transcript 检查失败。
+  - 错误类型：YouTube transcript API 被 YouTube blocking / IP 风控拦截。
+- WatchBrief YouTube Connect fallback 独立探测：
+  - 结果：失败。
+  - 错误类型：`SubtitleUnavailableError`
+  - 原因：`YouTube Connect transcript unavailable`，底层仍是 YouTube blocking。
+- 单元测试：
+  - 命令：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`
+  - 结果：`Ran 302 tests in 0.708s`
+  - 状态：`OK (skipped=3)`
+- strict install：
+  - 项目源目录：PASS。
+  - Hermes 副本：PASS。
+- Hermes 副本：
+  - 已用 `rsync -a` 同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+- 单视频验收：
+  - 命令：`python3 watchbrief_v5/scripts/cli.py --source-url "https://www.youtube.com/watch?v=Er2s-CFoZSo" --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600`
+  - 结果：失败，`stage=resolver`，`reason=platform_restriction`。
+  - resolver 是否仍 platform_restriction：是。
+  - 是否触发人工验证流程：是，CLI 打印了 `manual_verification_required`、`manual_verification_open`、`manual_verification_probe`。
+  - 是否打开 Chrome：否，本轮 CLI 只提示命令，没有自动打开。
+  - 是否由用户手动完成验证：否，本轮未重新要求用户手动验证。
+  - YouTube Connect fallback 是否触发：是。
+  - fallback provider：`youtube-connect`。
+  - fallback 是否成功：否。
+  - transcript 来源：无，fallback 未拿到 transcript。
+  - 字幕语言：无。
+  - segment 数：无。
+  - 是否进入 audio_downloader：否。
+  - 是否进入 MLX-Audio：否。
+  - local_extract 是否完成：否，未拿到 transcript，未进入 local_extract。
+  - Codex 是否完成：否，未进入 Codex。
+  - validator 是否通过：否，未进入 validator。
+  - HTML 是否生成：否。
+  - 桌面是否只生成单视频 HTML：否；本轮失败，只生成 debug 目录 `/Users/apple/Desktop/WatchBrief-Debug/watch-20260429-143740`，没有生成桌面 HTML。
+  - cookie 是否泄露：否；扫描 debug 与本轮临时输出未发现常见 cookie 标记。
+- 结论：
+  - WatchBrief 现在具备 resolver 被 YouTube 风控挡住后的 transcript fallback 代码路径。
+  - 当前现场 YouTube resolver 和 YouTube Connect transcript fallback 都被 YouTube 风控挡住，所以不能进入 G3 正常报告链路。
+  - 不建议进入 YouTube 小列表复测。
+- 下一步：
+  - 先执行人工验证窗口流程或等待风控冷却。
+  - 只有 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"` 能列出字幕后，才重跑 YouTube G3 单视频。
+
+## 2026-04-29 - 阶段十八 G3-R：Chrome 刷新后保持打开的登录态验证
+
+- 阶段：继续 G3-R，只验证 Chrome 刷新后保持打开时，yt-dlp 能否读取有效 YouTube 登录态。
+- 人工前置：
+  - 用户打开 Chrome。
+  - 打开 `https://www.youtube.com/watch?v=Er2s-CFoZSo`。
+  - 页面初始显示未登录时，用户按 Command + R 刷新。
+  - 用户确认右上角显示账号头像、视频可播放，并保持 Chrome 打开。
+- 禁止项执行情况：
+  - 未跑 WatchBrief。
+  - 未进入 Qwen / Codex / MLX。
+  - 未下载视频、音频或字幕。
+  - 未导出 cookies 文件。
+  - 未打印、保存或展示 cookie 内容。
+- Cookies 数据库只读统计：
+  - 路径：`/Users/apple/Library/Application Support/Google/Chrome/Default/Cookies`
+  - Cookies 总行数：`50`
+  - `youtube.com` cookie 行数：`22`
+  - `google.com` cookie 行数：`28`
+- yt-dlp 只读字幕列表检查：
+  - 命令：`yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`
+  - 结果：成功，`rc=0`。
+  - stdout 显示：`Extracting cookies from chrome`、`Extracted 50 cookies from chrome`。
+  - 已列出字幕 / 自动字幕列表。
+  - 未出现 `Sign in to confirm you’re not a bot`。
+- 泄露检查：
+  - 扫描 `/tmp/g3r-refresh-listsubs.*` 与 sqlite stderr 输出，未发现常见 cookie 标记。
+- 结论：
+  - Chrome 刷新后保持打开，yt-dlp 可以读到有效 YouTube 登录态。
+  - 当前不需要 cookies 文件方案。
+  - 后续 YouTube 任务前建议先手动打开目标视频，必要时 Command + R 刷新，确认账号头像和视频可播放，并保持 Chrome 打开，再启动 WatchBrief。
+
+## 2026-04-29 - 阶段十八上下文压缩记录：YouTube G3 / G3-R / G3-YC 当前恢复点
+
+- 当前项目：WatchBrief V5 / `watchbrief_v5`
+- 工作目录：`/Users/apple/Documents/New project/v1deodownload`
+- 当前线：YouTube / WatchBrief 配置线；不要切到 B 站阶段十八 F/F1/F2。
+- 默认登录态：
+  - G3.2 后默认 cookies browser 是 `chrome`。
+  - 不传 `--cookies-from-browser` 时，CLI 会把 `cookies_from_browser=chrome` 传给 resolver、YouTube subtitle_fetcher、Bilibili provider 和 audio_downloader。
+  - 显式 `--cookies-from-browser safari/chrome/edge` 仍可覆盖。
+- 默认 Qwen：
+  - 默认模型是 `qwen3-30b-a3b-instruct-2507-mlx`。
+  - `WATCHBRIEF_QWEN_MODEL` 和 `--qwen-model` 仍可覆盖。
+  - 默认 base URL 仍按当前配置使用，item_manifest/debug 会记录实际 `qwen_model` 和 `qwen_base_url`。
+- G3-R 根因结论：
+  - WatchBrief resolver 本身不是根因。
+  - 之前失败是 Chrome 中 YouTube 会话 cookie 未完整写入，导致 `yt-dlp --cookies-from-browser chrome` 读到的 cookies 不足，被 YouTube 返回 `Sign in to confirm you’re not a bot`。
+  - 用户打开 YouTube 后如果初始显示未登录，不重新登录，只按 Command + R 刷新，YouTube 会恢复已登录状态；这说明 Google 主登录态存在，但 YouTube 页面需要刷新后才把有效 YouTube 会话写完整。
+  - 刷新并保持 Chrome 打开后，Chrome Cookies 数据库变为：总行数 `50`，`youtube.com` 行数 `22`，`google.com` 行数 `28`。
+  - 同一状态下运行 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"` 成功，stdout 显示 `Extracted 50 cookies from chrome`，能列出字幕，不再出现 bot 提示。
+  - 当前不需要 cookies 文件方案。
+- G3-YC 已完成代码改动：
+  - 接入 YouTube Connect transcript fallback。
+  - 当 YouTube 单视频 resolver 因 `platform_restriction`、bot check、sign-in restriction 或 login verification 失败，且 URL 能解析出 video_id 时，会尝试 `youtube-connect` fallback。
+  - fallback 成功后构造标准 `watchbrief_v5.transcript_material.v1`，继续 `local_extract -> Codex review -> validator -> renderer`。
+  - fallback 成功时跳过 `audio_downloader` 和 MLX/Whisper transcription。
+  - fallback 失败时保留原 resolver 失败，不伪装成功。
+  - CLI 遇到 bot / sign-in / `platform_restriction` 失败时，只打印人工验证指引、Chrome 打开命令和只读 `yt-dlp --list-subs` 复测命令；不自动点击验证码、不绕过验证、不打印 cookies。
+- G3-YC 改动文件：
+  - `watchbrief_v5/scripts/providers/youtube_connect_provider.py`
+  - `watchbrief_v5/scripts/video_pipeline.py`
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/scripts/youtube_manual_verification.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/tests/test_cli.py`
+  - `watchbrief_v5/tests/test_youtube_connect_provider.py`
+  - `watchbrief_v5/tests/test_youtube_manual_verification.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `watchbrief_v5/SKILL.md`
+- G3-YC 验证结果：
+  - 单元测试：`python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`
+  - 结果：`Ran 302 tests in 0.708s`，`OK (skipped=3)`。
+  - 项目源目录 strict install：PASS。
+  - Hermes 副本 strict install：PASS。
+  - Hermes 副本已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+- 上一次 G3-YC 单视频验收状态：
+  - 在 Chrome 刷新前，WatchBrief 单视频仍失败：`stage=resolver`，`reason=platform_restriction`。
+  - YouTube Connect fallback 已触发，但当时也被 YouTube transcript API blocking，fallback 失败。
+  - 未进入 audio_downloader、MLX-Audio、local_extract、Codex、validator。
+  - 未生成 HTML。
+  - 未泄露 cookies。
+- 当前恢复点：
+  - 现在 Chrome 刷新后保持打开，`yt-dlp --cookies-from-browser chrome --skip-download --list-subs` 已经成功。
+  - 下一步应该只重跑 YouTube 40 分钟单视频 G3，不跑 YouTube 小列表，不跑 B 站。
+  - 重跑前保持 Chrome 不关闭。
+- 下一步推荐命令：
+
+```bash
+cd "/Users/apple/Documents/New project/v1deodownload"
+
+python3 watchbrief_v5/scripts/cli.py \
+  --source-url "https://www.youtube.com/watch?v=Er2s-CFoZSo" \
+  --review-provider codex-cli \
+  --enable-codex-review \
+  --codex-home-root ~/.watchbrief_codex \
+  --codex-account account2 \
+  --codex-model gpt-5.4 \
+  --timeout 600 \
+  --qwen-timeout 600
+```
+
+- 下个窗口禁止误操作：
+  - 不跑 YouTube 小列表。
+  - 不跑 B 站。
+  - 不导出 cookies 文件。
+  - 不打印、保存、展示 cookies。
+  - 不自动点击验证码。
+  - 不改 renderer。
+  - 不改 Watch Order 模板。
+  - 不改单视频 HTML 模板。
+  - 不改 normalized_payload schema / validator。
+  - 不改 score band、final_conclusion、tag/topic、watch_segments。
+
+## 2026-04-29 - 阶段十八 G3：YouTube 40 分钟单视频复验（Chrome 刷新后）
+
+- 阶段：G3，YouTube 40 分钟单视频复验。
+- 测试视频：`https://www.youtube.com/watch?v=Er2s-CFoZSo`
+- 是否改代码：否；本阶段只运行验收命令与只读复核，最后追加工作日志。
+- 前置状态：
+  - 用户已打开 Chrome 目标视频页。
+  - 用户已手动 Command + R 刷新。
+  - 刷新后上一轮 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs` 成功，曾显示 `Extracted 50 cookies from chrome`，能列出字幕。
+- 执行命令：
+
+```bash
+python3 watchbrief_v5/scripts/cli.py \
+  --source-url "https://www.youtube.com/watch?v=Er2s-CFoZSo" \
+  --review-provider codex-cli \
+  --enable-codex-review \
+  --codex-home-root ~/.watchbrief_codex \
+  --codex-account account2 \
+  --codex-model gpt-5.4 \
+  --timeout 600 \
+  --qwen-timeout 600
+```
+
+- 执行结果：
+  - WatchBrief 失败。
+  - `stage=resolver`
+  - `reason=platform_restriction`
+  - `message=platform restricted resolver access`
+  - CLI 打印了人工验证指引：
+    - `manual_verification_required`
+    - `manual_verification_open: open -a 'Google Chrome' 'https://www.youtube.com/watch?v=Er2s-CFoZSo'`
+    - `manual_verification_probe: yt-dlp --cookies-from-browser chrome --skip-download --list-subs 'https://www.youtube.com/watch?v=Er2s-CFoZSo'`
+  - debug 目录：`/Users/apple/Desktop/WatchBrief-Debug/watch-20260429-152250`
+  - 总耗时：约 `4.15s`
+- resolver 是否通过：否。
+- 字幕语言：无，未进入字幕阶段。
+- 字幕格式：无，未进入字幕阶段。
+- segment 数：无，未拿到 transcript。
+- 是否进入 audio_downloader：否。
+- 是否进入 MLX-Audio：否。
+- 实际 Qwen 模型：未进入 local_extract，因此本轮没有实际 Qwen 调用。
+- local_extract 耗时：无，未进入。
+- Codex 耗时：无，未进入。
+- validator 是否通过：否，未进入。
+- HTML 是否生成：否。
+- 桌面输出：
+  - 本轮没有生成新的单视频 HTML。
+  - 桌面已有 `/Users/apple/Desktop/01-人民币疯涨，为什么？背后有什么秘密？.html`，mtime 为 `2026-04-29 15:12:08`，早于本轮 G3 启动时间，不是本轮产物。
+- YouTube Connect fallback：
+  - 已触发。
+  - provider：`youtube-connect`
+  - fallback 成功：否。
+  - fallback 失败后保留原 resolver 失败，符合 G3-YC 设计。
+- 只读复核：
+  - G3 失败后立即检查 Chrome Cookies 数据库：
+    - Cookies 总行数：`11`
+    - `youtube.com` cookie 行数：`0`
+    - `google.com` cookie 行数：`5`
+  - 同款 resolver 命令只读复核：
+    - `yt-dlp --cookies-from-browser chrome --dump-single-json --skip-download --flat-playlist --no-warnings "https://www.youtube.com/watch?v=Er2s-CFoZSo"`
+    - 结果：失败。
+    - 错误：`Sign in to confirm you’re not a bot`。
+  - `list-subs` 再次只读复核：
+    - `yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`
+    - 结果：失败，`rc=1`。
+    - stdout 显示：`Extracted 11 cookies from chrome`。
+    - stderr 显示：`HTTP Error 429: Too Many Requests`，随后仍是 `Sign in to confirm you’re not a bot`。
+    - 未列出字幕。
+- cookie 泄露检查：
+  - 未打印、导出或展示 cookie 内容。
+  - 扫描 `/tmp/g3-resolver-dump-single.*`、`/tmp/g3-after-fail-listsubs.*` 与 debug 目录，未发现常见 cookie 标记。
+- 结论：
+  - 本轮 G3 没有验证到 WatchBrief 主链路，因为 resolver 之前 Chrome YouTube 登录态又失效了。
+  - 关键变化是：刷新后曾经有效的 `50 cookies / youtube.com 22`，在 G3 执行时已经回落到 `11 cookies / youtube.com 0`。
+  - 当前问题仍是 YouTube / Chrome 登录态与平台风控不稳定，不是 Qwen、Codex、renderer、schema 或 validator 问题。
+- 下一步建议：
+  - 不进入 YouTube 小列表复测。
+  - 重新打开或刷新 Chrome 目标页面，确认右上角账号头像和视频可播放。
+  - 立即复测 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`。
+  - 只有再次出现 `Extracted 50 cookies from chrome` 且能列出字幕时，才立刻重跑 G3。
+  - 如果 cookie 再次快速回落到 `11 / youtube.com 0`，需要暂停 YouTube 线，等待风控冷却或改走受控 cookies 文件验证方案。
+
+## 2026-04-29 - 阶段十八 G3：YouTube 40 分钟单视频复验成功
+
+- 阶段：G3，YouTube 40 分钟单视频复验。
+- 测试视频：`https://www.youtube.com/watch?v=Er2s-CFoZSo`
+- 是否改代码：否。
+- 前置登录态：
+  - 用户手动完成 Chrome 登录 / 验证。
+  - Chrome 保持打开。
+  - 运行前只读检查成功：`yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`。
+  - 只读检查显示：`Extracted 51 cookies from chrome`。
+  - Chrome Cookies 数据库只读统计：总行数 `51`，`youtube.com` 行数 `22`，`google.com` 行数 `19`。
+  - 未出现 `Sign in to confirm you’re not a bot`。
+- 执行命令：
+
+```bash
+python3 watchbrief_v5/scripts/cli.py \
+  --source-url "https://www.youtube.com/watch?v=Er2s-CFoZSo" \
+  --review-provider codex-cli \
+  --enable-codex-review \
+  --codex-home-root ~/.watchbrief_codex \
+  --codex-account account2 \
+  --codex-model gpt-5.4 \
+  --timeout 600 \
+  --qwen-timeout 600
+```
+
+- 执行结果：
+  - WatchBrief 成功完成。
+  - 输出 HTML：`/Users/apple/Desktop/01-A-Full-Guide-To-Making-Your-First-Profitable-Product-(Beginners,-Take-Notes).html`
+  - CLI 总耗时：`222.91s`，约 `3m43s`。
+  - debug artifacts 成功后清理，按单视频交付规则未保留到桌面。
+- resolver：
+  - 通过。
+  - `resolver_method=yt_dlp`
+  - `cookies_source=browser:chrome`
+  - `attempted_cookie_sources=["browser:chrome"]`
+  - `reason_code=""`
+  - 未触发 YouTube Connect fallback。
+- 字幕：
+  - `subtitle_fetcher` 完成。
+  - 字幕语言：`en`
+  - 字幕类型：manual
+  - 字幕格式：`vtt`
+  - 字幕文件：`Er2s-CFoZSo.en.vtt`
+  - segment 数：`1345`
+  - transcript 字符数：`47537`
+  - `subtitle_probe_attempted=true`
+  - `subtitle_candidate_failures=[]`
+- audio / transcriber：
+  - `audio_downloader` 未进入，状态为 skipped。
+  - `audio_downloader_skipped_due_to_subtitle=true`
+  - MLX-Audio 未进入。
+- local_extract / Qwen：
+  - local_extract 完成。
+  - 实际 Qwen 模型：`qwen3-30b-a3b-instruct-2507-mlx`
+  - `qwen_base_url=http://127.0.0.1:1234/v1`
+  - `qwen_api_base=http://127.0.0.1:1234/v1`
+  - `qwen_prompt_version=watchbrief_v5.qwen_local_extract_prompt.v2`
+  - `transcript_hash=d6dd90ffe02e54860244cb1302fcbe0c35423f612712fbaacdec0b42fb8bc05e`
+  - 触发 chunked local_extract：是。
+  - chunk 数：`7`
+  - successful chunk：`6`
+  - failed chunk：`1`
+  - success coverage：`0.8488`
+  - reduce status：`completed`
+  - local_extract 估算耗时：约 `140s`，按首个 chunk request 到 `local_extract.json` 写出估算。
+- Codex review：
+  - Codex review 完成。
+  - `codex_model=gpt-5.4`
+  - `codex_prompt_version=watchbrief_v5.codex_review_prompt.v3`
+  - report cache：miss 后写入。
+  - cache key：`f5e0cbb795ced70636a2b3f4e5369b3f184108b950e724a6acedbfd040bcc7e6`
+  - Codex 阶段估算耗时：约 `74s`，按 `review_request.json` 写出到 cache / HTML 写出估算；首个 Codex raw response 约 `37s` 返回。
+- validator / payload：
+  - validator 通过。
+  - 对最终 cached normalized_payload 重新运行 `validate_normalized_report_payload`，结果通过。
+  - replacement_score：`6.9`
+  - tag：`值得补看`
+  - topic：`个人系统驱动的首个教育产品变现路径`
+  - watch_segments：2 个，包含 1 个 primary 和 1 个 optional。
+- 桌面交付：
+  - 最近 10 分钟桌面只生成一个 HTML：`/Users/apple/Desktop/01-A-Full-Guide-To-Making-Your-First-Profitable-Product-(Beginners,-Take-Notes).html`
+  - 未生成 `00-watch-order.html`。
+  - 未生成新的任务文件夹。
+- cookie 泄露检查：
+  - 未打印、导出或展示 cookie 内容。
+  - 扫描本轮 `yt-dlp` 只读输出、CLI log、debug snapshot、最终 cache payload，未发现常见 cookie 标记。
+- 性能判断：
+  - local_extract 约 `2m20s`，属于理想区间。
+  - 总耗时约 `3m43s`，可接受。
+- 下一步建议：
+  - 可以进入 YouTube 小列表复测。
+  - 进入前仍建议保持 Chrome 打开，并先执行一次只读 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs <目标视频>` 确认 cookies 仍有效。
+
+## 2026-04-29 阶段十八 G4：英文术语中文化与专有名词处理
+
+- 目标：
+  - 优化 WatchBrief V5 的 Qwen local_extract 与 Codex review 提示词，让英文字幕输入时最终报告以中文为主。
+  - 普通营销 / 产品 / 创作者领域术语不再大量裸露英文。
+  - 英文标题、频道名、品牌名、产品名、人名、工具名仍允许保留原文，不硬翻译。
+- 是否改代码：
+  - 是。
+- 改动文件：
+  - `watchbrief_v5/scripts/analyzer/prompts.py`
+  - `watchbrief_v5/scripts/analyzer/local_extract.py`
+  - `watchbrief_v5/tests/test_analyzer_local_extract.py`
+  - `watchbrief_v5/tests/test_analyzer_codex_review.py`
+- 英文术语过多的原因：
+  - 原提示词只要求“英文输入直接理解，输出中文”，但没有明确规定营销 / 产品 / 创作者领域术语必须中文化。
+  - 部分 chunk / mixed prompt 仍写着“重要英文术语保留英文原词”，容易让 Qwen 把普通领域术语放进 `important_terms`，再被 Codex review 继承到最终报告。
+  - Codex review prompt 只强调专名依赖 `important_terms` / `corrected_terms`，没有要求把普通英文领域术语转成自然中文。
+- 新增中文化规则：
+  - 最终报告必须以中文为主，不能大量裸露英文领域术语。
+  - 领域术语要自然中文化，营销、产品、创作者领域的通用术语优先译成自然中文。
+  - 英文视频标题、频道名、品牌名、产品名、人名、工具名不要硬翻译。
+  - 如果保留英文确实有助于识别概念，第一次写“中文（English）”，后续只用中文。
+  - `important_terms` 只放无法自然翻译的原始专名，不把普通领域术语当成必须裸露的英文专名。
+  - 示例映射已写入 prompt：`personal system product -> 个人方法系统产品`、`education product -> 教育型产品 / 知识产品`、`big burning problem -> 强痛点 / 核心痛点`、`desired outcome -> 目标结果`、`time frame -> 实现周期`、`offer -> 产品承诺 / 销售主张`、`landing page -> 落地页`、`social proof -> 信任背书 / 社会证明`、`CTA -> 行动号召 / 行动按钮`、`features and benefits -> 功能与收益`、`cohort -> 共学营 / 训练营`、`e-book -> 电子书`、`software -> 软件产品`。
+- 未改范围：
+  - 未改 renderer。
+  - 未改 HTML 模板。
+  - 未改 schema / validator。
+  - 未改 score band、`final_conclusion`、`tag/topic`、`watch_segments` 契约。
+  - 未改字幕抓取逻辑。
+  - 未跑 YouTube 列表。
+  - 未跑 B 站。
+  - 未触发 MLX-Audio。
+  - 未打印、保存、展示 cookies。
+- 新增测试：
+  - 英文 transcript 的 local_extract prompt 必须包含中文化规则。
+  - chunk extract / reduce prompt 必须包含中文化规则，且不再包含“重要英文术语保留英文原词”。
+  - Codex review prompt 必须包含常见营销 / 产品术语中文化映射。
+  - 英文视频标题、频道名、品牌名、产品名允许保留原文。
+  - schema / validator 未变。
+- 验证结果：
+  - `python3 -m py_compile watchbrief_v5/scripts/analyzer/prompts.py watchbrief_v5/scripts/analyzer/local_extract.py`：PASS。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_analyzer_local_extract.py'`：28 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_analyzer_codex_review.py'`：44 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：305 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本：
+  - 已用 `rsync` 同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - 已用 `cmp` 确认本次 4 个改动文件与 Hermes 副本一致。
+- 下一步建议：
+  - 建议先重跑 G3 单视频验证报告质量，确认英文术语裸露明显减少。
+  - G3 单视频中文质量通过后，再进入 YouTube 小列表复测。
+
+## 2026-04-29 阶段十八 G4-R：YouTube 40 分钟单视频中文化复验
+
+- 目标：
+  - 重跑 `https://www.youtube.com/watch?v=Er2s-CFoZSo`，确认 G4 prompt 改动后的真实 HTML 中文质量。
+- 是否改代码：
+  - 否。
+- 前置检查：
+  - 已打开 Chrome 到目标视频页。
+  - `yt-dlp --cookies-from-browser chrome --skip-download --list-subs` 成功读取 Chrome 登录态。
+  - yt-dlp 提取 cookies 数：`51`。
+  - 字幕列表可正常列出，未出现 `Sign in to confirm you’re not a bot`。
+  - 未发现 WatchBrief / VideoDownload / Qwen / MLX 长任务；仅有 Hermes gateway 常驻进程。
+  - 已记录桌面 HTML 基线：`/tmp/watchbrief_g4r_desktop_baseline_20260429_160056.txt`。
+- 第一次运行：
+  - 命令：按 G4-R 指定 CLI 命令执行，未传 `--cookies-from-browser`。
+  - 结果：失败。
+  - 总耗时：`126.08s`。
+  - failure stage：`local_extract`。
+  - reason_code：`chunked_local_extract_failed`。
+  - message：`successful chunk coverage 0.70 below required 0.75`。
+  - debug artifacts：`/Users/apple/Desktop/WatchBrief-Debug/watch-20260429-160312`。
+  - resolver：通过，`resolver_method=yt_dlp`，未触发 fallback，`reason_code=""`。
+  - 字幕：抓到 `en` manual `vtt`。
+  - segment 数：`1345`。
+  - transcript 字符数：`47537`。
+  - audio_downloader：未进入，状态为 skipped，原因 `subtitle_available`。
+  - MLX-Audio：未进入。
+  - Qwen 模型：`qwen3-30b-a3b-instruct-2507-mlx`。
+  - qwen_base_url：`http://127.0.0.1:1234/v1`。
+  - chunk_count：`7`。
+  - successful_chunk_count：`5`。
+  - failed_chunk_count：`2`。
+  - failed chunks：第 2、3 个 chunk。
+  - chunk failure reason：`local_qwen_invalid_response`，`Qwen response did not contain a JSON object`。
+  - reduce：skipped，因为成功覆盖率低于阈值。
+  - Codex review：未进入。
+  - validator：未进入。
+  - HTML：未生成新 HTML。
+- 第二次重试：
+  - 原因：第一次失败点是本地 Qwen 分块输出非 JSON，属于可复现性需要确认的问题；未改代码，按同一命令重试一次。
+  - 结果：失败。
+  - 总耗时：`106.28s`。
+  - failure stage：`local_extract`。
+  - reason_code：`chunked_local_extract_failed`。
+  - message：`successful chunk coverage 0.70 below required 0.75`。
+  - debug artifacts：`/Users/apple/Desktop/WatchBrief-Debug/watch-20260429-160539`。
+  - resolver：通过，`resolver_method=yt_dlp`，未触发 fallback，`reason_code=""`。
+  - 字幕：抓到 `en` manual `vtt`。
+  - segment 数：`1345`。
+  - transcript 字符数：`47537`。
+  - audio_downloader：未进入，状态为 skipped，原因 `subtitle_available`。
+  - MLX-Audio：未进入。
+  - Qwen 模型：`qwen3-30b-a3b-instruct-2507-mlx`。
+  - qwen_base_url：`http://127.0.0.1:1234/v1`。
+  - chunk_count：`7`。
+  - successful_chunk_count：`5`。
+  - failed_chunk_count：`2`。
+  - failed chunks：第 2、3 个 chunk。
+  - chunk failure reason：`local_qwen_invalid_response`，`Qwen response did not contain a JSON object`。
+  - reduce：skipped，因为成功覆盖率低于阈值。
+  - Codex review：未进入。
+  - validator：未进入。
+  - HTML：未生成新 HTML。
+- 桌面输出：
+  - 对比桌面 HTML 基线，没有新增 HTML。
+  - 本轮未生成 `00-watch-order.html`。
+  - 因失败保留了两个 debug 目录到 `~/Desktop/WatchBrief-Debug/`。
+- cookie 泄露检查：
+  - 未打印、保存、展示 cookie 内容。
+  - 扫描两次运行日志和 debug artifacts，常见 YouTube cookie 标记命中文件数为 `0`。
+- 中文质量验收：
+  - 未完成。
+  - 原因：流程在 local_extract 阶段失败，未进入 Codex review / validator / renderer，没有生成新 HTML。
+  - 不能判断英文术语是否明显减少。
+  - 不能判断是否仍有不该保留的英文术语。
+- 判断：
+  - YouTube resolver / Chrome cookies / 字幕链路正常。
+  - 当前阻塞点不是 YouTube 风控，也不是字幕问题，而是 G4 prompt 后本地 Qwen 分块输出 JSON 稳定性下降。
+  - 两次都是第 2、3 个 chunk 返回非 JSON，覆盖率固定为 `0.6981`，低于 `0.75`，说明需要先修 local_extract 分块 JSON 稳定性，再重跑中文质量验收。
+- 下一步建议：
+  - 不建议进入 YouTube 小列表复测。
+  - 先进入 G4-F：修复 Qwen chunk 输出非 JSON 的稳定性问题，重点处理第 2、3 chunk 的 prompt/解析/重试策略。
+  - 修复后先跑小 fixture 与单视频 G4-R，再考虑 YouTube 小列表。
+
+## 2026-04-29 阶段十八 G4-F：local_extract 分块 JSON 稳定性修复
+
+- 目标：
+  - 修复 YouTube 40 分钟单视频在 local_extract chunked 模式下，第 2、3 个 chunk 因 Qwen 输出非标准 JSON 导致覆盖率低于阈值的问题。
+- 是否改代码：
+  - 是。
+- 改动文件：
+  - `watchbrief_v5/scripts/analyzer/local_extract.py`
+  - `watchbrief_v5/tests/test_analyzer_local_extract.py`
+- 原失败原因：
+  - G4-R 不是 resolver、cookies、字幕、audio 或 MLX 问题。
+  - 真实失败点是 Qwen chunk 输出 JSON-like 内容时，在 `corrected_terms` 里写了裸箭头表达式，例如 `"Marcus Aurelius" → "马可·奥勒留"`，这不是合法 JSON。
+  - 原解析器无法把这种 JSON-like 输出转成合法 JSON，导致第 2、3 chunk 被计为失败，覆盖率固定为 `0.6981`，低于 `0.75`。
+- JSON repair 策略：
+  - chunk prompt 强化 JSON-only 约束。
+  - 代码块 JSON、前后带说明文字的 JSON，继续从响应中提取 JSON 主体。
+  - 对裸箭头纠错项做严格结构化修复：`"A" → "B"` 转成字符串 `"A -> B"`，只改格式，不改内容，不伪造信息。
+  - 如果仍无法解析，触发一次 repair retry；repair prompt 只要求把上一轮内容修成合法 JSON，不重新分析转写。
+  - debug plan 新增并记录：`chunk_index`、`raw_response_was_non_json`、`parse_error`、`repair_attempted`、`repair_success`、`final_chunk_status`。
+  - 覆盖率足够时继续 reduce；覆盖率不足时仍明确失败，不伪装成功。
+- 测试覆盖：
+  - 纯 JSON 正常通过。
+  - ```json 代码块可提取。
+  - 前后带说明文字可提取。
+  - 裸箭头 JSON-like 可修复成合法 JSON 字符串。
+  - 非 JSON 触发 repair retry。
+  - repair retry 成功时 chunk 计为成功。
+  - repair retry 失败时 chunk 计为失败，并记录 `parse_error`。
+  - 成功 chunk 覆盖率足够时 reduce 可继续。
+  - 覆盖率不足时明确失败。
+  - 最终 normalized_payload schema 不变。
+- 测试结果：
+  - `python3 -m py_compile watchbrief_v5/scripts/analyzer/local_extract.py`：PASS。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_analyzer_local_extract.py'`：34 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：311 tests OK，skipped=3。
+- strict install：
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本：
+  - 已用 `rsync` 同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+- 单视频验收：
+  - 输入：`https://www.youtube.com/watch?v=Er2s-CFoZSo`
+  - 执行：按 G4-R 单视频命令执行；最终验收额外使用 `/tmp/watchbrief_g4f_accept_debug_final` 保留 debug，并使用 `--force-reanalysis` 避免命中刚生成的 report cache。
+  - 输出 HTML：`/Users/apple/Desktop/01-A-Full-Guide-To-Making-Your-First-Profitable-Product-(Beginners,-Take-Notes).html`
+  - 总耗时：`159.87s`。
+  - resolver：通过，`resolver_method=yt_dlp`。
+  - 字幕：`en` manual `vtt`。
+  - segment 数：`1345`。
+  - transcript 字符数：`47537`。
+  - audio_downloader：未进入，状态 skipped。
+  - MLX-Audio：未进入。
+  - Qwen 模型：`qwen3-30b-a3b-instruct-2507-mlx`。
+  - qwen_base_url：`http://127.0.0.1:1234/v1`。
+  - chunked local_extract：完成。
+  - chunk_count：`7`。
+  - successful_chunk_count：`7`。
+  - failed_chunk_count：`0`。
+  - success_coverage：`1.0`。
+  - reduce：completed。
+  - Codex review：完成；`codex_raw_response.txt`、`codex_adapted.json`、`normalized_payload.json` 已生成。
+  - Codex 耗时估算：约 `42s`，按 `review_request.json` 到 `codex_raw_response.txt` 写出时间估算。
+  - local_extract 耗时估算：约 `107s`，按首个 chunk request 到 `local_extract.json` 写出时间估算。
+  - validator：通过。
+  - renderer：完成。
+  - report cache：因 `--force-reanalysis` 先 bypass，成功后 stored，cache key：`bcdc470087b4c846dd6122fc326214c34b26233826d35ce0094d0da1fa25254b`。
+- 中文质量复验：
+  - 报告主体以中文为主。
+  - 目标英文术语裸露计数均为 `0`：`personal system product`、`education product`、`big burning problem`、`desired outcome`、`time frame`、`offer`、`landing page`、`social proof`、`CTA`、`features and benefits`、`cohort`、`e-book`、`software`。
+  - 保留英文主要来自结构字段名或标题/频道这类允许保留项。
+  - 关键术语已自然中文化：个人方法系统、教育型产品、强痛点、目标结果、实现周期、产品承诺、落地页、信任背书、行动号召、功能与收益、共学营、电子书、软件产品等。
+- 桌面输出：
+  - 桌面没有新增其它 HTML 文件。
+  - 只更新了单视频 HTML：`/Users/apple/Desktop/01-A-Full-Guide-To-Making-Your-First-Profitable-Product-(Beginners,-Take-Notes).html`
+  - 未生成 `00-watch-order.html`。
+  - debug 保留在 `/tmp/watchbrief_g4f_accept_debug_final`，没有写到桌面任务文件夹。
+- cookie 泄露检查：
+  - 未打印、保存、展示 cookie 内容。
+  - 扫描最终运行日志与 debug artifacts，常见 YouTube cookie 标记命中文件数为 `0`。
+- 下一步建议：
+  - 可以进入 YouTube 小列表复测。
+  - 进入小列表前仍建议保持 Chrome 打开，并先用只读 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs <目标视频>` 确认登录态仍有效。
+
+## 2026-04-29 阶段十八 H：YouTube 小列表复测
+
+- 目标：
+  - 复测 YouTube 小列表完整链路。
+- 是否改代码：
+  - 否。
+- 输入：
+  - `https://www.youtube.com/watch?v=ncjZV07vApc&list=PLQiLo0YKAd1RZorTX1utq3arvcAcfoEK-`
+- 登录态预检：
+  - 命令：`yt-dlp --cookies-from-browser chrome --skip-download --list-subs "https://www.youtube.com/watch?v=Er2s-CFoZSo"`
+  - 结果：通过。
+  - yt-dlp 提取 Chrome cookies 数：`51`。
+  - 能列出 YouTube 字幕。
+  - 未出现 `Sign in to confirm you’re not a bot`。
+- 执行命令：
+  - 按 H 阶段指定命令执行。
+  - 未传 `--output-dir`。
+  - 未跑 B 站。
+  - 未改代码。
+  - 未保存、打印、展示 cookies 内容。
+- 执行结果：
+  - 成功。
+  - 总耗时：`1236.31s`，约 `20m36s`。
+  - completed_count：`6`。
+  - failed_count：`0`。
+  - playlist 标题：`test`。
+  - Watch Order：`/Users/apple/Desktop/watch-20260429-175447/00-watch-order.html`
+  - 成功 debug：默认清理，`debug_artifacts: removed after successful delivery`。
+- 生成文件：
+  - `/Users/apple/Desktop/watch-20260429-175447/00-watch-order.html`
+  - `/Users/apple/Desktop/watch-20260429-175447/01-Film-yourself-at-your-worst..html`
+  - `/Users/apple/Desktop/watch-20260429-175447/02-you-should-DEFINITELY-Film-Your-Boring-Life.html`
+  - `/Users/apple/Desktop/watch-20260429-175447/03-A-Full-Guide-To-Making-Your-First-Profitable-Product-(Beginners,-Take-Notes).html`
+  - `/Users/apple/Desktop/watch-20260429-175447/04-How-To-Build-A-Better-Personal-Brand-Than-99%-Of-People.html`
+  - `/Users/apple/Desktop/watch-20260429-175447/05-50-Ways-To-Fix-Your-Life.html`
+  - `/Users/apple/Desktop/watch-20260429-175447/06-How-to-Edit-like-a-GOD.html`
+- 桌面结构验收：
+  - 桌面只新增一个主任务文件夹：`/Users/apple/Desktop/watch-20260429-175447`。
+  - 主任务文件夹第一层包含 `00-watch-order.html`。
+  - 主任务文件夹第一层包含 6 个视频 HTML。
+  - 未出现二级 HTML 文件夹。
+  - 未在桌面根目录散落新的 per-video HTML。
+  - 未生成新的桌面根目录 `00-watch-order.html`。
+- Watch Order 验收：
+  - 标题：`test · 观看顺序`，与 playlist 标题一致。
+  - 右上角不显示裸 URL；原播放列表是 `打开原播放列表` 链接。
+  - 不出现“筛选”文字前缀。
+  - 筛选按钮真实点击验证通过：
+    - 点击前卡片数：`6`。
+    - 点击 `报告可替代` 后卡片数：`2`。
+    - 点击 `全部` 后卡片数恢复：`6`。
+    - 按钮标签：`全部`、`建议完整看完`、`值得补看`、`只建议跳看`、`报告可替代`、`解析失败`。
+- Qwen / Codex / validator：
+  - 6 个新 report cache payload 均通过 `validate_normalized_report_payload`。
+  - 6 个 payload 的 `qwen_model_id` 均为 `qwen3-30b-a3b-instruct-2507-mlx`。
+  - 6 个 payload 的 `codex_model` 均为 `gpt-5.4`。
+  - 6 条视频均生成 HTML，说明 Codex review、validator、renderer 已完成。
+- 字幕 / audio / MLX：
+  - 本轮成功后 debug 默认清理，无法在成功态逐条回读 item_manifest。
+  - 运行过程中未观察到 audio_downloader / MLX-Audio 相关输出或进程。
+  - 按当前 YouTube 字幕优先策略，存在字幕时应跳过 audio_downloader；本轮没有出现音频 fallback 失败或 MLX 触发迹象。
+- 英文术语中文化：
+  - 扫描 `00-watch-order.html` 和 6 个单视频 HTML，目标英文术语裸露计数均为 `0`：
+    `personal system product`、`education product`、`big burning problem`、`desired outcome`、`time frame`、`offer`、`landing page`、`social proof`、`CTA`、`features and benefits`、`cohort`、`e-book`、`software`。
+- cookie 泄露检查：
+  - 未打印、保存、展示 cookie 内容。
+  - 扫描运行日志与输出文件夹，常见 YouTube cookie 标记命中文件数：`0`。
+- 结论：
+  - 阶段十八 H 通过。
+  - YouTube 小列表完整链路可以继续扩大复测。
+
+## 2026-04-29 工作日志补记：阶段十八 H 已落盘
+
+- 用户要求：写入工作日志。
+- 状态：
+  - 阶段十八 H 的登录态预检、YouTube 小列表执行结果、桌面结构验收、Watch Order 点击验证、中文化检查、cookie 泄露检查均已写入本文件。
+  - 本次补记没有改代码。
+  - 当前建议：可以进入更大 YouTube 列表复测；复测前继续先做 Chrome cookies 字幕预检。
+
+## 2026-04-29 阶段十八 H1：禁止自动打开输出 + 收紧日期/时长字段
+
+- 目标：
+  - 默认只生成 HTML / Watch Order 文件，不自动打开浏览器。
+  - 单视频 HTML 的日期必须来自视频发布日期，时长必须来自视频真实时长，并统一中文自然格式。
+- 是否改代码：
+  - 是。
+- 自动打开检查：
+  - 未发现正式交付路径存在默认自动打开输出的代码。
+  - 现有 `open -a "Google Chrome"` 只属于 YouTube 人工验证提示流程，不是交付输出打开。
+  - 新增 `--open-output` 显式参数；默认不调用 macOS `open`。
+  - CLI 完成后打印 `HTML: <path>` 或 `Watch Order: <path>`。
+- 日期规则：
+  - 来源优先级：`publish_date` → `release_date` → `upload_date` → `timestamp` → `pubdate` / `published_at` → `date`。
+  - `YYYYMMDD` 统一转成 `YYYY-MM-DD`。
+  - timestamp / B 站发布时间统一转成 `YYYY-MM-DD`。
+  - 不使用报告生成时间、当前系统时间、文件创建时间或 pipeline 运行时间。
+  - 缺失时显示 `未知`，并在 item_manifest metadata step 写入 `publish_date_missing=true`、`publish_date_source=null`。
+- 时长规则：
+  - 来源优先级：`duration`、`duration_seconds`、`duration_sec`、`duration_string`、`length`。
+  - 支持秒数、float 秒数、`MM:SS`、`HH:MM:SS`。
+  - 输出格式统一为 `45秒`、`12分03秒`、`44分58秒`、`1小时02分03秒`。
+  - 缺失时显示 `未知`，并在 item_manifest metadata step 写入 `duration_missing=true`、`duration_source=null`。
+- 关键实现：
+  - `video_pipeline.py` 新增 metadata 日期/时长规范化。
+  - local_extract 输入 metadata 使用规范化后的日期/时长。
+  - Codex 返回或 report cache 命中的 normalized_payload，在写入和渲染前都会用采集 metadata 覆盖 `date` / `duration`，避免模型把生成时间或非规范时长带入 HTML。
+  - `cli.py` 新增 `--open-output`；默认只打印路径。
+- 改动文件：
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/scripts/video_pipeline.py`
+  - `watchbrief_v5/tests/test_cli.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/tests/test_renderer.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/SKILL.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`
+  - 结果：`Ran 321 tests in 1.102s`，`OK (skipped=3)`。
+- strict install：
+  - 项目源目录：`python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`，`Summary: PASS`。
+  - Hermes 副本：`python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`，`Summary: PASS`。
+- Hermes 同步：
+  - 已用 `rsync -a --delete --exclude '.venv-mlx' watchbrief_v5/ /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/` 同步。
+  - 已抽查关键改动文件与 Hermes 副本一致。
+- 真实链路：
+  - 未跑真实视频链路。
+  - 未跑 YouTube 小列表。
+  - 未跑 B 站列表。
+  - 未触发 Qwen、Codex、MLX-Audio。
+
+## 2026-04-30 阶段十九 A：小红书单视频验收
+
+- 目标：
+  - 验证 WatchBrief 是否能处理小红书单视频链接。
+- 是否改代码：
+  - 否。
+- 输入：
+  - `https://www.xiaohongshu.com/explore/66ef836500000000250326ce?xsec_token=REDACTED`
+- 执行前只读判断：
+  - WatchBrief 当前没有专门的小红书 resolver / provider。
+  - 当前通用 resolver、subtitle_fetcher、audio_downloader 对非 YouTube / 非 B 站平台走 `yt-dlp` 通用路径。
+  - 只读 resolver 命令使用 Chrome 登录态，不下载媒体，成功识别为 `source_kind=single`。
+  - yt-dlp 原始 extractor：`XiaoHongShu`。
+  - 标题：`新手必备❗️❗️大疆Mic2不同设备的连接方式`。
+  - 作者：未拿到。
+  - 时长：`195.732` 秒；WatchBrief metadata 规范化为 `3分16秒`。
+  - 发布时间：未拿到，WatchBrief metadata 显示 `未知`，并记录 `publish_date_missing=true`、`publish_date_source=null`。
+  - 文案 / caption：yt-dlp 原始 metadata 有 description，长度 `105` 字符；当前 WatchBrief 主链路未把 description 当 transcript 使用。
+  - 视频内容来源：yt-dlp 原始 metadata 有直接视频来源，format 数 `2`，格式为 mp4，包含 h264 视频与 aac 音频。
+  - 平台字幕：`subtitles=[]`、`automatic_captions=[]`，无平台字幕。
+  - 是否需要登录态：本次按要求优先使用 Chrome；resolver 成功，未做 no-auth 对照，因此不能断言无登录态是否也可行。
+- 主 CLI：
+  - 按阶段十九 A 指定命令执行。
+  - 未传 `--open-output`。
+  - 未跑 YouTube。
+  - 未跑 B 站。
+  - 未跑小红书列表。
+  - 未改 renderer、Watch Order 模板、单视频 HTML 模板、schema / validator、score band、final_conclusion、tag/topic、watch_segments。
+- 结果：
+  - 失败。
+  - 平台：小红书 / xiaohongshu。
+  - 是否识别为小红书：只读 yt-dlp 原始 metadata 识别为 `XiaoHongShu`；WatchBrief resolver 标准化结果为通用 single。
+  - stage：`transcriber`。
+  - reason_code：`transcriber_unavailable`。
+  - error：`MLX-Audio missing`。
+  - completed_count：`0`。
+  - failed_count：`1`。
+- 阶段进入情况：
+  - resolver：完成，`cookies_source=browser:chrome`。
+  - metadata：完成，标题与时长已写入；作者未知，发布日期未知。
+  - subtitle_fetcher：`unavailable`，`reason_code=subtitle_unavailable`。
+  - audio_downloader：完成，method=`yt_dlp`，只生成必要音频 WAV。
+  - MLX-Audio / transcriber：进入后失败，原因是 MLX-Audio missing。
+  - Qwen：未进入。
+  - Codex：未进入。
+  - validator：未进入。
+  - renderer / HTML：未进入，未生成 HTML。
+- 产物与桌面：
+  - 失败 debug 保留到 `/Users/apple/Desktop/WatchBrief-Debug/66ef836500000000250326ce-20260430-103501`。
+  - debug 内有必要音频：`_work/01-新手必备❗️❗️大疆Mic2不同设备的连接方式/audio/66ef836500000000250326ce.wav`。
+  - 桌面根目录没有生成小红书单视频 HTML。
+  - 桌面根目录没有生成 `00-watch-order.html`。
+  - 没有自动打开浏览器。
+  - cookie 扫描：debug 与本轮 /tmp 只读 JSON 未命中常见 cookie 标记。
+- 结论：
+  - 这不是 resolver 失败，也不是小红书视频来源失败。
+  - 当前阻塞点是本机 MLX-Audio 不可用。
+  - 下一步建议：先安装或恢复 MLX-Audio，然后重跑同一个小红书单视频验收；如果仍不想安装 MLX-Audio，需要明确批准改验收方式或允许 Whisper，但这不符合本阶段“如需转写，使用 MLX-Audio”的标准。
+
+## 2026-04-30 - 上下文压缩记录：B 站窗口当前接手点
+
+- 用户要求：压缩上下文，写入工作日志。
+- 本窗口边界：
+  - 这是 B 站验收窗口，不处理 YouTube 线，不同步 YouTube 会话改动，除非用户明确要求。
+  - 配置类规则应收口到配置窗口；本窗口不主动处理配置改造。
+- 最近已完成的 B 站单视频正式任务：
+  - 视频：`https://www.bilibili.com/video/BV1P196BpEMw/?share_source=copy_web&vd_source=9023de14230b631862e602ea59243271`
+  - 标题：`人民币疯涨，为什么？背后有什么秘密？`
+  - 输出：`/Users/apple/Desktop/01-人民币疯涨，为什么？背后有什么秘密？.html`
+  - 结果：成功。
+  - 字幕：Bilibili provider 抓到字幕，765 segments，未进入 audio_downloader，未进入 MLX-Audio。
+  - Qwen：`qwen3-30b-a3b-instruct-2507-mlx`，local_extract 约 81 秒。
+  - 总耗时：约 152 秒。
+  - cookie 检查：未发现泄露。
+- 当前配置窗口/工作日志中已有关键规则：
+  - 阶段十八 I0 已记录：默认登录态策略为 `chrome -> safari`，显式 `--cookies-from-browser` 仍优先。
+  - 正式输出路径规则已记录：正式用户任务默认不写入 `~/Desktop/WatchBrief-Runs/`；`WatchBrief-Runs` 只用于 smoke、cache、阶段性测试、debug 和临时复验。
+  - 正式列表任务应输出到 `~/Desktop/watch-YYYYMMDD-xxxxxx/` 或安全播放列表名目录，第一层直接包含 `00-watch-order.html` 和每条视频 HTML。
+- 下一步建议：
+  - 重新做 B 站真正小列表验收。
+  - 注意：上次 B 站链接实际只展开了 1 条；下一轮要么先修 B 站 list 展开，要么直接给 WatchBrief 2 到 3 个 B 站视频链接组成小列表。
+  - 复验时不要跑 YouTube，不要跑小红书，不要触发无关长链路。
+- 本次动作：
+  - 仅写入 WORKLOG 上下文压缩记录。
+  - 未改代码。
+  - 未跑真实视频链路。
+  - 未触发 Qwen、Codex、MLX-Audio。
+
+## 2026-04-30 阶段十八 I2：B 站 list 展开 + 列表文件夹命名修正
+
+- 目标：
+  - 支持 `https://www.bilibili.com/list/ml...` 自动展开为 B 站列表。
+  - B 站 list URL 不再只处理 query 里的当前 `bvid`。
+  - 正式列表输出目录优先使用播放列表标题，不默认进入 `WatchBrief-Runs`。
+- 是否改代码：
+  - 是。
+- 当前为什么只跑 1 条：
+  - resolver 原本只有通用 `yt-dlp entries` 列表判断，没有 B 站 `list/ml...` 硬识别。
+  - 如果上游只返回当前视频 payload，旧逻辑会走单视频 normalize，把 query/current `bvid` 当作成功结果，导致 `total_count=1`。
+  - CLI 默认列表目录名也没有使用预解析出的 playlist title，而是从 URL/source 名推导。
+- B 站 list 展开方式：
+  - 对 `bilibili.com/list/ml...` 增加专门识别：`list_id=ml3621337310`。
+  - 优先使用 `yt-dlp --flat-playlist` 展开。
+  - 使用 B 站收藏列表 API `x/v3/fav/resource/list` 补全列表标题和每条视频标题。
+  - 如果 yt-dlp 没有返回有效列表，尝试 B 站列表 API / 页面 `__INITIAL_STATE__`。
+  - 如果仍失败，返回 `bilibili_list_expansion_failed`，不伪装成单视频成功。
+- 是否获取到列表标题：
+  - 是，标题：`纳瓦尔`。
+- 输出文件夹命名规则：
+  - list URL 正式任务默认使用解析到的 `playlist_title/list_title/collection_title/title`。
+  - 本次输出目录：`/Users/apple/Desktop/纳瓦尔-20260430-003115`。
+  - 显式 `--output-dir` 仍作为最终交付目录，不额外套二级文件夹。
+- dry run 展开结果：
+  - 命令：`python3 watchbrief_v5/scripts/resolver.py '<Bilibili list URL>' --output /tmp/watchbrief-bili-list-i2-resolved.json`
+  - `source_kind=list`
+  - `video_count=5`
+  - `expansion_provider=yt-dlp-flat-playlist`
+  - `metadata_provider=bilibili-fav-list-api`
+  - bvid 列表：
+    - `BV1GRRXYEEGn`
+    - `BV1yKZLYTEzV`
+    - `BV17VdgYgEZB`
+    - `BV1NAj8zDEaW`
+    - `BV1BfEgztErG`
+- 真实小列表验收：
+  - 已跑。
+  - 命令：`python3 watchbrief_v5/scripts/cli.py --source-url '<Bilibili list URL>' --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600`
+  - 结果：`WATCHBRIEF_I2_REAL_RC=0`
+  - 总耗时：453 秒。
+  - `completed_count=5`
+  - `failed_count=0`
+  - 输出目录：`/Users/apple/Desktop/纳瓦尔-20260430-003115`
+  - 第一层文件：
+    - `00-watch-order.html`
+    - `01-纳瓦尔最新访谈！真正拉开人生差距的，往往是这个能力！.html`
+    - `02-纳瓦尔：关于未来十年的三个想法.html`
+    - `03-想象一下，如果你能摆脱无尽的焦虑，你会有多高效。——纳瓦尔·拉维坎特.html`
+    - `04-纳瓦尔的财富自由公式：5个核心原则彻底改变你的人生.html`
+    - `05-[双语]如果你无法决定，答案就是“不”。-Naval-Ravikant.html`
+  - 第一层无二级文件夹。
+  - 未进入 `WatchBrief-Runs`。
+  - 未自动打开浏览器。
+  - 未发现 cookie 泄露。
+- 改动文件：
+  - `watchbrief_v5/scripts/acquisition_errors.py`
+  - `watchbrief_v5/scripts/resolver.py`
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/tests/test_acquisition_resolver.py`
+  - `watchbrief_v5/tests/test_cli.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `watchbrief_v5/SKILL.md`
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`
+  - 结果：`Ran 332 tests in 1.150s`，`OK (skipped=3)`。
+- strict install：
+  - 项目源目录：`python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`，`Summary: PASS`。
+  - Hermes 副本：`python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`，`Summary: PASS`。
+- Hermes 同步：
+  - 已用 `rsync -a --delete watchbrief_v5/ /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/` 同步。
+- 未做事项：
+  - 未跑 YouTube。
+  - 未跑小红书。
+  - 未改 renderer / Watch Order 模板 / 单视频 HTML 模板。
+  - 未改 schema / validator / score band / final_conclusion / tag/topic / watch_segments。
+- 下一步建议：
+  - 可以进入小红书单视频验收。
+
+## 2026-04-30 阶段十八 I3：正式列表输出文件夹命名规则修正
+
+- 目标：
+  - 正式列表任务拿到播放列表标题时，桌面输出目录不再默认追加日期时间戳。
+  - 只有标题缺失、重名冲突或显式测试路径时才使用 fallback 后缀。
+- 是否改代码：
+  - 是。
+- 旧命名规则：
+  - 列表默认输出：`~/Desktop/<任务名>-YYYYMMDD-HHMMSS/`。
+  - 例如 I2 输出为：`/Users/apple/Desktop/纳瓦尔-20260430-003115`。
+- 新命名规则：
+  - 有 `playlist_title/list_title/collection_title/title` 时，正式列表默认输出：`~/Desktop/<播放列表标题>/`。
+  - 如果目标路径已存在，不覆盖，按数字递增：`<标题>-2`、`<标题>-3`。
+  - 没有播放列表标题时 fallback：`~/Desktop/watch-YYYYMMDD-HHMMSS/`。
+  - 显式 `--output-dir` 仍完全尊重用户指定路径，且该目录就是最终交付目录。
+  - `WatchBrief-Runs` 仍只用于显式 smoke/cache/阶段测试/debug/临时复验路径。
+- `playlist_title=纳瓦尔` 时：
+  - 首选输出目录：`/Users/apple/Desktop/纳瓦尔`。
+  - 如果 `/Users/apple/Desktop/纳瓦尔` 已存在，则输出：`/Users/apple/Desktop/纳瓦尔-2`。
+- 是否影响单视频：
+  - 不影响。单视频仍默认输出到 Desktop 根目录的单个 HTML，不生成 `00-watch-order.html`。
+- 是否跑真实视频链路：
+  - 否。
+  - 未跑 YouTube。
+  - 未跑 B 站列表。
+  - 未跑小红书。
+  - 未触发 Qwen、Codex、MLX-Audio。
+- 改动文件：
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/tests/test_cli.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `watchbrief_v5/SKILL.md`
+  - `WORKLOG.md`
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`
+  - 结果：`Ran 333 tests in 0.887s`，`OK (skipped=3)`。
+- strict install：
+  - 项目源目录：`python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`，`Summary: PASS`。
+  - Hermes 副本：`python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`，`Summary: PASS`。
+- Hermes 同步：
+  - 已用 `rsync -a --delete watchbrief_v5/ /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/` 同步。
+- 下一步建议：
+  - 可以继续下一阶段验收；如果要重新跑 B 站列表，预期会优先输出到 `/Users/apple/Desktop/纳瓦尔/`，若该目录已存在则输出到 `/Users/apple/Desktop/纳瓦尔-2/`。
+
+## 2026-04-30 B 站单视频转写覆盖问题复现：BV1vR4y1o7xb
+
+- 目标：
+  - 单独重跑 `https://www.bilibili.com/video/BV1vR4y1o7xb`，复现或排除“转写只覆盖 00:00 - 00:11”的问题。
+  - 不改代码，不跑列表，不跑 YouTube / 小红书。
+- 是否改代码：
+  - 否。
+  - 仅写入 WORKLOG。
+- 执行前检查：
+  - 未发现被中断的 B 站列表 WatchBrief 进程残留。
+- 字幕探测：
+  - 独立 subtitle probe 曾返回 B 站 `ai-zh` / `bcc` 平台字幕。
+  - 但字幕探测结果不稳定：
+    - 第一次 probe：86 segments，时间约 `00:11 - 02:50`，内容疑似错配。
+    - 第二次 probe：74 segments，时间约 `00:00 - 05:36`，超出视频真实时长 `3分06秒`，也疑似错配。
+  - 本次 WatchBrief 主 pipeline 的实际 `item_manifest` 记录：`subtitle_fetcher status=unavailable`，`reason_code=no_subtitle_available`。
+  - 因此本次完整链路实际未使用 B 站平台字幕。
+- 完整链路命令：
+  - 输出目录：`/tmp/watchbrief-bv1vr4-output`
+  - debug 目录：`/tmp/watchbrief-bv1vr4-debug`
+  - 使用默认登录态策略：Chrome -> Safari。
+  - 显式 `--force-reanalysis`，避免 report cache 干扰复现。
+- 结果：
+  - HTML 已生成：`/tmp/watchbrief-bv1vr4-output/01-用上这个Notion月计划，学习工作井井有条，自律又高效！.html`
+  - 总耗时：120 秒。
+  - 未自动打开浏览器。
+  - 未发现 cookie 泄露。
+- transcript 来源：
+  - `transcription_json`
+  - `transcriber=mlx_audio`
+  - `audio_downloader status=completed`
+  - `audio_method=yt_dlp`
+  - `transcriber status=completed`
+- transcript 覆盖情况：
+  - 视频总时长：`3分06秒`，约 `186` 秒。
+  - segment 数：98。
+  - plain_text 字数：1255。
+  - 第一条：`00:00 - 00:01`，`这是我的阅读计划`。
+  - 最后一条：`03:04 - 03:06`，`希望这个模板可以助理你的生活和学习`。
+  - transcript 覆盖范围：`00:00 - 03:06`。
+  - transcript 覆盖率：`1.0`。
+  - 结论：本次没有复现“只覆盖 00:00 - 00:11”。
+  - 本次不是只识别到片头歌词。
+- transcript 质量门槛：
+  - 当前代码已有 `transcript_quality` step。
+  - 当前阈值：`coverage_threshold=0.3`。
+  - 本次：`transcript_quality_passed=true`，`transcript_quality_reason=coverage_ok`。
+  - 如果转写真的只覆盖 `00:00 - 00:11`，以 187 秒视频计算覆盖率约 `0.0588`，应触发 `transcript_coverage_too_low`，不应继续生成正常 HTML。
+- 是否伪完成：
+  - 本次不应判定为伪完成，因为转写覆盖完整。
+  - 如果历史运行在只覆盖 `00:00 - 00:11` 的情况下仍生成 HTML，应判定为伪完成；需要核查当时是否未同步当前 `transcript_quality` gate，或是否该步骤没有进入 item_manifest。
+- 下一步建议：
+  - 不需要新增同名 `transcript_coverage_too_low` 硬门槛，因为当前代码已经有。
+  - 更值得追加检查的是 B 站平台字幕错配/超长问题：平台 BCC 的最后时间如果明显超过视频总时长，或文本与标题主题明显错配，应避免优先使用该字幕并转入 audio fallback。
+
+## 2026-04-30 阶段十八 I4-R：Notion 两视频列表复验
+
+- 目标：
+  - 用正式列表模式重跑 Notion 两视频，验证第二条不再生成“转写覆盖不足但仍完成”的伪完成 HTML。
+  - 不使用 `--diagnostic-run`。
+  - 不改代码。
+- 输入 source-file：
+  - `/tmp/watchbrief-notion-i4r-urls.txt`
+  - `https://www.bilibili.com/video/BV1YT4y1Q7xx`
+  - `https://www.bilibili.com/video/BV1vR4y1o7xb`
+- 命令：
+  - `python3 watchbrief_v5/scripts/cli.py --source-file /tmp/watchbrief-notion-i4r-urls.txt --debug-dir /tmp/watchbrief-notion-i4r-debug --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600 --force-reanalysis`
+  - 未传 `--diagnostic-run`。
+  - 未传 `--output-dir`，使用正式默认输出路径。
+- 运行结果：
+  - 运行耗时：241 秒。
+  - 输入视频数：2。
+  - `completed_count=2`。
+  - `failed_count=0`。
+  - 输出目录：`/Users/apple/Desktop/watch-20260430-125208`。
+  - 生成 `00-watch-order.html`：是。
+  - 第一条 HTML：`/Users/apple/Desktop/watch-20260430-125208/01-Video-01.html`。
+  - 第二条 HTML：`/Users/apple/Desktop/watch-20260430-125208/02-Video-02.html`。
+  - 桌面根目录未散落 Notion/Video 单视频 HTML。
+  - 未发现 cookie 泄露。
+- 第一条：
+  - `subtitle_fetcher=completed`。
+  - 字幕：`ai-zh / bcc`。
+  - `audio_downloader=skipped`。
+  - transcript segment 数：253。
+  - transcript plain_text 字数：2849。
+  - transcript 范围：`00:01 - 09:55`。
+  - local_extract：已进入并完成。
+  - Codex：已进入，生成 `codex_raw_response.txt` / `codex_extracted.json` / `codex_adapted.json`。
+  - renderer：已进入并完成。
+- 第二条：
+  - `subtitle_fetcher=unavailable`。
+  - reason：`no_subtitle_available`。
+  - `audio_downloader=completed`。
+  - `transcriber=completed`，来源 `mlx_audio` / `transcription_json`。
+  - transcript segment 数：98。
+  - transcript plain_text 字数：1158。
+  - transcript 范围：`00:00 - 03:06`。
+  - B 站 API 视频总时长：187 秒。
+  - 以 B 站 API 时长计算覆盖率：约 `186 / 187 = 0.995`。
+  - item_manifest 中 source-file metadata 未携带时长，因此 `video_duration_seconds=null`，没有写出 ratio 字段；但 transcript_quality step 为 `completed`，reason=`coverage_ok`。
+  - 第二条没有复现覆盖不足。
+  - 第二条进入 Qwen：是，`local_extract=completed`。
+  - 第二条进入 Codex：是，Codex 输出文件已生成。
+  - 第二条进入 renderer：是，`renderer=completed`。
+- 是否符合预期：
+  - 符合“不再生成伪完成 HTML”的预期：第二条这次并非覆盖不足，转写覆盖完整，因此生成 HTML 不属于伪完成。
+  - 没有触发 `transcript_coverage_too_low`，因为本次 transcript 不低覆盖。
+- 未做事项：
+  - 未跑 YouTube。
+  - 未跑小红书。
+  - 未自动打开浏览器。
+  - 未保存、打印、展示 cookies。
+  - 未改代码。
+
+## 2026-04-30 阶段十八 I4-R：Notion 两视频列表正式复验
+
+- 目标：
+  - 对 Notion 两视频 source-file 做正式复验。
+  - 验证低覆盖 transcript 不被放行；本次如果 transcript 覆盖不足，应停在 `transcript_quality`，不得进入 Qwen / Codex / renderer，不得生成单视频 HTML。
+- 是否改代码：
+  - 否。
+  - 仅写入本 WORKLOG 小节。
+- 范围：
+  - 只跑 B 站 Notion 两视频 source-file。
+  - 未跑 YouTube。
+  - 未跑小红书。
+  - 未使用 `--diagnostic-run`。
+  - 未传 `--output-dir`，使用正式默认输出路径。
+  - 未自动打开浏览器。
+  - 未保存、打印、展示 cookies。
+- 输入 source-file：
+  - `/tmp/watchbrief-notion-i4r-urls.txt`
+  - `https://www.bilibili.com/video/BV1YT4y1Q7xx`
+  - `https://www.bilibili.com/video/BV1vR4y1o7xb`
+- 命令：
+  - `python3 watchbrief_v5/scripts/cli.py --source-file /tmp/watchbrief-notion-i4r-urls.txt --debug-dir /tmp/watchbrief-notion-i4r-formal-debug --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600 --force-reanalysis`
+  - debug 目录只用于读取验收字段；正式输出目录仍由 CLI 默认规则生成。
+- 结果汇总：
+  - 输入视频数：2。
+  - `completed_count=2`。
+  - `failed_count=0`。
+  - 输出目录：`/Users/apple/Desktop/watch-20260430-163844`。
+  - `00-watch-order.html`：已生成。
+  - 桌面根目录污染检查：未发现 Notion / Video-01 / Video-02 单视频 HTML 散落 Desktop 根目录。
+  - cookie 泄露检查：未发现。
+  - 总耗时：146 秒。
+- 每条视频状态：
+  - 第一条：
+    - 标题：`全世界在抄的软件，到底怎么用？Notion十分钟入门指南。`
+    - HTML：`/Users/apple/Desktop/watch-20260430-163844/01-全世界在抄的软件，到底怎么用？Notion十分钟入门指南。.html`
+    - stage：`completed`
+    - reason_code：空
+    - subtitle：`ai-zh / bcc`
+    - audio_downloader：`skipped`
+    - transcript_coverage_ratio：`1.0`
+    - video_duration_seconds：`594.0`
+    - transcript 范围：`00:01 - 09:55`
+    - segment 数：253
+    - plain_text 字数：2849
+    - 进入 Qwen：是
+    - 进入 Codex：是
+    - 进入 renderer：是
+  - 第二条：
+    - 标题：`用上这个Notion月计划，学习工作井井有条，自律又高效！`
+    - HTML：`/Users/apple/Desktop/watch-20260430-163844/02-用上这个Notion月计划，学习工作井井有条，自律又高效！.html`
+    - stage：`completed`
+    - reason_code：空
+    - subtitle：`no_subtitle_available`
+    - audio_downloader：`completed`
+    - transcriber：`completed`
+    - transcript 来源：`mlx_audio / transcription_json`
+    - transcript_coverage_ratio：`1.0`
+    - video_duration_seconds：`186.0`
+    - transcript 范围：`00:00 - 03:06`
+    - segment 数：98
+    - plain_text 字数：1158
+    - 进入 Qwen：是
+    - 进入 Codex：是
+    - 进入 renderer：是
+- 是否符合预期：
+  - 符合本次正式复验预期。
+  - 第二条这次不是低覆盖 transcript；`video_duration_seconds=186.0`，`transcript_coverage_ratio=1.0`，所以进入 Qwen / Codex / renderer 并生成 HTML 不属于伪完成。
+  - 本次没有实际触发 `transcript_coverage_too_low`，因此本次运行没有产生“低覆盖被拦截”的失败样本；但也没有放行低覆盖 transcript。
+
+## 2026-04-30 工作日志补记：阶段十九 A 已落盘
+
+- 用户要求：
+  - 写入阶段十九 A 小红书单视频真实链路验收结果。
+- 状态：
+  - 详细记录已写入本文件的 `2026-04-30 阶段十九 A：小红书单视频验收` 小节。
+  - 结论：小红书 resolver / metadata / audio_downloader 通过；无平台字幕；音频已下载为必要 WAV；失败点是 `transcriber`，`reason_code=transcriber_unavailable`，错误为 `MLX-Audio missing`。
+  - 未进入 Qwen、Codex、validator、renderer；未生成 HTML。
+  - 未改代码；未跑 YouTube；未跑 B 站；未跑小红书列表；未自动打开浏览器；未发现 cookie 泄露。
+  - 下一步：先恢复或安装 MLX-Audio，再重跑同一个小红书单视频验收。
+
+## 2026-04-30 阶段十九 A1：MLX-Audio 环境路径诊断与修复
+
+- 目标：
+  - 诊断阶段十九 A 的 `transcriber_unavailable: MLX-Audio missing` 是否真是未安装，还是 Python 环境路径错误。
+- 只读诊断：
+  - 当前命令使用的 Python：`/usr/bin/python3`。
+  - 当前 Python 版本：`Python 3.9.6`。
+  - 项目源目录 `watchbrief_v5/.venv-mlx`：不存在。
+  - Hermes WatchBrief 副本 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/.venv-mlx`：不存在。
+  - 项目根目录 `/Users/apple/Documents/New project/v1deodownload/.venv-mlx`：存在。
+  - 项目根 `.venv-mlx` Python：`Python 3.14.3`。
+  - 项目根 `.venv-mlx` 已安装 `mlx-audio 0.4.2`，`import mlx_audio` 成功。
+  - Hermes 兼容 skill `/Users/apple/.hermes/skills/openclaw-imports/v1deodownload/.venv-mlx`：存在，并已安装 `mlx-audio 0.4.2`。
+- 根因判断：
+  - 属于 C + E：
+    - `mlx-audio` 存在，但 WatchBrief transcriber 没有查项目根目录 `.venv-mlx`。
+    - 同步/安装结构里没有 `watchbrief_v5/.venv-mlx`，实际环境在项目根目录和 Hermes `v1deodownload/.venv-mlx`。
+  - 不是系统缺 MLX-Audio。
+  - 不需要把 MLX-Audio 盲目重装到系统 Python。
+- 修复：
+  - `transcriber.py` 的 MLX-Audio Python 候选路径新增：
+    - 项目根目录 `.venv-mlx/bin/python`。
+    - Hermes `v1deodownload/.venv-mlx/bin/python`。
+  - `resolve_mlx_audio_python()` 改为选择第一个能 `import mlx_audio` 的 Python，而不是只选第一个存在的 Python。
+  - MLX-Audio 不可用时，错误信息不再笼统写 `MLX-Audio missing`，而是列出已检查的 Python 候选路径及状态。
+  - 保留 `WATCHBRIEF_MLX_AUDIO_PYTHON` 显式覆盖优先级。
+- 修复后验证：
+  - 项目源目录当前可解析 MLX-Audio Python：
+    - `/Users/apple/Documents/New project/v1deodownload/.venv-mlx/bin/python`
+  - Hermes WatchBrief 副本当前可解析 MLX-Audio Python：
+    - `/Users/apple/.hermes/skills/openclaw-imports/v1deodownload/.venv-mlx/bin/python`
+  - 两处 `has_mlx_audio=True`。
+- 是否改代码：
+  - 是。
+- 改动文件：
+  - `watchbrief_v5/scripts/transcriber.py`
+  - `watchbrief_v5/tests/test_acquisition_transcriber.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/SKILL.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `WORKLOG.md`
+- 测试：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_acquisition_transcriber.py'`
+  - 结果：`Ran 12 tests`，`OK`。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`
+  - 结果：`Ran 337 tests in 1.205s`，`OK (skipped=3)`。
+- strict install：
+  - 项目源目录：`python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`，`Summary: PASS`。
+  - Hermes 副本：`python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`，`Summary: PASS`。
+- Hermes 同步：
+  - 已用 `rsync -a --delete --exclude '.venv-mlx' watchbrief_v5/ /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/` 同步。
+  - 已确认关键文件与 Hermes 副本一致。
+- 未做事项：
+  - 未重装 MLX-Audio。
+  - 未跑 YouTube。
+  - 未跑 B 站。
+  - 未跑小红书列表。
+  - 未触发 Qwen / Codex。
+  - 未重跑小红书单视频完整链路。
+- 下一步：
+  - 可以重跑阶段十九 A 的小红书单视频验收；预期会越过 `MLX-Audio missing`，进入 MLX-Audio 转写。
+
+
+## 2026-04-30 阶段十九 A2：小红书单视频 MLX-Audio 修复后完整复验
+
+- 时间：`2026-04-30 20:22:38 CST`
+- 目标：
+  - 重跑阶段十九 A 失败的小红书单视频，确认 A1 修复后能越过 `MLX-Audio missing`，并生成完整 HTML。
+- 范围：
+  - 只跑小红书单视频。
+  - 未跑 YouTube。
+  - 未跑 B 站。
+  - 未跑小红书列表。
+  - 未改代码。
+  - 未自动打开浏览器。
+- 输入：
+  - 视频标题：`新手必备❗️❗️大疆Mic2不同设备的连接方式`
+  - 平台：小红书 / xiaohongshu
+  - 时长：`3分16秒`
+- 命令：
+  - `python3 watchbrief_v5/scripts/cli.py --source-url '<xiaohongshu-url>' --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600 --force-reanalysis --keep-debug-artifacts --debug-dir /tmp/watchbrief_xhs_a1_rerun_debug`
+- 结果：
+  - 成功。
+  - `manifest_path=/tmp/watchbrief_xhs_a1_rerun_debug/manifest.json`
+  - `source_kind=single`
+  - `total_count=1`
+  - `completed_count=1`
+  - `failed_count=0`
+  - HTML：`/Users/apple/Desktop/01-新手必备❗️❗️大疆Mic2不同设备的连接方式.html`
+  - normalized payload：`/tmp/watchbrief_xhs_a1_rerun_debug/payloads/01-新手必备❗️❗️大疆Mic2不同设备的连接方式/normalized_payload.json`
+- 链路确认：
+  - `resolver:completed`
+  - `metadata:completed`
+  - `subtitle_fetcher:unavailable`，`reason_code=subtitle_unavailable`
+  - `audio_downloader:completed`，`method=yt_dlp`
+  - `transcriber:completed`，`transcriber=mlx_audio`
+  - `transcript_quality:completed`
+  - `local_extract:completed`
+  - `codex_review_request:completed`
+  - `validator:completed`
+  - `renderer:completed`
+- MLX-Audio 转写质量：
+  - `raw_segment_count=84`
+  - `invalid_segment_count=2`
+  - `dropped_segment_count=1`
+  - `repaired_segment_count=1`
+  - `usable_segment_count=83`
+  - `video_duration_seconds=196.0`
+  - `transcript_first_start=0.0`
+  - `transcript_last_end=191.0`
+  - `transcript_coverage_ratio=0.9744897959183674`
+  - `transcript_segment_count=83`
+  - `transcript_plain_text_char_count=1065`
+  - `transcript_source=transcription_json`
+  - `transcript_quality_reason=coverage_ok`
+- 模型与报告：
+  - Qwen：`qwen3-30b-a3b-instruct-2507-mlx`
+  - Codex request：`gpt-5.4`
+  - `replacement_score=5.7`
+  - `tag=只建议跳看`
+  - primary 片段：`02:16 | 02:55`
+  - optional 片段：`01:27 | 01:44`
+  - report cache 已写入，`cache_key=5b49d65a8739d760917ca4bcae2a8ea04741959a55f6eb83d3496dbe44c8c478`
+- cookie 检查：
+  - 在 debug 目录和最终 HTML 中检索 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`、`Set-Cookie`、`web_session`、`a1=`、`webId=`，无命中。
+  - 原始小红书 URL 自带 `xsec_token` 会作为视频 URL 出现在 manifest/payload/HTML 中；这不是浏览器 Cookie。
+- 结论：
+  - 阶段十九 A 的阻断点已闭环。
+  - 小红书单视频已确认能走 `resolver -> audio_downloader -> MLX-Audio -> transcript_quality -> Qwen -> Codex -> validator -> renderer -> HTML`。
+
+## 2026-04-30
+
+- 阶段十八 I4-D：第二条 Notion 视频 transcript 丢失根因只读诊断。
+  - 是否改代码：否。本阶段只读诊断；未重跑完整列表，未跑 YouTube/小红书，未触发 Qwen、Codex 或 MLX-Audio，未下载音频，未删除现有输出，未打印/保存/展示 cookies。
+  - 问题视频标题：`用上这个Notion月计划，学习工作井井有条，自律又高效！`。
+  - 定位结果：HTML 与 B 站 metadata/API 确认 `bvid=BV1vR4y1o7xb`、`aid=347960845`、`cid=27086488540`、`source_url=https://www.bilibili.com/video/BV1vR4y1o7xb`、频道 `闪电飞船`、视频总时长 `187s`（HTML 展示 `3分07秒`，yt-dlp duration 为 `186.922s`）。
+  - 已有 artifact 状态：本次正式成功交付后 CLI 输出 `debug_artifacts: removed after successful delivery`，成功 item 的 `manifest/item_manifest/transcript/material/BCC` 均未保留；当前能定位到的正式产物是 `/Users/apple/Desktop/Notion/02-用上这个Notion月计划，学习工作井井有条，自律又高效！.html`，以及 report cache `/Users/apple/.watchbrief/cache/reports/344bc718152081458965d007a59f5fe7e084f5bd942f483896edecad30efc985.json`。
+  - cache/payload 复核：cache identity 的 `transcript_hash=5f2943b18ca5dd25996a26b51c46988919e68ad54b7c5a4256fcdc91d1178724`，payload 写明 `replacement_score=0.4`、`tag=不推荐观看`、`content_caveat=转写质量很差，当前证据只覆盖 00:00 | 00:11 的背景歌词...`、`confidence_note=转写仅覆盖 00:00 | 00:11 的两句歌词...`。
+  - transcript 覆盖统计：从 payload/HTML 可确认首尾时间为 `00:00 - 00:11`，覆盖时长约 `11s`；以 metadata 总时长 `187s` 计算，覆盖率约 `5.9%`。成功 debug 已清理，无法从现有 artifact 精确还原 `subtitle_segment_count`、`transcript plain_text 字数` 或原始 transcript segments；payload 只保留了模型判断，不保留完整 transcript。
+  - 字幕列表只读探测：分别用无 cookies 与 Chrome cookies 调 B 站 `x/web-interface/view`、`x/player/wbi/v2`、`x/player/v2`，均返回 `code=0`、`need_login_subtitle=false`、`track_count=0`、`tracks=[]`；`yt-dlp --cookies-from-browser chrome --skip-download --dump-single-json` 也显示 `subtitles={}`、`automatic_captions={}`。
+  - BCC JSON 检查：当前平台没有返回任何 BCC subtitle track，因此没有可下载的 BCC URL；本轮只读 provider 探测报 `subtitle_fetcher:no_subtitle_available: Bilibili video has no available subtitle tracks`。所以不存在可统计的 BCC body；不是 BCC body 只有 11 秒，也不是 BCC parser 丢掉后半段。
+  - 分类判断：A（B 站字幕源本身只有 11 秒）否，平台当前是无字幕轨；B（Bilibili provider 抓取不完整）否，provider 与 API/yt-dlp 结果一致；C（BCC JSON parser 丢失后半段）否，无 BCC；D（选错字幕轨）否，无其他字幕轨；E（字幕不完整但没进入 audio fallback）否，本视频当前无字幕，按代码路径应进入 audio fallback，且正式报告中 00:00-00:11 的 transcript 更像 audio fallback/ASR 结果；F（质量门槛缺失，renderer/validator 没拦住）是。
+  - 根因判断：第二条正式 HTML 的直接根因不是 B 站字幕轨/Provider/BCC parser/选轨问题，而是“平台无字幕 → 进入音频转写 fallback 后得到极低覆盖 transcript（只到 11 秒）→ pipeline 没有 transcript 覆盖率硬门槛 → Qwen/Codex/validator/renderer 仍把低证据 payload 当正式报告输出”。ASR 为什么只产出 11 秒，因成功 debug/work 已清理且本阶段禁止触发 MLX-Audio，当前不能进一步从 artifact 证明；需要下一阶段保留单条 debug 或做单条 audio fallback 对照。
+  - 是否应该进入 audio fallback：是；当前平台无字幕时应进入 audio fallback，代码路径也会这么做。
+  - 是否应该标记 `transcript_coverage_too_low`：是。对 `11s/187s=5.9%` 的 transcript，应在 local_extract 前或 transcript_material 适配后直接拦截，不应进入正式报告。
+  - 下一步修复建议：先新增只读/单测覆盖 transcript coverage 质量门；在 `transcript_source_adapter` 或 `video_pipeline` 的 `local_input` 形成后计算 `last_segment_end / metadata.duration`，低于阈值（例如 `< 60%` 或短视频最低 `< 80%`，具体阈值另定）时返回 acquisition failure `transcript_coverage_too_low`，并保留 debug；同时成功交付时可考虑保留最小 coverage 摘要到 item_manifest/cache identity，避免成功清理后无法追溯。
+
+## 2026-04-30 - 阶段十八 I4-F：transcript 覆盖率硬门槛
+
+- 目标：修复 transcript 覆盖率明显不足仍进入 Qwen / Codex / renderer 并生成正式 HTML 的问题。
+- 是否改代码：是。
+- 改动文件：
+  - `watchbrief_v5/scripts/transcript_quality.py`
+  - `watchbrief_v5/scripts/video_pipeline.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/SKILL.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `WORKLOG.md`
+- coverage gate 位置：
+  - `video_pipeline.py` 中 `transcript_material_to_local_extract_input()` 之后。
+  - `local_extract` / Qwen 调用之前。
+- 覆盖率计算：
+  - `video_duration_seconds`
+  - `transcript_first_start`
+  - `transcript_last_end`
+  - `transcript_covered_duration`
+  - `transcript_coverage_ratio = transcript_last_end / video_duration_seconds`
+  - `transcript_segment_count`
+  - `transcript_plain_text_char_count`
+  - `transcript_source`
+  - `transcript_quality_reason`
+- 阈值：
+  - 视频时长 `>= 60s` 且 `transcript_coverage_ratio < 0.30`，失败为 `transcript_coverage_too_low`。
+  - 视频时长 `>= 60s` 且 transcript 段数或正文字符数极低，也失败为同一 reason_code。
+  - 视频时长缺失时，不按覆盖率硬判，只用 segment_count / plain_text_char_count 弱判断。
+  - 小于 60 秒的视频不因覆盖率低于 30% 被误杀。
+- 对 `187s / 11s` 案例判定：
+  - `transcript_coverage_ratio = 11 / 187 ≈ 0.059`。
+  - 判定 `stage=transcript_quality`、`reason_code=transcript_coverage_too_low`、`transcript_quality_reason=coverage_below_threshold`。
+- 失败行为：
+  - 不进入 local_extract / Qwen。
+  - 不进入 Codex review。
+  - 不进入 renderer。
+  - 不生成正式单视频 HTML。
+  - 列表任务中该条计入 `failed_count`，Watch Order 以失败项显示 `transcript_quality` 失败。
+  - debug / item_manifest 保留 coverage 诊断字段，不保存、打印或展示 cookies。
+- 测试覆盖：
+  - `187s` 视频 transcript 只到 `11s` 会失败。
+  - coverage 低时不调用 local_extract、Codex review、renderer。
+  - 列表中 coverage 低的条目计入 failed_count，仍生成 Watch Order 失败项。
+  - coverage 足够时正常通过。
+  - 小于 60 秒视频不误杀。
+  - duration 缺失时用 segment_count / plain_text_char_count 弱判断。
+  - 既有 YouTube 字幕、YouTube transcript fallback、B 站字幕、ASR/audio fallback 路径继续通过已有测试。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：343 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本同步：已同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`，未同步 `__pycache__` / `*.pyc`。
+- Codex skill 副本同步：已同步 `/Users/apple/.codex/skills/watchbrief_v5/`，避免配置窗口继续读旧规则。
+- 未做事项：
+  - 未跑真实视频链路。
+  - 未跑真实长列表。
+  - 未跑 YouTube。
+  - 未跑小红书。
+  - 未触发 Qwen、Codex 或 MLX-Audio。
+  - 未改 renderer、Watch Order 模板、单视频 HTML 模板、schema、validator、score band、`final_conclusion`、`tag/topic`、`watch_segments`。
+  - 未删除已有 HTML。
+- 下一步：需要重跑 Notion 两视频列表验证，确认第二条不再生成正式 HTML，而是以 `transcript_coverage_too_low` 进入失败项。
+
+## 2026-04-30
+
+- 阶段十八 I4-D 追加复现：单独重跑 B 站视频 `BV1vR4y1o7xb`，目标是复现 transcript 覆盖异常，不做正式验收。
+  - 是否改代码：否。未跑列表，未跑 YouTube，未跑小红书，未自动打开浏览器，未保存/打印/展示 cookies。
+  - 命令范围：单视频 `https://www.bilibili.com/video/BV1vR4y1o7xb`；显式输出到 `/Users/apple/Desktop/WatchBrief-Runs/i4d-notion2-repro-20260430-114751/`；debug 保留到 `/Users/apple/Desktop/WatchBrief-Runs/i4d-notion2-repro-20260430-114751/debug/`；使用默认 B 站登录态策略 Chrome -> Safari；`--force-reanalysis` 避免复用旧 report cache。
+  - 前置只读字幕探测：用 Chrome 与 Safari 分别探测 B 站 `x/player/wbi/v2` 和 `x/player/v2`，当时均返回 `track_count=0`、`tracks=[]`、`need_login_subtitle=false`。
+  - 实际 pipeline 结果：本次完整单视频 run 中 subtitle_fetcher 又从 `player-v2` 选中了 1 条平台字幕轨：`selected_subtitle_lang=ai-zh`、`selected_subtitle_format=bcc`、`selected_subtitle_kind=unknown`、`source_path=.../BV1vR4y1o7xb.27086488540.ai-zh.bcc.json`、`segment_count=1257`、`char_count=14407`。这说明 B 站字幕 API 对这条视频的返回存在不稳定/条件差异；实际 run 不是无字幕转音频，而是命中了 AI 字幕轨。
+  - 是否进入 audio_downloader：否，`audio_downloader` step 为 `skipped`，原因 `subtitle_available`。
+  - 是否进入 MLX-Audio：否。
+  - transcript 来源：`subtitle_bcc` / `bilibili_content_provider` / `ai-zh` BCC。
+  - transcript 统计：local_extract 记录 `segment_count=1257`、`transcript_char_count=14407`；从 `local_extract.json` 重算 plain text join 字数约 `15663`。第一条 segment 为 `00:33 | 00:36 Then is someone is legious canon`；最后一条 segment 为 `54:33 | 54:36 看看第二把比赛鹿死谁手`。视频 metadata 总时长为 `3分06秒` / `186s`。
+  - 覆盖情况：本次没有复现旧的 `00:00 - 00:11` 片头歌词截断；相反，字幕时间轴严重超过视频时长，`00:33 -> 54:36`，uncapped 覆盖时长 `3243s`，约为视频时长 `17.4x`。当前 transcript_quality step 只记录了 `transcript_coverage_ratio=1.0`、`coverage_ok`，因此没有识别“字幕时间轴远超视频时长/字幕疑似错配”。
+  - 内容错配证据：normalized payload 的主题变成 `T1 对阵 Gen.G 首局：靠大龙奇袭和转线运营完成翻盘`，watch segments 为 `41:43 | 45:10`、`47:00 | 48:30`，明显超过 3 分钟视频时长；local_extract 首尾文本也指向英雄联盟比赛解说，与 Notion 月计划视频标题无关。
+  - 是否只识别到片头歌词：否。本次不是只识别片头歌词，而是选中了/获得了一条明显属于其他长视频或错误时间轴的 AI 字幕。
+  - 是否生成 HTML：是，生成 `/Users/apple/Desktop/WatchBrief-Runs/i4d-notion2-repro-20260430-114751/01-用上这个Notion月计划，学习工作井井有条，自律又高效！.html`。
+  - 是否应判定为伪完成：是。虽然 pipeline 标记 `completed_count=1`、validator/renderer completed，但 transcript 与视频时长和标题严重不一致，应判定为伪完成，不应作为正式 WatchBrief 成功。
+  - 是否建议加 `transcript_coverage_too_low` 硬门槛：是，但仅有 low coverage 不够；还必须增加 `transcript_duration_exceeds_video_duration` / `subtitle_timeline_mismatch` 类硬门槛，例如：最后字幕时间超过视频时长合理容差（如 10-20 秒或 1.2x）即失败，不得进入 Qwen/Codex/renderer。
+  - 根因更新：本次单条复现没有证明 MLX-Audio 只产出 11 秒；它暴露出另一个更严重的问题：B 站 AI 字幕轨可能与视频错配或时间轴异常，而当前质量门只把超长覆盖 cap 成 1.0，导致错误字幕通过，生成伪完成 HTML。下一步修复应同时覆盖“过低覆盖”和“时间轴超过视频时长/内容错配”的硬门槛。
+
+## 2026-04-30 - 阶段十八 I4-E：诊断/复现输出路径收口
+
+- 目标：诊断、复现、debug、查问题任务不再默认污染正式桌面交付位置；如生成 HTML，只作为 diagnostic artifact。
+- 是否改代码：是。
+- 改动文件：
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/tests/test_cli.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/SKILL.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `WORKLOG.md`
+- 新增 CLI 模式：
+  - `--diagnostic-run`
+  - `--repro-run`，作为 `--diagnostic-run` 的别名。
+- 诊断任务默认输出规则：
+  - 未显式传 `--output-dir` 时，诊断/复现输出默认进入 `~/Desktop/WatchBrief-Runs/<任务名或时间戳>/`。
+  - manifest、payload、debug 默认进入该目录的 `_debug/`。
+  - 如果诊断运行生成 HTML，CLI 打印为 `Diagnostic HTML:` 或 `Diagnostic Watch Order:`，并在 manifest 写入 `run_mode=diagnostic`、`artifact_class=diagnostic`、`diagnostic_run=true`。
+  - 诊断 HTML 不算正式交付。
+- 显式输出目录规则：
+  - 诊断任务显式传 `--output-dir` 时尊重该目录。
+  - 该目录仍是最终诊断目录，不额外套二级 HTML 文件夹。
+  - 本 WORKLOG 明确该类输出属于诊断输出，不是正式输出。
+- 正式任务影响：
+  - 未传 `--diagnostic-run` / `--repro-run` 时，正式单视频仍默认输出到 Desktop 单 HTML。
+  - 正式列表仍默认输出到 Desktop 主任务文件夹。
+  - 正式任务仍不默认写入 `WatchBrief-Runs`。
+- 测试覆盖：
+  - 正式单视频默认输出桌面正式位置。
+  - 正式列表默认输出桌面主任务文件夹。
+  - 诊断/复现默认输出到 `WatchBrief-Runs`。
+  - 诊断 HTML 标记为 diagnostic artifact。
+  - 诊断显式 `--output-dir` 仍被当作最终诊断目录，不再嵌套。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：346 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Hermes 副本同步：已同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`，未同步 `__pycache__` / `*.pyc` / `.pytest_cache` / `.venv-mlx`。
+- Codex skill 副本同步：已同步 `/Users/apple/.codex/skills/watchbrief_v5/`，避免配置窗口继续读旧输出规则。
+- 未做事项：
+  - 未跑真实视频链路。
+  - 未跑 YouTube / B 站 / 小红书。
+  - 未触发 Qwen / Codex / MLX。
+  - 未删除用户桌面已有文件。
+  - 未改 renderer、schema、validator 或 HTML 模板。
+  - 未保存、打印、展示 cookies。
+
+
+## 2026-04-30 阶段十八 I4-R：Notion 两视频列表正式复验
+
+- 时间：`2026-04-30 12:40:50 CST`
+- 目标：正式列表复验 Notion 两视频，验证第二条低覆盖 transcript 不再生成伪完成 HTML。
+- 约束执行：未改代码；未跑 YouTube；未跑小红书；未自动打开浏览器；未保存/打印/展示 cookies；使用 B 站默认登录态策略 Chrome -> Safari；未使用 `--diagnostic-run`；正式输出仍走桌面默认目录。
+- source-file：`/tmp/watchbrief_i4r_notion_urls.txt`
+  - `https://www.bilibili.com/video/BV1YT4y1Q7xx`
+  - `https://www.bilibili.com/video/BV1vR4y1o7xb`
+- 第一次正式默认 run：
+  - 命令未传 `--diagnostic-run`，未传 `--output-dir`，使用 `--force-reanalysis`。
+  - 输出目录：`/Users/apple/Desktop/watch-20260430-122908/`
+  - CLI 输出显示 `completed` 两条，并生成 `00-watch-order.html`、`01-Video-01.html`、`02-Video-02.html`。
+  - 因成功后 debug 被清理，无法从该 run 读取 item_manifest；该结果已经显示第二条仍可能生成正式 HTML。
+- 第二次正式复验（为保留 item_manifest 加 `--keep-debug-artifacts --debug-dir /tmp/watchbrief_i4r_debug_20260430_123731`，仍未使用 diagnostic-run，正式 HTML 输出仍在桌面默认目录）：
+  - manifest：`/tmp/watchbrief_i4r_debug_20260430_123731/manifest.json`
+  - 输出目录：`/Users/apple/Desktop/watch-20260430-123736/`
+  - 输入视频数：`2`
+  - `completed_count=1`
+  - `failed_count=1`
+  - 生成 `00-watch-order.html`：是。
+  - 第一条 HTML：未生成；第一条失败在 `local_extract`，`reason_code=local_qwen_unavailable`，错误为 `Qwen endpoint unavailable: HTTP Error 400: Bad Request`。
+  - 第二条 HTML：已生成 `/Users/apple/Desktop/watch-20260430-123736/02-Video-02.html`。
+- 第二条关键链路：
+  - `subtitle_fetcher`：completed，平台字幕命中 B 站 `ai-zh` BCC，`segment_count=12`，`char_count=140`，`source_api=player-v2`。
+  - `audio_downloader`：skipped，原因 `subtitle_available`。
+  - `transcript_quality`：completed。
+  - `video_duration_seconds=null`，metadata 阶段 duration 为 `未知`。
+  - `transcript_first_start=13.0`
+  - `transcript_last_end=35.0`
+  - `transcript_covered_duration=22.0`
+  - `transcript_coverage_ratio=null`
+  - `transcript_segment_count=12`
+  - `transcript_plain_text_char_count=140`
+  - `transcript_source=subtitle_bcc`
+  - `transcript_quality_reason=coverage_ok`
+  - `transcript_quality_passed=true`
+  - 第二条是否进入 Qwen：是，`local_extract` started/completed。
+  - 第二条是否进入 Codex：是，出现 `codex_review_request` step；其中 `model_call_allowed=false`，说明走了 Codex request/cache相关逻辑但未实际放行模型调用。
+  - 第二条是否进入 renderer：是，`renderer` completed。
+  - 第二条 stage：`completed`
+  - 第二条 reason_code：空。
+- cookie 检查：
+  - 在本次 debug 目录和最终输出目录检索敏感 cookie 名，只发现 `cookies_source=browser:chrome`、`cookies_browser_attempts`、`selected_cookies_browser` 等来源元数据；未发现 `SESSDATA`、`bili_jct`、`DedeUserID` 或 `Cookie:` 明文。
+- 桌面污染：
+  - 未在桌面根目录生成散落的 HTML；正式输出位于默认生成的任务目录中。
+  - 本阶段产生了两个正式默认输出目录：`/Users/apple/Desktop/watch-20260430-122908/` 与 `/Users/apple/Desktop/watch-20260430-123736/`。第二个是为了保留 debug 后复验读取 item_manifest。
+- 是否符合预期：不符合。
+  - 预期：第二条若 transcript 覆盖不足，应停在 `transcript_quality`，不得进入 Qwen / Codex / renderer，不得生成单视频 HTML。
+  - 实际：第二条 metadata duration 为 `未知`，导致 `video_duration_seconds=null`、`transcript_coverage_ratio=null`，但 `transcript_quality` 仍给出 `coverage_ok` 并放行；随后进入 Qwen、Codex request、renderer，生成正式 HTML。
+  - 关键缺口：coverage gate 在缺少视频总时长时没有硬失败；低 segment/低 plain_text 字数也未阻断。建议后续修复增加 `video_duration_missing_for_quality_gate` 与低文本量/低段数硬门槛，并确保 B 站 source-file/list 模式也能携带真实 metadata duration。
+
+
+## 2026-04-30 阶段十八 I4-S：平台字幕缺失总时长时强制停在 transcript_quality
+
+- 时间：`2026-04-30 16:35:38 CST`
+- 目标：修复 I4-R 暴露的问题：B 站平台 BCC 字幕只有 `13s -> 35s`、`12` 段、约 `140` 字，且 metadata duration 为 `未知` 时，不得绕过 coverage gate 生成正式 HTML。
+- 改动范围：
+  - `watchbrief_v5/scripts/cli.py`
+  - `watchbrief_v5/scripts/transcript_quality.py`
+  - `watchbrief_v5/tests/test_cli.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/SKILL.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+- 规则变更：
+  - 平台字幕来源 `subtitle_bcc` / `subtitle_srt` / `subtitle_vtt` / `youtube_connect` 缺少视频总时长时，直接失败为 `transcript_quality_reason=video_duration_missing_for_quality_gate`。
+  - 不再用段数或纯文本字数替代平台字幕的 coverage ratio 证明。
+  - 失败仍统一表现为 `stage=transcript_quality`、`reason_code=transcript_coverage_too_low`。
+  - 失败项不得进入 Qwen / Codex / renderer，不得生成单视频正式 HTML；列表任务仍可生成 Watch Order 失败项。
+  - `--source-file` 不再把 URL 直接包装成 `duration=未知` 的占位条目；现在会对每个 URL 复用正常 resolver，并传入同一套浏览器登录态参数，先拿真实 metadata 再进入字幕与质量门禁。
+- 新增回归测试：
+  - `test_source_file_resolver_reuses_metadata_resolver`
+  - `test_source_file_keeps_resolver_browser_auth_options`
+  - `test_platform_subtitle_with_missing_duration_fails_quality_gate`
+  - 覆盖 `subtitle_bcc`、`duration=""`、`transcript_first_start=13.0`、`transcript_last_end=35.0`、`transcript_covered_duration=22.0`、`transcript_coverage_ratio=null`、`segment_count=12` 的场景。
+- 验证结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_cli.py'`：25 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_video_pipeline.py' -k missing_duration`：4 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：349 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- 副本同步：
+  - 已同步 `/Users/apple/.codex/skills/watchbrief_v5/`。
+  - 已同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - `cli.py` 和 `transcript_quality.py` 源树 / Codex 副本 / Hermes 副本已用 `cmp -s` 核对一致。
+- 未做事项：
+  - 未跑真实视频链路。
+  - 未触发 Qwen / Codex / MLX-Audio。
+  - 未打开浏览器。
+  - 未保存、打印、展示 cookies。
+- 下一步：
+  - 重跑 Notion 两视频列表正式复验，确认第二条不再生成 `02-Video-02.html`，而是在 Watch Order 中显示 `transcript_quality` 失败。
+
+
+## 2026-04-30 阶段十八 I4-T：Notion 两视频列表修复后复验
+
+- 时间：`2026-04-30 16:42:21 CST`
+- 目标：用 I4-R 同一份 source-file 复验修复结果，同时避免污染桌面。
+- 运行方式：
+  - source-file：`/tmp/watchbrief_i4r_notion_urls.txt`
+  - output-dir：`/tmp/watchbrief_i4s_out`
+  - debug-dir：`/tmp/watchbrief_i4s_debug`
+  - 使用 `--mock-review-response watchbrief_v5/golden/sample_payload_heartflow.json`，未调用真实 Codex review。
+  - 使用 `--force-reanalysis --qwen-timeout 20 --timeout 60`。
+- 复验结果：
+  - manifest：`/tmp/watchbrief_i4s_debug/manifest.json`
+  - `total_count=2`
+  - `completed_count=1`
+  - `failed_count=1`
+  - 第一条完成，生成 `/tmp/watchbrief_i4s_out/01-全世界在抄的软件，到底怎么用？Notion十分钟入门指南。.html`。
+  - 第二条失败，`stage=transcript_quality`，`reason_code=transcript_coverage_too_low`。
+  - 输出目录只包含 `00-watch-order.html` 和第一条 HTML；未生成第二条 HTML。
+- 第二条关键字段：
+  - `video_duration_seconds=186.0`
+  - `transcript_first_start=0.0`
+  - `transcript_last_end=25.0`
+  - `transcript_covered_duration=25.0`
+  - `transcript_coverage_ratio=0.13440860215053763`
+  - `transcript_segment_count=17`
+  - `transcript_plain_text_char_count=114`
+  - `transcript_source=subtitle_bcc`
+  - `transcript_quality_reason=coverage_below_threshold`
+  - `transcript_quality_passed=false`
+- 第二条 item_manifest steps：
+  - `resolver:completed`
+  - `metadata:completed`
+  - `subtitle_fetcher:completed`
+  - `audio_downloader:skipped`
+  - `transcript_quality:failed`
+  - 未出现 `local_extract`、`codex_review`、`renderer`。
+- cookies 检查：
+  - 在 `/tmp/watchbrief_i4s_out` 和 `/tmp/watchbrief_i4s_debug` 检索 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`，无命中。
+- 结论：
+  - I4-R 暴露的“低覆盖 BCC 字幕仍生成正式 HTML”已修复。
+  - `--source-file` 已能拿到真实 metadata duration；第二条不再因为 duration 缺失变成 `coverage_ok`。
+
+
+## 2026-04-30 阶段十八 I4-U：字幕时间轴错配改走音频转写
+
+- 时间：`2026-04-30 20:05:13 CST`
+- 目标：修复 B 站 AI 字幕时间轴明显超过视频总时长时仍被当作可用字幕进入 Qwen / Codex / renderer 的问题。
+- 改动范围：
+  - `watchbrief_v5/scripts/transcript_quality.py`
+  - `watchbrief_v5/scripts/video_pipeline.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/SKILL.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+- 规则变更：
+  - 平台字幕来源 `subtitle_bcc` / `subtitle_srt` / `subtitle_vtt` 如果最后时间明显超过视频总时长，判定为 `subtitle_timeline_exceeds_video_duration`。
+  - 判定阈值取更宽松者：`video_duration_seconds * 1.2` 或 `video_duration_seconds + 20`。
+  - 触发后不直接失败，也不进入 Qwen；先丢弃该字幕，记录 `transcript_quality:fallback_to_audio`，再走 `audio_downloader -> transcriber`。
+  - 音频转写产物仍必须再次通过 transcript coverage gate；如果转写仍覆盖不足，再停在 `transcript_quality`，不得生成正式 HTML。
+  - `item_manifest` 会记录 `subtitle_rejected_due_to_quality=true`、`subtitle_rejection_reason=subtitle_timeline_exceeds_video_duration`、`fallback_from_transcript_source`。
+- 新增回归测试：
+  - `test_subtitle_timeline_mismatch_falls_back_to_audio_transcription`
+  - 覆盖 `186s` 视频拿到 `54:36` 结尾 BCC 字幕时，必须改走音频下载和转写，并用 `asr_wav` transcript 进入 local_extract。
+- 验证结果：
+  - `python3 -m py_compile watchbrief_v5/scripts/transcript_quality.py watchbrief_v5/scripts/video_pipeline.py`：PASS。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_video_pipeline.py'`：41 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：350 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- 真实诊断复验：
+  - 第一次复验命令：`python3 watchbrief_v5/scripts/cli.py --source-url 'https://www.bilibili.com/video/BV1vR4y1o7xb' --diagnostic-run --output-dir /tmp/watchbrief_i4u_bv1vr4_out --debug-dir /tmp/watchbrief_i4u_bv1vr4_debug --mock-review-response watchbrief_v5/golden/sample_payload_heartflow.json --force-reanalysis --timeout 600 --qwen-timeout 600`。
+  - 第一次结果：失败在 `pipeline_failed`，错误为 `download_standard_audio() got an unexpected keyword argument 'subtitle_rejected_due_to_quality'`。
+  - 修复：`subtitle_rejected_due_to_quality`、`subtitle_rejection_reason` 只写入 `item_manifest` 诊断字段，不再传给真实 `download_standard_audio()`。
+  - 修复后已重跑 `py_compile`、`test_video_pipeline.py`、V5 全量测试、源树 strict-install、Hermes strict-install，均通过。
+  - 第二次复验命令：同一 URL，输出改为 `/tmp/watchbrief_i4u_bv1vr4_out2`，debug 改为 `/tmp/watchbrief_i4u_bv1vr4_debug2`。
+  - 第二次结果：完成，生成诊断 HTML `/tmp/watchbrief_i4u_bv1vr4_out2/01-用上这个Notion月计划，学习工作井井有条，自律又高效！.html`。
+  - 第二次未触发错配回退：本次 B 站返回的 BCC 字幕最后时间为 `138.0s`，视频总时长为 `186.0s`，`transcript_coverage_ratio=0.7419354838709677`，不满足“明显超过视频时长”的回退条件。
+  - 第二次链路：`subtitle_fetcher:completed` -> `audio_downloader:skipped` -> `transcript_quality:completed` -> `local_extract:completed` -> `validator:completed` -> `renderer:completed`；使用 `--mock-review-response`，未调用真实 Codex review。
+  - cookie 检查：在 `/tmp/watchbrief_i4u_bv1vr4_debug2` 和 `/tmp/watchbrief_i4u_bv1vr4_out2` 检索 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`，无命中。
+- 副本同步：
+  - 已同步 `/Users/apple/.codex/skills/watchbrief_v5/`。
+  - 已同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - `transcript_quality.py`、`video_pipeline.py`、`test_video_pipeline.py`、`SKILL.md`、`CONTRACT_V5.md`、`README.md` 已用 `cmp -s` 核对源树 / Codex 副本 / Hermes 副本一致。
+- 未做事项：
+  - 真实 B 站单视频诊断已跑，但当前平台返回未复现 54 分钟错配字幕，因此真实链路没有覆盖到 `fallback_to_audio` 分支。
+  - 未跑 Notion 两视频真实列表复验。
+  - 未触发真实 Codex review。
+  - 未触发 MLX-Audio，因为本次真实 B 站字幕未被判为错配。
+  - 未跑 YouTube。
+  - 未跑小红书。
+- 下一步：
+  - 重跑 Notion 两视频真实列表复验；如果 B 站再次返回 54 分钟错配字幕，应看到 `transcript_quality:fallback_to_audio`、`audio_downloader:completed`、`transcriber:completed`，而不是生成伪完成 HTML。
+
+
+## 2026-04-30 阶段十八 I4-V：Hermes B 站列表日期未知与低覆盖字幕失败诊断
+
+- 时间：`2026-04-30 21:05:07 CST`
+- 检查对象：
+  - `/Users/apple/Desktop/Notion/00-watch-order.html`
+  - `/Users/apple/Desktop/Notion/*.html`
+  - `/Users/apple/Desktop/装潢/00-watch-order.html`
+  - `/Users/apple/Desktop/装潢/*.html`
+  - `/Users/apple/Desktop/WatchBrief-Debug/装潢-20260430-203302/manifest.json`
+  - `/Users/apple/Desktop/WatchBrief-Debug/装潢-20260430-203302/payloads/01-从正常压到虚弱元凶是皮质醇-自己吓自己后高敏感压力吸引着-坏/item_manifest.json`
+- HTML 日期问题：
+  - 单视频 HTML 的 `日期` 字段显示为 `未知`。
+  - Watch Order 右上角的 `2026-04-30 20:18 CST` / `2026-04-30 20:33 CST` 是报告生成时间，不是视频发布时间。
+  - 失败项 B 站 view API 能拿到发布时间：`pubdate=1733389510`，换算为 `2024-12-05 17:05:10 CST`。
+  - 当前 resolver 的 B 站列表输出只保留 `title`、`url`、`bvid`、`duration`、`channel`，没有把 `pubdate` / `ctime` / `upload_date` / `timestamp` 继续传给 pipeline。
+  - 因此 `metadata` step 只能写出 `publish_date_missing=true`、`publish_date_source=null`，最终 HTML 显示 `日期：未知`。
+- 装潢失败项：
+  - 标题：`从正常压到虚弱元凶是皮质醇?自己吓自己后高敏感压力吸引着"坏"`
+  - URL：`https://www.bilibili.com/video/BV18YiRYiEEC`
+  - 视频时长：`920s`。
+  - 字幕来源：`subtitle_bcc` / `bilibili_content_provider` / `ai-zh`。
+  - 原始 BCC 字幕共 `30` 段，第一段从 `0.04s` 开始，最后一段到 `93.34s`。
+  - `item_manifest` 中 audio_downloader 被跳过：`reason=subtitle_available`。
+  - transcript_quality 失败字段：
+    - `transcript_last_end=94.0`
+    - `transcript_covered_duration=94.0`
+    - `transcript_coverage_ratio=0.10217391304347827`
+    - `coverage_threshold=0.3`
+    - `transcript_plain_text_char_count=113`
+    - `transcript_quality_reason=coverage_below_threshold`
+    - `reason_code=transcript_coverage_too_low`
+- 根因：
+  - 这不是 Qwen、Codex、validator、renderer 问题。
+  - B 站返回了一个形式上存在、但只覆盖片头/音乐段的 AI BCC 字幕。
+  - 当前 pipeline 在 `subtitle_fetcher` 成功后先把 `audio_downloader` 标为 skipped；随后 transcript_quality 才发现字幕覆盖率不足。
+  - I4-U 已修复的是“字幕时间轴明显超过视频总时长”时改走音频转写；本次暴露的是另一类坏字幕：“字幕时间没超长，但覆盖明显太短”。
+- 可修复路径：
+  - 推荐路径 A：在 `video_pipeline.py` 中把平台字幕的 `coverage_below_threshold`、`segment_count_too_low`、`plain_text_char_count_too_low` 也视为“当前字幕不可用”，记录 `transcript_quality:fallback_to_audio`，然后走已有 `audio_downloader -> transcriber -> transcript_quality` 标准链路；ASR 结果仍必须再次通过 coverage gate，不通过就继续失败，不伪装成功。
+  - 路径 B：在 `subtitle_fetcher` 后立即做统一字幕质量门，质量不合格就不允许 `audio_downloader:skipped`，直接进入音频转写；实现位置仍在 pipeline 层，避免 B 站专用补丁。
+  - 路径 C：在 B 站 provider 层提前拒绝低覆盖 BCC 候选，让它表现为 `subtitle_unavailable`，复用现有 audio fallback；缺点是只覆盖 B 站，跨平台一致性较弱。
+  - 日期修复路径：在 `resolver.py` 保留 B 站 `pubdate` / `ctime`，并让通用 `normalize_video_entry()` 保留 yt-dlp 的 `upload_date` / `timestamp` / `release_date`；pipeline 已有日期解析和覆盖逻辑，不需要改 renderer。
+- 推荐实施范围：
+  - 不改 renderer / Watch Order 模板。
+  - 不改 schema / validator。
+  - 不改最终报告字段契约。
+  - 只改 resolver 的 metadata 传递，以及 pipeline 的“平台字幕质量失败后进入音频转写”路径。
+- 需要补的测试：
+  - 新增低覆盖平台字幕触发 `fallback_to_audio` 的单测：`subtitle_bcc` 覆盖 `94s/920s` 时必须进入 `audio_downloader -> transcriber`。
+  - 新增 ASR 结果仍低覆盖时继续失败的单测，防止伪完成。
+  - 新增 B 站列表 resolver 保留 `pubdate` / `ctime` 的单测。
+  - 新增通用 yt-dlp entry 保留 `upload_date` / `timestamp` 的单测。
+  - 跑 `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`。
+  - 跑 `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`。
+  - 同步并验证 Codex skill 副本与 Hermes skill 副本后，再跑对应 strict-install。
+  - 真实复验失败单条 `https://www.bilibili.com/video/BV18YiRYiEEC`，确认不再停在平台 BCC 低覆盖，而是进入 MLX-Audio；若 MLX-Audio transcript 仍不合格，应继续失败并写明 ASR coverage。
+- 未做事项：
+  - 本次只做诊断与 WORKLOG 记录，尚未修改代码。
+  - 尚未重跑失败单条。
+  - 尚未跑完整回归。
+
+
+## 2026-04-30 阶段十八 I4-W：低覆盖平台字幕改走音频转写并修复 B 站日期传递
+
+- 时间：`2026-04-30 21:21:26 CST`
+- 目标：
+  - 修复 B 站列表 HTML `日期：未知`，让 resolver 继续传递视频发布时间。
+  - 修复平台字幕存在但覆盖明显过短时直接失败的问题，让坏字幕不再挡住 `audio_downloader -> MLX-Audio`。
+- 改动范围：
+  - `watchbrief_v5/scripts/resolver.py`
+  - `watchbrief_v5/scripts/video_pipeline.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+  - `watchbrief_v5/tests/test_acquisition_resolver.py`
+  - `watchbrief_v5/SKILL.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `watchbrief_v5/README.md`
+- 日期修复：
+  - 新增 resolver 发布时间透传：保留通用 `date` / `publish_date` / `release_date` / `upload_date` / `timestamp` / `pubdate` / `published_at`。
+  - B 站收藏列表 API 的 `pubtime` / `ctime` 映射为 `pubdate`，进入现有 metadata 日期解析逻辑。
+  - B 站单视频 fallback 的 view API / 页面 metadata 也把 `pubdate` 传到 item 和 root resolution。
+  - 对失败项 `BV18YiRYiEEC`，resolver 当前已能输出 `pubdate=1733389510`；metadata 显示日期为 `2024-12-05`。
+- 低覆盖字幕修复：
+  - 新增平台字幕质量回退规则：`subtitle_bcc` / `subtitle_srt` / `subtitle_vtt` 如果命中 `coverage_below_threshold`、`segment_count_too_low`、`plain_text_char_count_too_low`，不再直接失败。
+  - pipeline 先记录 `transcript_quality:fallback_to_audio`，`reason_code=subtitle_quality_insufficient`，再走 `audio_downloader -> transcriber`。
+  - 音频转写结果仍必须重新通过 transcript coverage gate；如果 ASR 仍低覆盖，继续失败为 `transcript_coverage_too_low`，不伪装成功。
+  - 原有 `subtitle_timeline_exceeds_video_duration` 回退音频规则保留。
+  - 平台字幕缺少视频总时长的硬失败规则保留，不改成音频兜底。
+- 新增 / 更新测试：
+  - 新增 `test_low_coverage_platform_subtitle_falls_back_to_audio_transcription`，覆盖 `94s/920s` 的低覆盖 BCC 必须回退音频并用 ASR transcript 进入后续链路。
+  - 更新列表低覆盖失败测试：先从低覆盖 BCC 回退音频；如果 ASR 仍低覆盖，列表项继续失败并出现在 Watch Order。
+  - 新增 resolver 日期测试：通用 yt-dlp 单视频 / 列表条目保留 `upload_date` / `timestamp`。
+  - 新增 B 站列表日期测试：收藏列表 API 的 `pubtime` / `ctime` 映射为 `pubdate`。
+  - 新增 B 站单视频 fallback 日期测试：页面 metadata / view API 的 `pubdate` 进入 resolution。
+- 验证结果：
+  - `python3 -m py_compile watchbrief_v5/scripts/resolver.py watchbrief_v5/scripts/video_pipeline.py`：PASS。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_video_pipeline.py'`：42 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_acquisition_resolver.py'`：20 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：352 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.codex/skills/watchbrief_v5/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - 源树 / Codex skill 副本 / Hermes skill 副本关键文件 `cmp -s`：PASS。
+- 真实单条复验：
+  - URL：`https://www.bilibili.com/video/BV18YiRYiEEC`
+  - 复验一：当前 B 站接口未再返回旧的低覆盖 BCC，而是 `subtitle_fetcher:unavailable -> audio_downloader:completed -> transcriber:completed -> transcript_quality:completed`。
+  - 复验一结果：`completed_count=1`、`failed_count=0`、metadata `date=2024-12-05`、ASR transcript coverage `1.0`。
+  - 输出：`/tmp/watchbrief_i4v_bv18_out/01-从正常压到虚弱元凶是皮质醇-自己吓自己后高敏感压力吸引着-坏.html`。
+  - 复验二：用上次失败现场保存的低覆盖 BCC 强制复现。
+  - 复验二结果：先记录 `transcript_quality:fallback_to_audio`、`transcript_quality_reason=coverage_below_threshold`、`transcript_coverage_ratio=0.10228509249183895`，再进入 `audio_downloader:completed -> transcriber:completed -> transcript_quality:completed`。
+  - 复验二输出：`/tmp/watchbrief_i4v_forced_bcc_out/01-从正常压到虚弱元凶是皮质醇-自己吓自己后高敏感压力吸引着-坏.html`。
+  - 两次复验均使用 mock local_extract / mock review，仅验证 acquisition routing、MLX-Audio 转写和 coverage gate；不代表正式内容分析报告。
+  - cookie 检查：在 `/tmp/watchbrief_i4v_bv18_out`、`/tmp/watchbrief_i4v_bv18_debug`、`/tmp/watchbrief_i4v_forced_bcc_out`、`/tmp/watchbrief_i4v_forced_bcc_debug` 检索 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`，无命中。
+- 副本同步：
+  - 已同步 `/Users/apple/.codex/skills/watchbrief_v5/`。
+  - 已同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+- 未做事项：
+  - 未重新跑 Hermes 的两个完整 B 站列表正式任务。
+  - 未触发真实 Qwen / Codex review 的正式完整报告生成。
+
+
+## 2026-04-30 阶段十八 I4-X：装潢 B 站列表正式重跑验收
+
+- 时间：`2026-04-30 21:53:50 CST`
+- 重跑命令：
+  - `python3 watchbrief_v5/scripts/cli.py --source-url "https://www.bilibili.com/list/ml3620170810?oid=113599402017137&bvid=BV18YiRYiEEC" --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600 --force-reanalysis`
+- 输出目录：
+  - `/Users/apple/Desktop/装潢-2/`
+- 结果：
+  - `total_count=5`
+  - `completed_count=5`
+  - `failed_count=0`
+  - Watch Order：`/Users/apple/Desktop/装潢-2/00-watch-order.html`
+  - 单视频 HTML：已生成 5 个。
+- 之前失败项复验：
+  - 标题：`从正常压到虚弱元凶是皮质醇?自己吓自己后高敏感压力吸引着"坏"`
+  - 本次状态：完成。
+  - 输出：`/Users/apple/Desktop/装潢-2/01-从正常压到虚弱元凶是皮质醇-自己吓自己后高敏感压力吸引着-坏.html`
+  - Watch Order 中失败数为 `0`，未再出现 `transcript_coverage_too_low`。
+- HTML 日期检查：
+  - `01-从正常压到虚弱元凶是皮质醇-自己吓自己后高敏感压力吸引着-坏.html`：`2024-12-05`
+  - `02-迫切寻求认可、夸奖、爱，是对自恋创伤的补偿.html`：`2023-11-01`
+  - `03-「魅力」的底层逻辑是什么？硬核心理学分析，带你看透喜爱的本质！.html`：`2024-09-24`
+  - `04-随时进入心流状态的秘诀!.html`：`2025-04-04`
+  - `05-掌握灯光基本技巧，老破小也能装出高级效果.html`：`2025-08-22`
+  - 未发现 `日期：未知`。
+- 一起做的测试：
+  - Codex skill 入口已确认是 `watchbrief_v5`，不是旧 `v1deodownload`。
+  - Hermes skill 入口已确认是 `watchbrief_v5`，不是旧 `v1deodownload`。
+  - `python3 /Users/apple/.codex/skills/watchbrief_v5/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_video_pipeline.py'`：42 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_acquisition_resolver.py'`：20 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：352 tests OK，skipped=3。
+- cookie 检查：
+  - 在 `/Users/apple/Desktop/装潢-2/` 检索 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`，无命中。
+- 调试产物：
+  - 本次正式运行成功后默认临时 debug 已清理：`debug_artifacts: removed after successful delivery`。
+- 未做事项：
+  - 未打开浏览器截图。
+  - 未重跑 Notion 列表。
+
+
+## 2026-04-30 阶段十八 I4-Y：Notion B 站列表正式重跑验收
+
+- 时间：`2026-04-30 21:59:37 CST`
+- 用户约束：
+  - 不打开浏览器截图。
+  - 重跑 Notion 列表。
+  - 成功后说明 Codex 当前还有哪些测试未完成。
+- 重跑命令：
+  - `python3 watchbrief_v5/scripts/cli.py --source-url "https://www.bilibili.com/list/ml3574207010?oid=936863800&bvid=BV1YT4y1Q7xx" --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600 --force-reanalysis`
+- 输出目录：
+  - `/Users/apple/Desktop/Notion-2/`
+- 结果：
+  - `total_count=2`
+  - `completed_count=2`
+  - `failed_count=0`
+  - Watch Order：`/Users/apple/Desktop/Notion-2/00-watch-order.html`
+  - 单视频 HTML：已生成 2 个。
+- 单视频结果：
+  - `01-全世界在抄的软件，到底怎么用？Notion十分钟入门指南。.html`
+    - 原视频：`https://www.bilibili.com/video/BV1YT4y1Q7xx`
+    - 日期：`2022-02-25`
+  - `02-用上这个Notion月计划，学习工作井井有条，自律又高效！.html`
+    - 原视频：`https://www.bilibili.com/video/BV1vR4y1o7xb`
+    - 日期：`2022-11-23`
+- 验收检查：
+  - Watch Order 总视频数显示 `2`。
+  - Watch Order 解析失败显示 `0`。
+  - 未发现 `transcript_coverage_too_low`。
+  - 未发现 `日期：未知`。
+  - 在 `/Users/apple/Desktop/Notion-2/` 检索 `SESSDATA`、`bili_jct`、`DedeUserID`、`Cookie:`，无命中。
+  - 本次正式运行成功后默认临时 debug 已清理：`debug_artifacts: removed after successful delivery`。
+- Codex 当前已完成的关键测试：
+  - 装潢 B 站列表正式重跑：`5/5` 成功。
+  - Notion B 站列表正式重跑：`2/2` 成功。
+  - 小红书单视频 MLX-Audio 修复后完整复验：已确认能生成完整 HTML。
+  - 低覆盖 BCC 强制复现：已确认先 `fallback_to_audio` 再 MLX-Audio。
+  - V5 全量单测：`352 tests OK，skipped=3`。
+  - Codex / Hermes skill strict-install：PASS。
+- Codex 当前未完成 / 未做的测试：
+  - 未跑更大的 YouTube 列表复测。
+  - 未跑小红书列表，只跑过小红书单视频。
+  - 未打开浏览器截图；本次用户明确不需要。
+  - 未保留本次 Notion item_manifest 深查，因为正式成功后 debug 已按规则清理；本次只做最终产物验收。
+
+
+## 2026-04-30 阶段十八 I4-Z：小红书专辑诊断与 WatchBrief-Debug 默认产物修复
+
+- 时间：`2026-04-30 22:14:33 CST`
+- 测试链接：
+  - `https://www.xiaohongshu.com/board/69e0e0930000000016034f8a?source=web_user_page`
+- 小红书专辑测试结果：
+  - 当前 WatchBrief V5 会先把该链接交给 resolver。
+  - yt-dlp 对小红书 `board` 链接返回 `Unsupported URL`。
+  - CLI 诊断运行结果：`stage=resolver`，`reason=resolver_failed`。
+  - 本次没有进入图文/视频筛选、下载、字幕、MLX-Audio 或 HTML 生成阶段。
+  - 诊断 manifest：`/Users/apple/Desktop/WatchBrief-Runs/69e0e0930000000016034f8a-20260430-221433/_debug/manifest.json`
+- `WatchBrief-Debug` 根因：
+  - 旧 CLI 规则会在正式运行失败时，把临时 debug 目录搬到 `~/Desktop/WatchBrief-Debug/<任务名或时间戳>/`。
+  - 该旧规则同时存在于代码、契约文档和测试中，所以桌面目录是旧默认逻辑生成的，不是小红书专辑单独造成的。
+- 修复：
+  - 默认正式运行成功：继续清理临时 debug。
+  - 默认正式运行失败：保留原临时 debug 目录，并打印 `debug_artifacts` 路径，不再迁移到 Desktop。
+  - 显式 `--debug-dir`、`--keep-debug-artifacts`、`--diagnostic-run` 的行为不变。
+  - 文档和契约已同步为“不默认创建 `~/Desktop/WatchBrief-Debug/`”。
+- 已补测试：
+  - 失败 manifest：默认不创建 `~/Desktop/WatchBrief-Debug/`。
+  - 异常中断：默认不创建 `~/Desktop/WatchBrief-Debug/`。
+  - 显式 `--debug-dir`：继续保留到用户指定目录。
+- 已跑测试：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_cli.py'`：26 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：353 tests OK，skipped=3。
+  - 源码、Codex root、Codex nested、Hermes root、Hermes nested 的 `check_watchbrief_skill.py --strict-install`：全部 PASS。
+- 副本同步：
+  - 已同步到 `/Users/apple/.codex/skills/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.codex/skills/watchbrief_v5/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/watchbrief_v5/`。
+
+
+## 2026-04-30 阶段十八 I4-AA：WatchBrief-Runs、WatchOrder 编号与 5.9 分颜色分组修复
+
+- 时间：`2026-04-30 22:43 CST`
+- 用户指出的问题：
+  - 桌面出现 `/Users/apple/Desktop/WatchBrief-Runs/`，不符合当前桌面输出规则。
+  - `/Users/apple/Desktop/装潢-2/` 中 `00-watch-order.html` 的观看顺序和单视频 HTML 文件名前缀 `01-05` 不一致。
+  - `随时进入心流状态的秘诀!` 和 `掌握灯光基本技巧，老破小也能装出高级效果` 同为 `5.9` 分，但 WatchOrder 中前者被归为红色 `报告可替代`。
+- 根因：
+  - `WatchBrief-Runs` 来自旧诊断默认路径：`--diagnostic-run` 未显式传 `--output-dir` 时默认写入 Desktop。
+  - WatchOrder 会按 `replacement_score` 排名；单视频 HTML 文件名原来按输入/处理顺序编号，所以排名顺序和文件编号会不一致。
+  - WatchOrder 分组使用 `tag + score`，把 `报告基本可替代` 直接归入 `skip` 红色组；单视频页使用 `replacement_score` 色带，因此同为 `5.9` 时出现 WatchOrder 红色、单视频黄色的不一致。这不是跨视频信息污染，是分组规则不一致。
+- 修复：
+  - `--diagnostic-run` / `--repro-run` 未显式传 `--output-dir` 时默认写入系统临时目录，不再默认写入 `~/Desktop/WatchBrief-Runs/`。
+  - 列表任务生成完所有单视频 HTML 后，按 WatchOrder 排名重新编号 HTML 文件，并更新 manifest / item_manifest / WatchOrder 的 `pageFile`。
+  - WatchOrder 分组规则调整：`报告基本可替代` 在 `replacement_score >= 5.0` 时归入 `low` 黄色组；`报告足够替代` / `不推荐观看` 仍归入 `skip` 红色组。
+  - 文档同步更新默认诊断输出规则。
+- 已修当前产物：
+  - 已将 `/Users/apple/Desktop/装潢-2/` 重新编号为：
+    - `01-「魅力」的底层逻辑是什么？硬核心理学分析，带你看透喜爱的本质！.html`
+    - `02-随时进入心流状态的秘诀!.html`
+    - `03-掌握灯光基本技巧，老破小也能装出高级效果.html`
+    - `04-从正常压到虚弱元凶是皮质醇-自己吓自己后高敏感压力吸引着-坏.html`
+    - `05-迫切寻求认可、夸奖、爱，是对自恋创伤的补偿.html`
+  - 已更新 `/Users/apple/Desktop/装潢-2/00-watch-order.html` 的 `pageFile`。
+  - `随时进入心流状态的秘诀!` 在 WatchOrder 中已改为 `filterKey=low`、`label=只建议跳看`。
+  - 已把 `/Users/apple/Desktop/WatchBrief-Runs/` 移到废纸篓。
+- 已跑测试：
+  - `python3 -m py_compile watchbrief_v5/scripts/cli.py watchbrief_v5/scripts/video_pipeline.py watchbrief_v5/scripts/watch_order.py watchbrief_v5/scripts/score_bands.py`：PASS。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_cli.py'`：26 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_watch_order.py'`：16 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_video_pipeline.py'`：43 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：355 tests OK，skipped=3。
+  - 源码、Codex root、Codex nested、Hermes root、Hermes nested 的 `check_watchbrief_skill.py --strict-install`：全部 PASS。
+- 副本同步：
+  - 已同步到 `/Users/apple/.codex/skills/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.codex/skills/watchbrief_v5/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/watchbrief_v5/`。
+
+## 2026-04-30 阶段十八 I4-AB：WatchOrder 恢复播放列表原始顺序
+
+- 时间：`2026-04-30 22:44 CST`
+- 用户纠正：WatchOrder 不应按评分从高到低排列，应按播放列表的视频顺序排列。
+- 结论：
+  - I4-AA 中“按 WatchOrder 排名重新编号 HTML 文件”的修复方向错误，已撤回。
+  - WatchOrder 的唯一顺序来源改回播放列表原始顺序；`replacement_score` 只用于显示分数、颜色分组和推荐标签，不参与排序。
+- 修复：
+  - 删除 `watch_order.py` 中按 `replacement_score` 降序排序的逻辑。
+  - 删除 `video_pipeline.py` 中列表跑完后按评分重命名 HTML 的逻辑。
+  - WatchOrder 页面标签改为 `播放列表顺序 · 原始顺序`。
+  - WatchOrder 参考模板示例标签改为 `播放列表顺序 · 50条示例`，避免模板文案继续表达“按评分排序”。
+  - README / SKILL / CONTRACT 写入规则：列表输出必须保持播放列表原始顺序，`00-watch-order.html` 和单视频 HTML 文件名前缀 `01/02/03...` 不得按评分重排。
+- 已修当前产物：
+  - `/Users/apple/Desktop/装潢-2/` 已恢复为播放列表原始顺序：
+    - `01-从正常压到虚弱元凶是皮质醇-自己吓自己后高敏感压力吸引着-坏.html`
+    - `02-迫切寻求认可、夸奖、爱，是对自恋创伤的补偿.html`
+    - `03-「魅力」的底层逻辑是什么？硬核心理学分析，带你看透喜爱的本质！.html`
+    - `04-随时进入心流状态的秘诀!.html`
+    - `05-掌握灯光基本技巧，老破小也能装出高级效果.html`
+  - `/Users/apple/Desktop/装潢-2/00-watch-order.html` 的 `pageFile` 和 `const items` 顺序已同步恢复。
+  - `随时进入心流状态的秘诀!` 的 `5.9` 分黄色 `low / 只建议跳看` 修复保留。
+- 已补测试：
+  - WatchOrder 渲染测试覆盖“输入顺序低分在前、高分在后时，不按评分重排”。
+  - 列表 pipeline 测试覆盖“第二条分数更高时，HTML 文件名和 WatchOrder 仍保持播放列表顺序”。
+  - scoring 稳定性测试改为验证“确定性最终分仍显示，但不参与 WatchOrder 排序”。
+- 已跑测试：
+  - `python3 -m py_compile watchbrief_v5/scripts/video_pipeline.py watchbrief_v5/scripts/watch_order.py watchbrief_v5/scripts/score_bands.py watchbrief_v5/scripts/cli.py`：PASS。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_watch_order.py'`：17 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_video_pipeline.py'`：43 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_scoring.py'`：11 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：356 tests OK，skipped=3。
+  - 源码、Codex root、Codex nested、Hermes root、Hermes nested 的 `check_watchbrief_skill.py --strict-install`：全部 PASS。
+- 副本同步：
+  - 已同步到 `/Users/apple/.codex/skills/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.codex/skills/watchbrief_v5/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/watchbrief_v5/`。
+- 未自动删除事项：
+  - 已存在的 `/Users/apple/Desktop/WatchBrief-Debug/` 是历史调试产物，本次不自动删除，避免误删旧诊断资料。
+
+
+## 2026-04-30 阶段十九 B：小红书 board 专用 resolver 支持
+
+- 时间：`2026-04-30 23:38 CST`
+- 目标：
+  - 小红书 `board` / 专辑 URL 不再交给普通 `yt-dlp` 单视频 resolver 直接失败。
+  - board 内 note 列表能读取并区分 video note 与 image/text note。
+  - video note 进入现有单视频 pipeline；image/text note 标记为 `non_video_note`，不进入下载、转写、Qwen、Codex 或 renderer。
+- 实现：
+  - `resolver.py`：
+    - 新增/完善小红书 board URL 识别：支持 `/board/<board_id>`、`/user/profile/.../board/<board_id>`、query / fragment 中包含 `/board/<board_id>` 的分享形式。
+    - board URL 在进入通用 `yt-dlp` 前被拦截，返回 `source_kind=list`、`source_subkind=xiaohongshu_board`。
+    - board note 列表读取顺序：`/api/sns/web/v1/board/note` 优先，失败后回退页面 `window.__INITIAL_STATE__.board.boardFeedsMap`。
+    - 浏览器登录态使用统一策略：显式 browser 优先；默认 `chrome -> safari`。实现会读取浏览器 cookie header 发请求，但不打印、不保存、不展示 cookie 内容。
+    - 每条 note 规范化出 `note_id`、标准 `/explore/<note_id>` URL、标题、作者、`note_type`、`note_media_kind`、是否视频、是否图文、封面、时长和 debug raw metadata。
+    - 失败分类：`xiaohongshu_board_resolver_failed`、`xiaohongshu_board_empty`。
+  - `video_pipeline.py`：
+    - 新增 `status=skipped` 路径。
+    - `skip_reason_code=non_video_note` 的图文 note 直接写 item_manifest，不进入 `audio_downloader`、MLX-Audio、Qwen、Codex、validator、renderer。
+    - manifest 新增 `skipped_count`、`non_video_count`，不把图文 note 计入 `failed_count`。
+  - `watch_order.py` / `watch_order.schema.json`：
+    - WatchOrder 支持 skipped/non-video note。
+    - 小红书 board WatchOrder 显示总 note 数、视频 note 数、图文跳过数。
+    - skipped note 显示为 `图文跳过`，不生成单视频 HTML。
+  - `cli.py`：
+    - CLI 输出 skipped item 的 stage / reason / message，便于区分跳过和失败。
+  - README / SKILL / CONTRACT：
+    - 写入小红书 board resolver 规则、读取顺序、登录态策略、non-video skip 规则和失败 reason_code。
+- 真实 board 调研：
+  - 测试 URL：`https://www.xiaohongshu.com/board/69e0e0930000000016034f8a?source=web_user_page`
+  - 普通页面请求可读到 `window.__INITIAL_STATE__`、`boardDetails`、`boardFeedsMap`。
+  - 页面初始状态中 board details 可读，但 notes 初始为空。
+  - `/api/sns/web/v1/board/note` 在无有效登录态时不可用；使用默认 `chrome -> safari` 后，本机 Safari 登录态成功读取 note 列表。
+  - 未打印、保存、展示 cookie 值。
+- 真实 resolver 验收：
+  - board title：`体态纠正与康复`。
+  - `source_kind=list`。
+  - `source_subkind=xiaohongshu_board`。
+  - note 总数：`14`。
+  - video note 数：`13`。
+  - image/text note 数：`1`。
+  - 选中的登录态来源：`browser:safari`。
+- 小样本 pipeline 验收：
+  - 输出目录：`/Users/apple/Desktop/体态纠正与康复-阶段十九B小样本/`。
+  - debug 目录：系统临时目录 `/var/folders/.../watchbrief_v5_xhs_board_sample_debug__nw1f1xp`。
+  - 样本范围：真实 board 中抽取 `1` 条 video note + `1` 条 image/text note；没有跑完整 14 条。
+  - video note 已进入现有单视频 pipeline，并走到 `subtitle_fetcher -> audio_downloader`；为避免触发真实下载、MLX-Audio、Qwen、Codex，本次用受控 `audio_download_failed` 停住，不伪装成功。
+  - image/text note 记录为 `status=skipped`、`reason_code=non_video_note`。
+  - 生成 `00-watch-order.html`：是。
+  - 生成视频 HTML：否；本次没有伪造内容成功。
+  - 生成 `/Users/apple/Desktop/WatchBrief-Debug`：否。
+  - 生成 `/Users/apple/Desktop/WatchBrief-Runs`：否。
+  - cookie 泄露检查：未在正式输出中写入 cookie 内容。
+- 已补测试：
+  - 小红书 board URL 识别，不走普通 yt-dlp。
+  - 支持 user/profile board 路径和 query/fragment 内 board id。
+  - 模拟 API JSON 能解析多条 note。
+  - API 不可用时可回退页面 `__INITIAL_STATE__`。
+  - 区分 video note 与 image/text note。
+  - video note 生成标准 `/explore/<note_id>` item。
+  - image/text note 标记 `non_video_note`，不进入音频/转写/模型链路。
+  - board 返回 `source_kind=list`、`source_subkind=xiaohongshu_board`。
+  - board title 可用于列表标题。
+  - board resolver 失败返回 `xiaohongshu_board_resolver_failed`。
+  - 空 board 返回 `xiaohongshu_board_empty`。
+  - 小红书单视频 URL 仍走普通单视频 resolver。
+  - YouTube / Bilibili 既有测试保持通过。
+  - 失败时不生成桌面 `WatchBrief-Debug` 的既有测试保持通过。
+- 已跑测试：
+  - `python3 -m py_compile watchbrief_v5/scripts/resolver.py watchbrief_v5/scripts/video_pipeline.py watchbrief_v5/scripts/watch_order.py watchbrief_v5/scripts/cli.py`：PASS。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_acquisition_resolver.py'`：27 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_video_pipeline.py'`：45 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_watch_order.py'`：18 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_cli.py'`：26 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_acquisition_scope.py'`：2 tests OK。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：366 tests OK，skipped=3。
+  - 源码、Codex root、Codex nested、Hermes root、Hermes nested 的 `check_watchbrief_skill.py --strict-install`：全部 PASS。
+- 副本同步：
+  - 已同步到 `/Users/apple/.codex/skills/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.codex/skills/watchbrief_v5/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - 已同步到 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/watchbrief_v5/`。
+- 剩余边界：
+  - 本阶段未跑真实视频内容分析成功链路，原因是用户明确禁止大列表和无必要模型调用；小样本只验证 board 识别、note 分类、skip 规则、WatchOrder 输出和 debug 规则。
+  - 下一步若进入真实小列表验收，应只选 `1` 条较短 video note + `1` 条 image/text note，并允许真实下载、MLX-Audio、Qwen、Codex 后再验证是否能生成视频 HTML。
+
+
+## 2026-05-01 小红书“体态纠正与康复”收藏页小样本验收
+
+- 时间：`2026-05-01 00:28:13 CST`
+- 范围：WatchBrief V5 / 小红书收藏页 `体态纠正与康复`，只处理 2 条样本：1 条视频笔记 + 1 条图文笔记。
+- 约束执行：未改代码；未跑 YouTube；未跑 B 站；未跑完整收藏页；未自动打开浏览器；未输出到 `WatchBrief-Runs`；未在桌面生成 `WatchBrief-Debug`；未保存、打印、展示 cookies。
+- 收藏页 URL：`https://www.xiaohongshu.com/board/69e0e0930000000016034f8a?source=web_user_page`
+- 收藏页标题：`体态纠正与康复`
+- 样本来源：使用该收藏页已解析出的页面初始状态样本，限定 `one_video_one_non_video_formal_acceptance`；收藏页声明总数为 14，本次实际输入样本 note 数为 2。
+- 输出目录：`/Users/apple/Desktop/体态纠正与康复`
+- Watch Order：`/Users/apple/Desktop/体态纠正与康复/00-watch-order.html`
+- 视频样本：`无痛解锁一字马-0基础🉑解锁-20min跟练版✅`
+  - 状态：`completed`
+  - HTML：`/Users/apple/Desktop/体态纠正与康复/01-无痛解锁一字马-0基础🉑解锁-20min跟练版✅.html`
+  - 字幕：平台字幕不可用，进入 `audio_downloader`。
+  - 转写：`mlx_audio`，usable segments = 716，plain text chars = 4021，coverage = 1.0。
+  - Qwen：已进入并完成 local_extract。
+  - Codex：生成 codex_review_request，`model_call_allowed=false`，未实际外呼模型。
+  - renderer：已完成。
+- 图文样本：`骨盆前倾是怎么回事？怎么改善？`
+  - 状态：`skipped`
+  - reason_code：`non_video_note`
+  - stage：`resolver`
+  - note_type：`normal`
+  - note_media_kind：`image_text_note`
+  - HTML：未生成视频报告。
+  - audio_downloader/transcriber/local_extract/codex_review/renderer：均跳过。
+- 汇总：
+  - note 总数：2
+  - 视频笔记数：1
+  - 图文笔记数：1
+  - completed_count：1
+  - failed_count：0
+  - skipped_count：1
+  - non_video_count：1
+- 验证：桌面输出目录仅包含 `00-watch-order.html` 和 1 个视频 HTML；未发现明文 cookie；桌面未生成 `WatchBrief-Debug` / `WatchBrief-Runs`。
+- 下一步建议：扩大到该收藏页 14 条全量前，先修复/确认实时 board resolver 对登录态/初始状态的稳定读取；当前小样本验收通过，但全量不应依赖历史样本缓存。
+
+## 2026-05-01 阶段十九 D：小红书 board 14 条全量验收
+
+- 时间：`2026-05-01 11:56:53 CST`
+- 范围：WatchBrief V5 / 小红书 board `体态纠正与康复` 全量 14 条正式验收。
+- 输入 URL：`https://www.xiaohongshu.com/board/69e0e0930000000016034f8a?source=web_user_page`
+- 执行命令：`python3 watchbrief_v5/scripts/cli.py --source-url '<board_url>' --review-provider codex-cli --enable-codex-review --codex-home-root /Users/apple/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600 --force-reanalysis`
+- 约束执行：未传 `--output-dir`；未改代码；未跑 YouTube；未跑 B 站；未跑其他小红书链接；未使用 `--open-output`；未输出到 `WatchBrief-Runs`；未在桌面生成 `WatchBrief-Debug`；未保存、打印、展示 cookies。
+- 结果：全量验收未通过，失败发生在 board resolver 阶段，未进入逐条视频 pipeline。
+- 失败信息：
+  - stage：`resolver`
+  - reason_code：`xiaohongshu_board_resolver_failed`
+  - message：`Xiaohongshu board note list could not be read`
+  - debug_artifacts：`/var/folders/gl/lclzd2wx0312kb4xllx6nc340000gp/T/watchbrief_v5_debug_ujzv0599/`
+- resolver 状态：
+  - board resolver：已识别为小红书 board 专用 resolver。
+  - 页面初始状态：可读取，`page_initial_state_found=true`。
+  - board 标题：页面可读为 `体态纠正与康复`。
+  - 声明总数：页面 details 可读为 `14`。
+  - note 列表：未读出；页面 `boardFeedsMap` 当前为空，API 返回 `HTTP Error 500: Internal Error` / `create invoker failed, service: jarvis-gateway-default`。
+  - 登录态尝试：`chrome -> safari`，最终选中 `browser:safari`；未输出 cookie 内容。
+- 统计：
+  - note 总数：未解析到列表，本次 manifest 只能记录失败项 `1`，不是 board 全量 note 数。
+  - video note 数：未解析。
+  - image/text note 数：未解析。
+  - completed_count：`0`
+  - failed_count：`1`（全局 resolver 失败项）
+  - skipped_count：`0`
+  - non_video_count：`0`
+- 链路进入情况：
+  - audio_downloader：未进入。
+  - MLX-Audio：未进入。
+  - Qwen：未进入。
+  - Codex：未进入。
+  - validator：未进入。
+  - renderer：未进入。
+- 输出与污染检查：
+  - 未生成 `00-watch-order.html`。
+  - 未生成任何新成功视频 HTML。
+  - 未进入 `/Users/apple/Desktop/WatchBrief-Runs`。
+  - 未生成 `/Users/apple/Desktop/WatchBrief-Debug`。
+  - 桌面现有 `体态纠正与康复`、`体态纠正与康复-阶段十九B小样本`、`体态纠正与康复-阶段十九C小样本` 均为历史目录，本次未新增正式任务文件夹。
+  - 本次 debug 目录仅位于系统临时目录；debug manifest 检查未发现 cookie 明文字段或 xsec token 字段。
+- 结论：阶段十九 D 当前阻断是实时 board note 列表读取失败，不是 audio_downloader、MLX-Audio、transcript coverage、Qwen、Codex、validator 或 renderer 问题。下一步应先修复/增强小红书 board resolver 的实时 note 列表读取路径；不要依赖阶段十九 C 的历史样本缓存伪装全量成功。
+
+## 2026-05-01 阶段十九 D1：小红书 board resolver 实时列表读取修复
+
+- 时间：`2026-05-01 12:17:14 CST`
+- 范围：只做 resolver 层诊断、测试与修复；未跑完整 board 视频处理；未进入 audio_downloader / MLX-Audio / Qwen / Codex / renderer；未生成 HTML；未自动打开浏览器。
+- 输入 URL：`https://www.xiaohongshu.com/board/69e0e0930000000016034f8a?source=web_user_page`
+- 原失败原因：API `/api/sns/web/v1/board/note` 仍返回 `HTTP Error 500: Internal Error`，页面初始状态能读到 board details（标题 `体态纠正与康复`、声明总数 `14`），但 `boardFeedsMap` 为空，导致旧 resolver 直接失败。
+- 改代码：是。
+- 改动文件：
+  - `watchbrief_v5/scripts/resolver.py`
+  - `watchbrief_v5/tests/test_acquisition_resolver.py`
+  - 已同步到 Hermes skill 副本：`/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/` 下的对应双路径副本。
+- 修复内容：
+  - 保留 API provider，并记录 `provider_attempts` / `provider_errors` / `used_historical_sample_cache=false`。
+  - API 失败后先尝试 `window.__INITIAL_STATE__` 的原 `boardFeedsMap`。
+  - `boardFeedsMap` 为空时新增 initial-state deep scan，搜索实时页面 state 中其他 note-card 形状数据。
+  - initial state 仍失败时新增 Chrome DOM fallback：只读取已打开的 Chrome board tab，轻量滚动并抽取 note 链接/card；不读取、不保存、不打印 cookie；不点击；不下载媒体。
+  - 所有实时 provider 都失败时仍返回 `xiaohongshu_board_resolver_failed`，不退化到历史样本缓存，不伪装成功。
+- fallback 顺序：`api -> initial_state(boardFeedsMap) -> initial_state_deep_scan -> dom`。
+- 新增/更新测试覆盖：
+  - API 返回 note 列表成功。
+  - API 500 fallback 到初始状态。
+  - `boardFeedsMap` 为空时 deep scan，不直接失败。
+  - API 和初始状态失败时调用 DOM fallback。
+  - DOM fallback 成功返回 note 列表。
+  - 所有路径失败时返回 `xiaohongshu_board_resolver_failed` 并记录 provider 错误。
+  - 不使用历史样本缓存伪装成功。
+  - 图文 note 标记为 `non_video_note`。
+  - 视频 note 标记为 video note。
+  - 不影响小红书单视频 / YouTube / B 站路径。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_acquisition_resolver.py'`：`OK`，30 tests。
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：`OK`，369 tests，skipped=3。
+  - Hermes 副本 `test_acquisition_resolver.py`：`OK`，30 tests。
+- strict install 结果：
+  - 项目内 `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：`Summary: PASS`。
+  - Hermes 副本 `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：`Summary: PASS`。
+- resolver dry run：
+  - 结果：未成功读出实时 note 列表。
+  - board 标题：`体态纠正与康复`。
+  - 声明 note 总数：`14`。
+  - provider_attempts：`api`, `initial_state`, `dom`。
+  - provider_errors：`api=HTTP Error 500: Internal Error`; `initial_state=no notes in initial state`; `dom=NO_MATCHING_TAB`。
+  - DOM fallback 是否使用：已调用，但当前 Chrome 没有已打开的目标 board tab，因此返回 `NO_MATCHING_TAB`。
+  - 是否使用历史样本缓存：否。
+- 输出与污染检查：
+  - 未生成 `00-watch-order.html`。
+  - 未生成视频 HTML。
+  - 桌面 `/Users/apple/Desktop/WatchBrief-Debug`：不存在。
+  - 桌面 `/Users/apple/Desktop/WatchBrief-Runs`：不存在。
+- 结论：代码层 fallback 已补齐并通过测试/strict install；但本机实时 dry run 仍未通过，因为小红书 API 继续 500，server initial state 仍无 note 列表，且遵守“不自动打开浏览器”约束时没有可读取的已打开 Chrome board tab。下一步如果要验证 DOM fallback 实时成功，需要用户先手动在 Chrome 打开目标 board 页面并保持登录，然后只重跑 resolver dry run；或者在下一阶段明确授权我打开 Chrome 到该 board 页面。
+
+## 2026-05-01 阶段十九 D1-R：小红书 board DOM fallback 实时读取复验
+
+- 时间：`2026-05-01 15:01:05 CST`
+- 范围：只重跑 resolver dry run；未跑完整 board 全量；未进入 audio_downloader / MLX-Audio / Qwen / Codex / renderer；未生成 HTML；未读取、保存、打印或展示 cookies；未使用历史样本缓存。
+- 输入 URL：`https://www.xiaohongshu.com/board/69e0e0930000000016034f8a?source=web_user_page`
+- 执行方式：临时 dry-run 脚本调用 `resolve_url(..., allow_browser_auth=False, xiaohongshu_dom_fallback_func=chrome_safari_dom_fallback)`；DOM fallback 顺序为 Chrome 首选、Safari 备选；结果写入临时文件 `/tmp/watchbrief_d1r_resolver_dry_run.json`。
+- Chrome 结果：
+  - chrome_dom_attempted：`true`
+  - Chrome 是否命中目标 tab：`false`
+  - chrome_dom_result：`NO_MATCHING_TAB`
+  - Chrome 是否实时读取成功：`false`
+  - 登录态/笔记卡片：未能检查，原因是未命中目标 board tab。
+- Safari 结果：
+  - safari_dom_attempted：`true`
+  - Safari 是否命中目标 tab：`false`
+  - safari_dom_result：`NO_MATCHING_TAB`
+  - Safari 是否实时读取成功：`false`
+  - 登录态/笔记卡片：未能检查，原因是未命中目标 board tab。
+- resolver 结果：
+  - ok：`false`
+  - reason_code：`xiaohongshu_board_resolver_failed`
+  - provider_attempts：`api`, `initial_state`, `dom`
+  - provider_errors：`api=HTTP Error 500: Internal Error`; `initial_state=no notes in initial state`; `dom=chrome NO_MATCHING_TAB; safari NO_MATCHING_TAB`
+  - used_historical_sample_cache：`false`
+  - selected_browser：无，Chrome / Safari 均未成功。
+- board 信息：
+  - board 标题：本次无浏览器 tab 命中，server fetch 标题为泛化页面 `小红书 - 你的生活兴趣社区`，未能确认 `体态纠正与康复`。
+  - note 总数：未能读取。
+  - video note 数：未能读取。
+  - image/text note 数：未能读取。
+- 输出与污染检查：
+  - `/Users/apple/Desktop/WatchBrief-Debug`：不存在。
+  - `/Users/apple/Desktop/WatchBrief-Runs`：不存在。
+  - 未生成 `00-watch-order.html`，未生成视频 HTML。
+- 结论：D1-R 复验未通过，阻塞不是 DOM 解析逻辑本身，而是 Chrome 和 Safari 当前都没有打开目标 board tab。下一步需要先在 Chrome 打开目标 board 页面并保持登录；如果 Chrome 失败，再在 Safari 打开同一 board 页面，然后重新只跑 resolver dry run。
+
+## 2026-05-01 阶段十九 D2：小红书 board 视频 audio_downloader 失败诊断与修复
+
+- 时间：`2026-05-01 18:14:42 CST`
+- 范围：只处理小红书 board 视频 note 的 `audio_downloader` 失败；未改 renderer / Watch Order 模板 / 单视频 HTML 模板 / schema / validator / score band / final_conclusion / tag/topic / watch_segments。
+- 诊断现场：读取阶段十九 D debug：`/var/folders/gl/lclzd2wx0312kb4xllx6nc340000gp/T/watchbrief_v5_debug_4ole69m3`。
+- 阶段十九 D 结果确认：
+  - board resolver 成功，标题 `体态纠正与康复`。
+  - note 总数 `14`，video note `13`，non-video note `1`。
+  - 成功视频 `3`，失败视频 `10`，图文跳过 `1`。
+  - 10 条失败全部停在 `stage=audio_downloader`、`reason_code=audio_download_failed`。
+  - 失败视频未进入 MLX-Audio / Qwen / Codex / validator / renderer。
+- 根因：
+  - audio_downloader 实际使用的是小红书 note URL，不是 media URL。
+  - board 列表 metadata 没有真实视频 media URL，只有封面和 note card 元数据。
+  - D 阶段失败样本用 Chrome 时返回 `No video formats found`，但同一条 note URL 用 Safari 可以解析并生成 WAV。
+  - 旧逻辑没有把 `No video formats found` 归类为可触发 Chrome -> Safari 的失败，所以停在 Chrome，没有继续尝试 Safari。
+  - 现场没有证明是签名 URL 过期；保存下来的失败样本 URL 仍可通过 Safari 成功下载音频。
+- 3 条成功与 10 条失败的差异：
+  - 共同点：都是小红书 board video note，resolver 来源为 Safari DOM fallback，音频下载计划都是 Chrome -> Safari。
+  - 成功项：Chrome 直接拿到格式并完成音频下载。
+  - 失败项：Chrome 返回 `No video formats found`，旧 fallback 分类为空，因此 Safari 没有被实际尝试。
+- 修复：
+  - `cookie_strategy.py`：把 `No video formats found` / `no formats found` 归类为 `no_video_formats`，允许默认浏览器链路继续 Chrome -> Safari。
+  - `resolver.py`：小红书 board note 分离公开 URL 与内部下载 URL；公开 URL 使用标准 `/explore/<note_id>`，内部下载 URL 可保留必要的 xsec 参数但不写入正式 manifest / HTML。
+  - `resolver.py`：raw metadata 进入 debug 前清理 xsec / cookie / token 值，并隐藏外部 media URL。
+  - `video_pipeline.py`：audio_downloader 优先使用 resolver 提供的 `_media_url`；没有 media URL 时使用 `_download_url`；都没有时才使用公开 item URL。
+  - `video_pipeline.py`：item_manifest 只记录 `source_url_type` / `source_url_source` / `media_url_available` / `download_url_available`，不记录完整 signed URL 或 xsec。
+  - `video_pipeline.py`：修复 B 站 fallback 失败时 `method` 被 debug 合并覆盖的回归。
+- 新增/更新测试：
+  - 小红书 / 非 B 站音频下载遇到 `No video formats found` 会从 Chrome fallback 到 Safari。
+  - 小红书 board video note 公开 URL 不带 xsec，内部下载 URL 不写入公开输出。
+  - 小红书 board video note 的 media URL 可优先传给 audio_downloader。
+  - media URL 缺失时 fallback 到 resolver 内部下载 URL。
+  - item_manifest 不记录 signed URL / xsec。
+  - 不影响 B 站 fallback method 记录。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：`OK`，`372 tests`，`skipped=3`。
+  - 项目 strict install：`python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：`Summary: PASS`。
+  - Hermes 根副本 strict install：`python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：`Summary: PASS`。
+  - Hermes 嵌套副本 strict install：`python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：`Summary: PASS`。
+  - Codex skill 副本 strict install：`python3 /Users/apple/.codex/skills/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：`Summary: PASS`。
+- D2 小样本复验：
+  - 只跑 2 条视频 note，未跑完整 14 条 board。
+  - 样本 1：阶段十九 D 已成功视频 `崴脚后最全恢复方案✅赶紧学起来💥👆`。
+  - 样本 2：阶段十九 D 失败视频 `体态纠正`。
+  - 输出目录：`/Users/apple/Desktop/体态纠正与康复-D2小样本`。
+  - 生成：`00-watch-order.html`、`01-崴脚后最全恢复方案✅赶紧学起来💥👆.html`、`02-体态纠正.html`。
+  - completed_count：`2`。
+  - failed_count：`0`。
+  - skipped_count：`0`。
+  - 之前失败的 `体态纠正` 已生成 HTML。
+  - 未自动打开浏览器。
+  - 未生成桌面 `WatchBrief-Debug`。
+  - 未生成桌面 `WatchBrief-Runs`。
+  - 输出目录未检出 `xsec_token` / `xsecToken`。
+  - 成功后临时 debug/work 目录已清理。
+- 同步：
+  - 已同步到 Hermes 根副本和嵌套副本。
+  - 已同步到 Codex skill 根副本和嵌套副本。
+- 结论：阶段十九 D2 小样本通过。建议下一步重跑阶段十九 D 全量 board 验收，确认原 10 条 audio_downloader 失败是否全部消除。
+
+## 2026-05-01 20:11:37 CST — 阶段十九 D3：小红书 board audio_downloader 最小复现诊断与修复
+
+- 是否改代码：是。
+- 改动文件：
+  - `watchbrief_v5/scripts/resolver.py`
+  - `watchbrief_v5/scripts/video_pipeline.py`
+  - `watchbrief_v5/tests/test_video_pipeline.py`
+- Hermes skill 副本：已同步 `resolver.py`、`video_pipeline.py`、`test_video_pipeline.py`，同步后 strict install 通过。
+- 失败样本：
+  - note_id：`666c18340000000006007761`
+  - 标题：`崴脚后最全恢复方案✅赶紧学起来💥👆`
+- D2 成功样本与 D-R 失败样本关键差异：D-R 失败样本 resolver 已有 `note_url_with_xsec`，但没有可用 `media_url`；yt-dlp 对 note URL 仍可能 `No video formats found`，Safari 页面实际可播放且 performance resource 中能读到真实 `sns-video...mp4`。
+- audio_downloader 修复前输入 URL 类型：`note_url_with_xsec`。
+- 是否缺 xsec_token：否，resolver 已拿到 xsec；完整值未记录、未展示。
+- 是否缺 referer：不是主要根因。
+- 是否需要 DOM/performance media refresh：是。
+- 根因判断：小红书 board 视频 note 的 note URL 对 yt-dlp 不稳定；需要从当前 note 页面 DOM/performance 刷新真实 media URL，并以内存态 refreshed media URL 重试 audio_downloader。
+- 修复方式：
+  - `resolver.py` 新增 `refresh_xiaohongshu_media_url_from_browser()`，从 Safari note 页 performance/video resource 获取 media URL，只返回安全摘要，不写完整 signed URL。
+  - `video_pipeline.py` 在小红书 note URL audio_downloader 失败且无 media URL 时触发 media refresh，拿到后重试 audio_downloader。
+  - `test_video_pipeline.py` 新增回归测试，确保 xsec / signed media URL 不写入 manifest。
+- 单条失败样本复验：通过。
+  - 输出 HTML：`/Users/apple/Desktop/WatchBrief-D3-single-崴脚后恢复/01-崴脚后最全恢复方案✅赶紧学起来💥👆.html`
+  - item manifest：`/var/folders/gl/lclzd2wx0312kb4xllx6nc340000gp/T/watchbrief_v5_debug_d3_single_ojurgfkf/payloads/01-崴脚后最全恢复方案✅赶紧学起来💥👆/item_manifest.json`
+  - debug dir：`/var/folders/gl/lclzd2wx0312kb4xllx6nc340000gp/T/watchbrief_v5_debug_d3_single_ojurgfkf`
+- 单条复验链路：`media_url_refresh -> audio_downloader -> MLX-Audio -> transcript coverage -> Qwen -> Codex -> validator -> renderer` 完整通过。
+- 测试结果：
+  - 新增单测通过。
+  - 定向 5 项测试通过。
+  - 全量测试：`373 tests OK, skipped=3`。
+  - 项目 strict install：PASS。
+  - Hermes skill 副本 strict install：PASS。
+- 安全：未保存、打印或展示 cookies；未在 manifest / HTML 写入完整 xsec_token 或 signed media URL。
+- 结论：D3 已闭环，建议进入阶段十九 D4 的 14 条全量复验。
+
+## 2026-05-01 21:32:06 CST — 阶段十九 D4：小红书 board 14 条全量复验最终通过
+
+- 是否改代码：是。D4 中发现并修复两个明确 bug：
+  - `resolver.py`：Safari DOM fallback JS 必须包成 IIFE 并显式 `return JSON.stringify(...)`，否则 `osascript` stdout 为空，表现为 `safari-dom:DOM_FALLBACK_INVALID_JSON`。
+  - `resolver.py`：media refresh 不再把带 `xsec_token` 的 note URL 放进 `osascript` 命令参数，改为写入临时文件，由 AppleScript 读取，执行后删除，避免本机 `ps` 暴露 tokenized URL。
+  - `tests/test_acquisition_resolver.py`：新增回归测试覆盖上述两个行为。
+- 测试：
+  - 新增 Safari DOM 返回表达式测试通过。
+  - 新增 media refresh 不泄露 tokenized note URL 到进程参数测试通过。
+  - 全量测试：`375 tests OK, skipped=3`。
+  - 项目 strict install：PASS。
+  - Hermes skill 副本 strict install：PASS。
+  - Hermes skill 副本已同步最新 `resolver.py` 与 `tests/test_acquisition_resolver.py`。
+- board：`体态纠正与康复`。
+- source_kind：`list`。
+- source_subkind：`xiaohongshu_board`。
+- note 总数：14。
+- video note 数：13。
+- image/text note 数：1。
+- completed_count：13。
+- failed_count：0。
+- skipped_count：1。
+- non_video_count：1。
+- 输出目录：`/Users/apple/Desktop/体态纠正与康复-5`。
+- `00-watch-order.html`：已生成。
+- 成功视频 HTML 数：13。
+- 成功视频 HTML：全部在主文件夹第一层。
+- 图文 note：`骨盆前倾是怎么回事？怎么改善？`，正确跳过为 `non_video_note`，未进入 audio / MLX-Audio / Qwen / Codex / renderer。
+- 正式 HTML 安全复扫：未发现 `cookie`、`xsec_token`、`xsecToken`、`a1=`。
+- 输出路径：未进入 `WatchBrief-Runs`。
+- 桌面：未生成 `WatchBrief-Debug*`。
+- 自动打开浏览器：未自动打开最终 HTML；Safari 仅用于授权范围内的 board/note DOM 与 media refresh。
+- audio_downloader：上一轮 D-R 的 13 条统一失败已消除；本轮 13 条视频全部成功。
+- Chrome -> Safari fallback：生效。
+- media URL refresh：生效。
+- MLX-Audio / Qwen / Codex / validator / renderer：13 条成功视频均完成。
+- 低覆盖 transcript：本轮未出现低覆盖失败；coverage gate 已保留。
+- 结论：建议正式使用 WatchBrief V5 处理该小红书 board；D4 全量验收闭环。
+
+## 2026-05-02 阶段二十 A：WatchBrief V5 正式使用手册 / 运行守则
+
+- 范围：只生成和同步 WatchBrief V5 正式使用手册，不跑 YouTube / B 站 / 小红书，不触发 Qwen / Codex / MLX-Audio，不下载音频，不解析真实视频。
+- 新增文件：`watchbrief_v5/USAGE_V5.md`。
+- 更新文件：
+  - `watchbrief_v5/README.md`
+  - `watchbrief_v5/SKILL.md`
+  - `watchbrief_v5/CONTRACT_V5.md`
+  - `WORKLOG.md`
+- 手册内容：
+  - WatchBrief 定义：视频观看决策报告生成器，不是下载器。
+  - 当前支持平台：YouTube、Bilibili、小红书。
+  - 登录态规则：Chrome -> Safari，显式参数优先，不保存、不打印、不展示 cookies。
+  - 模型规则：默认 Qwen `qwen3-30b-a3b-instruct-2507-mlx`，默认 endpoint `http://127.0.0.1:1234/v1`，支持 `WATCHBRIEF_QWEN_MODEL` / `WATCHBRIEF_QWEN_BASE_URL`。
+  - Hermes / WatchBrief 本地模型规则：二者都是 LM Studio `1234` endpoint 客户端，通过 `model` 字段选模型；并发风险是本机统一内存和算力，不是端口冲突。
+  - 正式输出规则：单视频 Desktop 单 HTML；列表 Desktop 主任务文件夹；不自动打开浏览器；不默认进入 WatchBrief-Runs。
+  - WatchBrief-Runs / WatchBrief-Debug 规则：Runs 仅用于 smoke/cache/阶段测试/临时复验/debug；默认失败不再生成桌面 WatchBrief-Debug，debug 留在系统临时目录或显式 `--debug-dir`。
+  - 字幕 / 音频 / 转写规则：字幕优先；无字幕才 audio fallback；MLX-Audio 默认；Whisper 只显式使用。
+  - transcript coverage gate：低覆盖停在 `stage=transcript_quality`、`reason_code=transcript_coverage_too_low`，不进 Qwen/Codex/renderer，不生成正式 HTML。
+  - 小红书 board 规则：board URL、note 总数、video note、image/text note、`non_video_note`、`skipped_count`、`non_video_count`、media URL refresh、xsec/signed URL 不泄露。
+  - 推荐命令模板：单视频、列表/playlist/board、URL 文件、诊断/复现、自检。
+- 文档收口：
+  - README 增加 `USAGE_V5.md` 链接。
+  - SKILL 增加正式手册入口。
+  - CONTRACT 增加正式 runbook 指向。
+  - 清理旧的 8080 独立 MLX server 推荐文字，避免和当前 LM Studio 单 endpoint 规则冲突。
+- 测试结果：
+  - `python3 -m unittest discover -s watchbrief_v5/tests -p 'test_*.py'`：375 tests OK，skipped=3。
+  - `python3 watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- 副本同步：
+  - 已同步 `/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/`。
+  - 已同步 `/Users/apple/.codex/skills/watchbrief_v5/`。
+  - 未同步 `.venv-mlx`、`__pycache__`、`*.pyc`、`.pytest_cache`。
+  - Hermes / Codex 副本顶层 `USAGE_V5.md`、`README.md`、`SKILL.md`、`CONTRACT_V5.md` 已确认包含当前运行守则。
+- 未做事项：
+  - 未改 renderer / Watch Order 模板 / 单视频 HTML 模板。
+  - 未改 schema / validator。
+  - 未改 score band、final_conclusion、tag/topic、watch_segments。
+  - 未保存、打印、展示 cookies。
+  - 未删除桌面历史文件。
+  - 未自动清理历史 `WatchBrief-Debug`。
+
+## 2026-05-02 阶段二十 B：WatchBrief V5 独立项目归档迁移
+
+- 目标：将 WatchBrief V5 从旧项目 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5/` 独立迁移到 `/Users/apple/Documents/New project/watchbrief_v5/`，后续作为独立项目维护。
+- 旧项目状态：
+  - 旧项目位于更大的 Git 工作树 `/Users/apple/Documents/New project` 内。
+  - 当前分支：`main`。
+  - remote：无。
+  - `git status --short` 当前约 19 条变更/未跟踪项，包含历史 `v1deodownload-edit` 删除项、上层未跟踪文件、旧 `v1deodownload` 和新 `watchbrief_v5` 目录。
+  - 未删除、未清空旧 `/Users/apple/Documents/New project/v1deodownload`。
+- 新项目结构：
+  - 新项目根目录：`/Users/apple/Documents/New project/watchbrief_v5/`。
+  - 已扁平化为 `scripts/`、`tests/`、`schemas/`、`references/`、`templates/`，没有 `watchbrief_v5/watchbrief_v5/scripts` 双层嵌套。
+  - `fixtures/transcripts/*.srt` / `*.vtt` 是测试 fixture，已保留；普通字幕运行产物仍由 `.gitignore` 忽略。
+- 新增归档文件：
+  - `RELEASE_NOTES_V5.md`。
+  - `requirements.txt`。
+  - `templates/README.md`。
+  - `.gitignore`。
+- 路径收口：
+  - 新项目文档运行命令已改为从新根目录执行，例如 `python3 scripts/cli.py` 和 `python3 -m unittest discover -s tests -p 'test_*.py'`。
+  - 历史 WORKLOG 中的旧路径仅作为历史记录保留。
+- 安全扫描：
+  - 未发现 cookies 文件、音视频运行产物、manifest、normalized payload、payloads、`_work`、虚拟环境或 pycache 被迁移。
+  - 关键词命中主要是源码安全字段名、清洗逻辑和测试假值。
+  - 强匹配文件为 `scripts/resolver.py` 及相关测试文件，判断为构造/清洗逻辑或假 token 测试，不是真实泄露。
+- 测试结果：
+  - `python3 -m unittest discover -s tests -p 'test_*.py'`：375 tests OK，skipped=3。
+  - `python3 scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - `python3 /Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5/scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- Git：
+  - 已在新目录执行 `git init`。
+  - 当前分支：`watchbrief-v5-stable-20260430`。
+  - remote：暂无。
+- 禁止事项执行情况：
+  - 未跑 YouTube / B 站 / 小红书真实链接。
+  - 未触发 Qwen / Codex review / MLX-Audio。
+  - 未下载音频。
+  - 未删除旧项目或桌面历史文件。
+  - 未 force push。
+  - 未 push main。

@@ -1,0 +1,7 @@
+# WatchBrief V5 currently uses the Python standard library for core pipeline code.
+# External runtime tools are invoked as command-line programs when explicitly needed:
+# - yt-dlp
+# - ffmpeg
+# - Codex CLI
+# - LM Studio OpenAI-compatible local server
+# - MLX-Audio environment for audio fallback

@@ -1,0 +1,79 @@
+{
+  "title": "如何把任务改造成更容易进入心流的状态",
+  "url": "https://example.com/watch/heartflow",
+  "channel": "Mock Channel",
+  "duration": "16:42",
+  "date": "2026-04-20",
+  "topic": "效率 / 心流 / 任务设计 / 状态管理",
+  "replacement_score": 4.7,
+  "tag": "只建议跳看",
+  "one_line_brief": "这期视频主要讲：心流更依赖任务结构设计，而不是单靠意志力硬撑注意力。",
+  "watch_verdict": "看报告基本够，原视频只建议跳看 10:51 | 15:08；想补前置误区，再看 01:59 | 05:12。",
+  "highest_compression": "心流不是把自己逼到更专注，而是把任务改成目标清楚、反馈及时、难度略高于当前能力的系统。",
+  "path_table": {
+    "problem": "视频从很多人想专注却总被任务拖住切入。",
+    "mechanism": "它把心流解释成目标、反馈、挑战和干扰控制共同作用的状态。",
+    "turning_point": "它纠正了心流靠意志力硬扛的误区，转向任务结构设计。",
+    "landing": "最后落到先清理干扰、缩小任务、设置限时挑战和即时反馈。"
+  },
+  "arrow_chain": [
+    "任务模糊",
+    "反馈太慢",
+    "注意分散",
+    "清理干扰",
+    "缩小入口",
+    "增加挑战"
+  ],
+  "final_conclusion": "心流不是意志力硬拧出来的，而是把任务改造成清楚、有挑战、可反馈的系统。",
+  "content_caveat": "视频更偏经验型方法说明，缺少实验数据和反例展开。",
+  "watch_segments": [
+    {
+      "priority": "primary",
+      "start": "10:51",
+      "end": "15:08",
+      "title": "首选片段：任务改造步骤",
+      "reason": "这一段把清理干扰、缩小入口、限时挑战和即时反馈连成可执行流程。"
+    },
+    {
+      "priority": "optional",
+      "start": "01:59",
+      "end": "05:12",
+      "title": "可选补看：心流误区",
+      "reason": "这一段解释为什么只靠意志力维持专注会失败。"
+    }
+  ],
+  "only_one_segment": "只选一段：10:51 | 15:08。这一段直接给出任务改造流程，报告之外的表达增量也集中在这里。",
+  "score_basis": {
+    "information_density": "核心方法集中在 10:51 | 15:08，其余内容更多是概念铺垫和重复解释。",
+    "evidence_quality": "视频主要依靠经验性说明，没有展开反例、数据或更严谨的实验依据。",
+    "originality": "清理干扰、任务拆分、限时挑战都不是新方法，但组合成心流触发条件有实用性。",
+    "watch_value": "报告已经覆盖主要方法，原视频剩余价值集中在案例演示和作者表达节奏。"
+  },
+  "structured_assessment": {
+    "信息密度": 5.2,
+    "论据质量": 4.5,
+    "独创性": 4.2,
+    "观看性价比": 4.8
+  },
+  "score_trace": {
+    "information_density": 5.2,
+    "evidence_quality": 4.5,
+    "originality": 4.2,
+    "watch_value": 4.8,
+    "formula": "information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3",
+    "computed_replacement_score": 4.7,
+    "model_suggested_score": 4.7,
+    "final_score_source": "deterministic_formula",
+    "warnings": []
+  },
+  "transcript_hash": "fef9ed8077bc798ed8c143ae124dc99e9db44f385f57ad1803a582245914d4e5",
+  "qwen_model_id": "mock-qwen",
+  "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v2",
+  "qwen_prompt_fingerprint": "05a92c698f525918b21fa49089829cb083806fd0853a0d153258be135b3d2691",
+  "codex_model": "gpt-5.4",
+  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v3",
+  "codex_prompt_fingerprint": "03f247e80432549f8771da24564509ebf537871963d110014e0cc04b523aac2a",
+  "scoring_formula_version": "watchbrief_v5.scoring_formula.v1",
+  "watchbrief_version": "watchbrief_v5",
+  "confidence_note": "字幕清晰，关键方法段有明确时间戳，判断置信度中高。"
+}

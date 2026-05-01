@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>魅力不是完美表演，而是让别人读到真实信号 · WatchBrief V5</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;800&family=Space+Mono:wght@400;700&display=swap');
+:root{
+  --bg:#0c0e14;
+  --surface:#13161f;
+  --border:#252b3b;
+  --text:#e2e8f0;
+  --muted:#9eabc3;
+  --dim:#667799;
+  --white:#ffffff;
+  --gold:#f6c90e;
+  --gold-bg:rgba(246,201,14,.08);
+  --gold-border:rgba(246,201,14,.22);
+  --blue:#7eb8f0;
+  --blue-bg:rgba(126,184,240,.08);
+  --blue-border:rgba(126,184,240,.22);
+  --green:#5af07e;
+  --green-bg:rgba(90,240,126,.08);
+  --green-border:rgba(90,240,126,.22);
+  --teal:#4fd1c5;
+  --teal-bg:rgba(79,209,197,.08);
+  --teal-border:rgba(79,209,197,.24);
+  --amber:#f0a94f;
+  --amber-bg:rgba(240,169,79,.08);
+  --amber-border:rgba(240,169,79,.24);
+  --red:#f07070;
+  --red-bg:rgba(240,112,112,.08);
+  --red-border:rgba(240,112,112,.20);
+  --purple:#a78bfa;
+  --purple-bg:rgba(167,139,250,.09);
+  --purple-border:rgba(167,139,250,.26);
+  --action-green:#b8de7f;
+  --action-green-bg:rgba(184,222,127,.09);
+  --action-green-border:rgba(184,222,127,.26);
+  --num:Menlo,Monaco,'SFMono-Regular',Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;
+  padding:34px 16px 72px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(79,209,197,.08), transparent 34%),
+    radial-gradient(circle at 82% 8%, rgba(246,201,14,.055), transparent 30%),
+    var(--bg);
+  color:var(--text);
+  font-family:'Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:17px;
+}
+main{max-width:1080px;margin:0 auto}
+.eyebrow{
+  font-family:'Space Mono',monospace;
+  font-size:13px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--dim);
+  margin-bottom:12px;
+}
+.panel{
+  background:linear-gradient(135deg,rgba(255,255,255,.035) 0%,var(--surface) 72%);
+  border:1px solid var(--border);
+  border-radius:28px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025), 0 18px 56px rgba(0,0,0,.18);
+}
+.hero{
+  display:grid;
+  grid-template-columns:minmax(0,1.62fr) 260px;
+  gap:18px;
+  margin-bottom:18px;
+}
+.hero-main{
+  padding:28px;
+  border-left:3px solid #dce3ea;
+  background:linear-gradient(135deg,rgba(220,227,234,.06) 0%,var(--surface) 72%);
+}
+.hero-side{
+  padding:22px;
+  border-left:3px solid var(--gold);
+  background:linear-gradient(135deg,var(--gold-bg) 0%,var(--surface) 72%);
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:18px;
+}
+h1{
+  font-size:34px;
+  line-height:1.28;
+  letter-spacing:-.02em;
+  color:var(--white);
+  margin-bottom:18px;
+}
+.meta-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:18px}
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:48px;
+  padding:9px 18px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.35;
+  text-decoration:none;
+}
+.pill strong{color:var(--white);font-weight:700}
+.pill.blue{border-color:var(--blue-border);background:var(--blue-bg);color:#91b5eb}
+.hero-summary{
+  padding:18px 20px;
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.18);
+  background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(255,255,255,.025));
+}
+.summary-label{
+  font-family:'Space Mono',monospace;
+  font-size:12px;
+  letter-spacing:.10em;
+  text-transform:uppercase;
+  color:#ffffff;
+  margin-bottom:8px;
+}
+.hero-summary p{font-size:18px;line-height:1.9;color:var(--text)}
+.hero-summary strong{color:var(--white);font-weight:800}
+.score-box{
+  padding:18px;
+  border-radius:24px;
+  background:linear-gradient(180deg,var(--gold-bg),rgba(246,201,14,.03));
+  border:1px solid var(--gold-border);
+}
+.score-label{font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.score-num{font-family:var(--num);font-size:52px;font-weight:800;line-height:1;color:var(--gold);font-variant-numeric:tabular-nums}
+.score-num small{font-size:18px;color:var(--muted);font-weight:600}
+.tag{
+  display:inline-flex;
+  width:max-content;
+  padding:9px 14px;
+  border-radius:999px;
+  border:1px solid var(--amber-border);
+  background:var(--amber-bg);
+  color:var(--amber);
+  font-family:'Space Mono',monospace;
+  font-size:10px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  font-weight:800;
+}
+.side-verdict{
+  padding:14px 16px;
+  border-radius:20px;
+  border:1px solid var(--gold-border);
+  background:rgba(246,201,14,.07);
+  color:#fff4b0;
+  font-size:14px;
+  line-height:1.85;
+}
+.side-verdict strong{color:var(--white);font-weight:800}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:18px}
+.section{padding:24px}
+.col-12{grid-column:span 12}.col-7{grid-column:span 7}.col-5{grid-column:span 5}.col-6{grid-column:span 6}
+.section h2{font-size:22px;line-height:1.4;margin-bottom:16px;color:var(--white)}
+.section-note{font-family:'Space Mono',monospace;margin-bottom:12px;color:var(--dim);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+
+.section-one{border-left:3px solid var(--blue);background:linear-gradient(135deg,var(--blue-bg) 0%,var(--surface) 72%)}
+.section-one h2{color:var(--blue)}
+.one-liner{
+  padding:18px 20px;
+  border-radius:24px;
+  border:1px solid var(--blue-border);
+  background:linear-gradient(135deg,rgba(126,184,240,.10),rgba(255,255,255,.025));
+  color:#dcecff;
+  font-size:20px;
+  line-height:1.9;
+  font-weight:700;
+}
+.one-liner strong{color:var(--white)}
+
+.section-chain{border-left:3px solid var(--purple);background:linear-gradient(135deg,var(--purple-bg) 0%,var(--surface) 72%)}
+.section-chain h2{color:var(--purple)}
+.chain-title{font-size:19px;line-height:1.8;color:var(--white);font-weight:800;margin-bottom:16px}
+.chain{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:10px;
+}
+.chain-step{
+  min-height:112px;
+  padding:14px;
+  border-radius:22px;
+  border:1px solid var(--purple-border);
+  background:linear-gradient(180deg,rgba(167,139,250,.10),rgba(167,139,250,.025));
+  position:relative;
+}
+.chain-step::after{
+  content:'→';
+  position:absolute;
+  right:-12px;
+  top:42%;
+  color:rgba(167,139,250,.58);
+  font-family:var(--num);
+  font-weight:800;
+}
+.chain-step:last-child::after{content:''}
+.chain-step .num{font-family:var(--num);font-size:12px;color:var(--purple);font-weight:800;margin-bottom:8px}
+.chain-step p{font-size:14px;line-height:1.65;color:#f0ddff}
+.chain-summary{
+  margin-top:14px;
+  padding:16px 18px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+  color:var(--muted);
+  line-height:1.85;
+}
+.chain-summary strong{color:var(--white)}
+
+.section-watch{border-left:3px solid var(--action-green);background:linear-gradient(135deg,var(--action-green-bg) 0%,var(--surface) 72%)}
+.section-watch h2{color:var(--action-green)}
+.watch-list{display:grid;gap:12px}
+.watch-item{
+  display:grid;
+  grid-template-columns:136px 1fr;
+  gap:14px;
+  align-items:start;
+  border:1px solid var(--action-green-border);
+  background:linear-gradient(180deg,rgba(184,222,127,.11),rgba(184,222,127,.025));
+  border-radius:22px;
+  padding:14px 16px;
+}
+.watch-time{
+  font-family:var(--num);
+  font-weight:800;
+  color:#f6ffd8;
+  background:rgba(184,222,127,.13);
+  border:1px solid rgba(184,222,127,.32);
+  border-radius:18px;
+  padding:10px 8px;
+  text-align:center;
+  font-size:14px;
+  line-height:1.35;
+}
+.watch-item h3{font-size:16px;color:var(--white);margin-bottom:6px}
+.watch-item p{font-size:14px;line-height:1.75;color:var(--muted)}
+.only-one{
+  margin-top:14px;
+  padding:16px 18px;
+  border-radius:22px;
+  border:1px solid rgba(184,222,127,.30);
+  background:rgba(184,222,127,.10);
+  color:#f4ffd2;
+  line-height:1.8;
+  font-weight:700;
+}
+
+@media(max-width:900px){
+  body{padding:22px 12px 48px;font-size:16px}
+  .hero{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.col-12,.col-7,.col-5,.col-6{grid-column:span 1}
+  h1{font-size:27px}.hero-main,.hero-side,.section{padding:20px}
+  .chain{grid-template-columns:1fr}.chain-step::after{content:'↓';right:50%;top:auto;bottom:-15px}.chain-step:last-child::after{content:''}
+  .watch-item{grid-template-columns:1fr}.watch-time{text-align:left;width:max-content;max-width:100%}
+  .one-liner{font-size:18px}
+}
+
+
+
+
+/* ── 原版纠偏反馈：保留评分高/低/准确的判断骨架 ── */
+.feedback-launcher{
+  position:fixed;
+  top:32px;
+  right:32px;
+  z-index:20;
+}
+.feedback-launcher-btn{
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(19,22,31,.92);
+  color:#e2e8f0;
+  border-radius:16px;
+  padding:12px 16px;
+  font-size:14px;
+  font-weight:700;
+  cursor:pointer;
+  box-shadow:0 10px 30px rgba(0,0,0,.24);
+}
+.feedback-launcher-btn:hover{
+  background:rgba(28,33,46,.96);
+  border-color:rgba(126,184,240,.30);
+  color:#ffffff;
+}
+.feedback-drawer{
+  display:none;
+  position:fixed;
+  inset:0;
+  padding:14px 18px;
+  overflow:auto;
+  background:rgba(4,6,10,.76);
+  align-items:center;
+  justify-content:center;
+}
+.feedback-drawer.is-open{display:flex}
+
+.feedback-drawer-card{
+  width:min(1360px, calc(100vw - 36px));
+  height:min(820px, calc(100vh - 28px));
+  max-height:calc(100vh - 28px);
+  overflow:hidden;
+  background:#ffffff;
+  border:1px solid #d8dee8;
+  border-radius:28px;
+  padding:20px 22px;
+  box-shadow:0 20px 60px rgba(0,0,0,.22);
+  display:flex;
+  flex-direction:column;
+  margin:auto;
+}
+.feedback-drawer-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:14px;
+}
+.feedback-drawer-head h2{
+  margin:0;
+  font-size:30px;
+  color:#111827;
+}
+.feedback-close-btn{
+  border:1px solid #d8dee8;
+  background:#f3f6fb;
+  color:#334155;
+  border-radius:12px;
+  padding:10px 14px;
+  cursor:pointer;
+}
+.feedback-grid{
+  display:grid;
+  grid-template-columns:320px minmax(0,1fr) minmax(0,1fr);
+  gap:14px;
+  flex:1;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  align-content:start;
+  padding-right:6px;
+}
+.feedback-card{
+  --card-tint:#eff6ff;
+  --card-border:#bfdbfe;
+  --card-title:#1d4ed8;
+  --label-color:#1e40af;
+  --label-border:#c7d8f7;
+  --option-active-bg:#dbeafe;
+  --option-active-border:#93c5fd;
+  background:linear-gradient(180deg, var(--card-tint) 0%, #ffffff 100%);
+  border:1px solid var(--card-border);
+  border-radius:20px;
+  padding:16px 16px 14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+  min-width:0;
+}
+.feedback-card:nth-child(2){
+  --card-tint:#fff8e8;
+  --card-border:#f7d58a;
+  --card-title:#b45309;
+  --label-color:#b45309;
+  --label-border:#f3d39d;
+  --option-active-bg:#ffedd5;
+  --option-active-border:#fdba74;
+}
+.feedback-card:nth-child(3){
+  --card-tint:#fef2f2;
+  --card-border:#fecaca;
+  --card-title:#be123c;
+  --label-color:#be123c;
+  --label-border:#fecdd3;
+  --option-active-bg:#ffe4e6;
+  --option-active-border:#fda4af;
+}
+.feedback-card h3{
+  display:inline-flex;
+  align-items:center;
+  margin:0 0 12px;
+  padding:7px 12px;
+  border-radius:999px;
+  font-size:18px;
+  color:var(--card-title);
+  background:rgba(255,255,255,.82);
+  border:1px solid var(--card-border);
+}
+.feedback-field{
+  --field-tint:rgba(248,250,252,.92);
+  --field-accent:#cbd5e1;
+  --field-label-bg:#ffffff;
+  --field-label-border:#dbe5f1;
+  --field-label-text:#475569;
+  margin-bottom:10px;
+  padding:11px 12px 12px;
+  border:1px solid rgba(226,232,240,.95);
+  border-left:4px solid var(--field-accent);
+  border-radius:16px;
+  background:linear-gradient(135deg, var(--field-tint) 0%, rgba(255,255,255,.94) 100%);
+  min-width:0;
+}
+.feedback-card .feedback-field:first-of-type{
+  padding-top:11px;
+  border-top:1px solid rgba(226,232,240,.95);
+}
+.feedback-field:last-child{margin-bottom:0}
+.feedback-field label{
+  display:inline-flex;
+  align-items:center;
+  margin-bottom:6px;
+  padding:4px 9px;
+  color:var(--field-label-text);
+  font-size:13px;
+  font-weight:600;
+  background:var(--field-label-bg);
+  border:1px solid var(--field-label-border);
+  border-radius:999px;
+  max-width:100%;
+}
+.feedback-card:nth-child(1) .feedback-field:nth-of-type(1){
+  --field-tint:rgba(239,246,255,.96);
+  --field-accent:#60a5fa;
+  --field-label-bg:#eff6ff;
+  --field-label-border:#bfdbfe;
+  --field-label-text:#1d4ed8;
+}
+.feedback-card:nth-child(1) .feedback-field:nth-of-type(2){
+  --field-tint:rgba(238,242,255,.96);
+  --field-accent:#818cf8;
+  --field-label-bg:#eef2ff;
+  --field-label-border:#c7d2fe;
+  --field-label-text:#4338ca;
+}
+.feedback-card:nth-child(1) .feedback-field:nth-of-type(3){
+  --field-tint:rgba(240,253,250,.96);
+  --field-accent:#2dd4bf;
+  --field-label-bg:#f0fdfa;
+  --field-label-border:#99f6e4;
+  --field-label-text:#0f766e;
+}
+.feedback-card:nth-child(1) .feedback-field:nth-of-type(4){
+  --field-tint:rgba(255,251,235,.96);
+  --field-accent:#f59e0b;
+  --field-label-bg:#fffbeb;
+  --field-label-border:#fde68a;
+  --field-label-text:#b45309;
+}
+.feedback-card:nth-child(2) .feedback-field:nth-of-type(1){
+  --field-tint:rgba(255,251,235,.96);
+  --field-accent:#f59e0b;
+  --field-label-bg:#fffbeb;
+  --field-label-border:#fde68a;
+  --field-label-text:#b45309;
+}
+.feedback-card:nth-child(2) .feedback-field:nth-of-type(2){
+  --field-tint:rgba(239,246,255,.96);
+  --field-accent:#60a5fa;
+  --field-label-bg:#eff6ff;
+  --field-label-border:#bfdbfe;
+  --field-label-text:#1d4ed8;
+}
+.feedback-card:nth-child(2) .feedback-field:nth-of-type(3){
+  --field-tint:rgba(245,243,255,.96);
+  --field-accent:#a78bfa;
+  --field-label-bg:#f5f3ff;
+  --field-label-border:#ddd6fe;
+  --field-label-text:#6d28d9;
+}
+.feedback-card:nth-child(2) .feedback-field:nth-of-type(4){
+  --field-tint:rgba(240,253,250,.96);
+  --field-accent:#2dd4bf;
+  --field-label-bg:#f0fdfa;
+  --field-label-border:#99f6e4;
+  --field-label-text:#0f766e;
+}
+.feedback-card:nth-child(2) .feedback-field:nth-of-type(5){
+  --field-tint:rgba(247,254,231,.96);
+  --field-accent:#84cc16;
+  --field-label-bg:#f7fee7;
+  --field-label-border:#d9f99d;
+  --field-label-text:#4d7c0f;
+}
+.feedback-card:nth-child(3) .feedback-field:nth-of-type(1){
+  --field-tint:rgba(255,241,242,.96);
+  --field-accent:#fb7185;
+  --field-label-bg:#fff1f2;
+  --field-label-border:#fecdd3;
+  --field-label-text:#be123c;
+}
+.feedback-card:nth-child(3) .feedback-field:nth-of-type(2){
+  --field-tint:rgba(255,251,235,.96);
+  --field-accent:#f59e0b;
+  --field-label-bg:#fffbeb;
+  --field-label-border:#fde68a;
+  --field-label-text:#b45309;
+}
+.feedback-card:nth-child(3) .feedback-field:nth-of-type(3){
+  --field-tint:rgba(245,243,255,.96);
+  --field-accent:#a78bfa;
+  --field-label-bg:#f5f3ff;
+  --field-label-border:#ddd6fe;
+  --field-label-text:#6d28d9;
+}
+.feedback-card:nth-child(3) .feedback-field:nth-of-type(4){
+  --field-tint:rgba(240,253,250,.96);
+  --field-accent:#2dd4bf;
+  --field-label-bg:#f0fdfa;
+  --field-label-border:#99f6e4;
+  --field-label-text:#0f766e;
+}
+.feedback-card:nth-child(3) .feedback-field:nth-of-type(5){
+  --field-tint:rgba(247,254,231,.96);
+  --field-accent:#84cc16;
+  --field-label-bg:#f7fee7;
+  --field-label-border:#d9f99d;
+  --field-label-text:#4d7c0f;
+}
+.feedback-hint{
+  margin:0 0 6px;
+  color:#94a3b8;
+  font-size:12px;
+  line-height:1.6;
+}
+.option-grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:7px;
+  min-width:0;
+}
+.feedback-card:nth-child(n+2) .option-grid{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+.option{
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  width:100%;
+  min-height:44px;
+  padding:9px 11px;
+  border-radius:14px;
+  background:#ffffff;
+  border:1px solid #d8dee8;
+  color:#1f2937;
+  font-size:13px;
+  line-height:1.56;
+  white-space:normal;
+  transition:background .15s ease, border-color .15s ease, box-shadow .15s ease;
+  min-width:0;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+.option input{
+  margin:0;
+  margin-top:2px;
+  accent-color:#7eb8f0;
+  flex:0 0 auto;
+}
+.option:has(input:checked){
+  background:var(--option-active-bg);
+  border-color:var(--option-active-border);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.55);
+}
+.score-slider-wrap{
+  padding:10px 12px;
+  border-radius:16px;
+  background:#ffffff;
+  border:1px solid var(--label-border);
+}
+.score-slider-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+.score-slider-scale{
+  color:#94a3b8;
+  font-size:13px;
+}
+.score-slider-value{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:64px;
+  padding:8px 12px;
+  border-radius:999px;
+  background:#eff6ff;
+  border:1px solid #bfdbfe;
+  color:#2563eb;
+  font-size:14px;
+  font-weight:700;
+  font-family:var(--num-font);
+  font-variant-numeric:tabular-nums;
+}
+.score-slider{
+  width:100%;
+  margin:0;
+  accent-color:#2563eb;
+}
+.score-slider:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.score-slider-ticks{
+  display:none;
+  justify-content:space-between;
+  gap:8px;
+  margin-top:10px;
+  color:#94a3b8;
+  font-size:11px;
+  font-family:var(--num-font);
+  font-variant-numeric:tabular-nums;
+}
+.feedback-textarea{
+  width:100%;
+  min-height:52px;
+  resize:vertical;
+  border:1px solid #d8dee8;
+  border-radius:16px;
+  background:#ffffff;
+  color:#111827;
+  padding:12px 14px;
+  font-size:14px;
+  line-height:1.7;
+}
+.wizard-progress{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+  margin-bottom:16px;
+}
+.wizard-step{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 12px;
+  border-radius:16px;
+  background:#f8fafc;
+  border:1px solid #dbe5f1;
+  color:#64748b;
+}
+.wizard-step span{
+  display:inline-flex;
+  width:24px;
+  height:24px;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  background:#e2e8f0;
+  color:#475569;
+  font-size:12px;
+  font-weight:700;
+  font-family:var(--num-font);
+}
+.wizard-step strong{
+  font-size:14px;
+  font-weight:700;
+}
+.wizard-step.is-active{
+  background:#eff6ff;
+  border-color:#bfdbfe;
+  color:#1d4ed8;
+}
+.wizard-step.is-active span{
+  background:#2563eb;
+  color:#ffffff;
+}
+.wizard-step.is-done{
+  background:#f0fdf4;
+  border-color:#86efac;
+  color:#166534;
+}
+.wizard-step.is-done span{
+  background:#22c55e;
+  color:#ffffff;
+}
+.wizard-body{
+  flex:1;
+  min-height:0;
+  display:flex;
+}
+.step-pane{
+  display:none;
+  flex:1;
+  min-height:0;
+  flex-direction:column;
+  gap:14px;
+}
+.step-pane.is-active{
+  display:flex;
+}
+.step-hero{
+  padding:18px 20px;
+  border-radius:22px;
+  background:linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  border:1px solid #bfdbfe;
+}
+.step-kicker{
+  margin:0 0 6px;
+  color:#2563eb;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.step-title{
+  margin:0 0 8px;
+  color:#0f172a;
+  font-size:28px;
+  line-height:1.35;
+}
+.step-copy{
+  margin:0;
+  color:#64748b;
+  font-size:16px;
+  line-height:1.8;
+}
+.step-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:14px;
+}
+.step-block{
+  --block-tint:#f8fafc;
+  --block-border:#dbe5f1;
+  --block-title:#334155;
+  background:linear-gradient(180deg, var(--block-tint) 0%, #ffffff 100%);
+  border:1px solid var(--block-border);
+  border-radius:20px;
+  padding:16px;
+  min-width:0;
+}
+.step-block.is-full{
+  grid-column:1 / -1;
+}
+.step-block.tone-sky{
+  --block-tint:#eff6ff;
+  --block-border:#bfdbfe;
+  --block-title:#1d4ed8;
+}
+.step-block.tone-indigo{
+  --block-tint:#eef2ff;
+  --block-border:#c7d2fe;
+  --block-title:#4338ca;
+}
+.step-block.tone-teal{
+  --block-tint:#f0fdfa;
+  --block-border:#99f6e4;
+  --block-title:#0f766e;
+}
+.step-block.tone-amber{
+  --block-tint:#fffbeb;
+  --block-border:#fde68a;
+  --block-title:#b45309;
+}
+.step-block.tone-rose{
+  --block-tint:#fff1f2;
+  --block-border:#fecdd3;
+  --block-title:#be123c;
+}
+.step-block.tone-violet{
+  --block-tint:#f5f3ff;
+  --block-border:#ddd6fe;
+  --block-title:#6d28d9;
+}
+.step-block.tone-lime{
+  --block-tint:#f7fee7;
+  --block-border:#d9f99d;
+  --block-title:#4d7c0f;
+}
+.step-block-head{
+  display:flex;
+  align-items:center;
+  margin-bottom:8px;
+  color:var(--block-title);
+  font-size:18px;
+  font-weight:700;
+}
+.step-block .feedback-hint{
+  margin-bottom:8px;
+}
+.option-grid.two-col{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+.choice-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:14px;
+}
+.choice-card{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-height:164px;
+  padding:18px 18px 16px;
+  border-radius:24px;
+  background:linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border:1px solid #dbe5f1;
+  cursor:pointer;
+  transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.choice-card input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+.choice-card-title{
+  color:#0f172a;
+  font-size:20px;
+  font-weight:800;
+  line-height:1.35;
+}
+.choice-card-copy{
+  color:#64748b;
+  font-size:14px;
+  line-height:1.7;
+}
+.step-pane[data-step="2"] .option,
+.step-pane[data-step="3"] .option{
+  font-size:15px;
+  font-weight:700;
+  line-height:1.62;
+}
+.step-pane[data-step="2"] .feedback-hint,
+.step-pane[data-step="3"] .feedback-hint{
+  font-size:13px;
+}
+.choice-card:has(input:checked){
+  border-color:#2563eb;
+  box-shadow:0 0 0 3px rgba(37,99,235,.10);
+  transform:translateY(-1px);
+}
+.choice-card:has(input[value="high"]:checked){
+  background:linear-gradient(180deg, #fff1f2 0%, #ffffff 100%);
+  border-color:#fda4af;
+}
+.choice-card:has(input[value="low"]:checked){
+  background:linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+  border-color:#86efac;
+}
+.choice-card:has(input[value="ok"]:checked){
+  background:linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+  border-color:#93c5fd;
+}
+.wizard-footer{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin-top:16px;
+  padding-top:14px;
+  border-top:1px solid #e2e8f0;
+}
+.wizard-footer-copy{
+  min-width:0;
+  color:#64748b;
+  font-size:14px;
+  line-height:1.6;
+}
+.wizard-actions{
+  display:flex;
+  gap:10px;
+  flex-shrink:0;
+}
+.wizard-btn{
+  border:1px solid #d8dee8;
+  background:#ffffff;
+  color:#334155;
+  border-radius:14px;
+  padding:11px 16px;
+  font-size:14px;
+  font-weight:700;
+  cursor:pointer;
+}
+.wizard-btn.primary{
+  background:#111827;
+  border-color:#111827;
+  color:#ffffff;
+}
+.wizard-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.summary-preview{
+  margin-top:10px;
+  padding:14px 15px;
+  border-radius:16px;
+  background:#ffffff;
+  border:1px solid #dbe5f1;
+}
+.summary-preview.is-empty{
+  color:#94a3b8;
+}
+.summary-preview h4{
+  margin:0 0 10px;
+  color:#0f172a;
+  font-size:15px;
+}
+.summary-preview p{
+  margin:0 0 8px;
+  color:#475569;
+  font-size:13px;
+  line-height:1.7;
+}
+.summary-preview p:last-child{
+  margin-bottom:0;
+}
+@media(max-width:920px){
+  .hero{grid-template-columns:1fr}
+  .col-7,.col-5,.col-12{grid-column:span 12}
+  .feedback-grid{grid-template-columns:1fr}
+  .feedback-card:nth-child(n+2) .option-grid{
+    grid-template-columns:1fr;
+  }
+  .wizard-progress,
+  .choice-grid,
+  .step-grid,
+  .option-grid.two-col{
+    grid-template-columns:1fr;
+  }
+  .feedback-drawer-card{
+    width:min(960px, calc(100vw - 24px));
+    height:auto;
+    max-height:none;
+    overflow:visible;
+  }
+}
+@media(max-width:640px){
+  .video-title{font-size:27px}
+  .hero-main,.hero-side,.section{padding:20px}
+  .points-grid{grid-template-columns:1fr}
+  .segment-item{grid-template-columns:1fr}
+  .segment-time{justify-content:flex-start}
+  .feedback-drawer-card{
+    padding:18px;
+    height:auto;
+  }
+  .feedback-launcher{
+    top:auto;
+    right:16px;
+    bottom:16px;
+  }
+}
+
+
+.section-chain .chain-step .num{
+    flex-basis:34px;
+    width:34px;
+  }
+}
+
+
+/* 字段分工修正版：四节点路径表 + 箭头链 + 统一结论 */
+.section-chain .chain-title{margin-bottom:12px;}
+.path-table{
+  display:grid;
+  grid-template-columns:106px 1fr;
+  border:1px solid rgba(201,167,255,.20);
+  border-radius:22px;
+  overflow:hidden;
+  margin-top:14px;
+  background:rgba(255,255,255,.018);
+}
+.path-row{display:contents;}
+.path-label,.path-copy{
+  padding:13px 16px;
+  border-bottom:1px solid rgba(255,255,255,.065);
+}
+.path-row:last-child .path-label,
+.path-row:last-child .path-copy{border-bottom:none;}
+.path-label{
+  color:#c9a7ff;
+  font-weight:800;
+  background:rgba(201,167,255,.07);
+  border-right:1px solid rgba(255,255,255,.07);
+  display:flex;
+  align-items:center;
+}
+.path-copy{
+  color:var(--text-secondary);
+  line-height:1.78;
+  font-size:15.5px;
+}
+.mini-arrow-chain{
+  margin-top:12px;
+  padding:13px 16px;
+  border-radius:18px;
+  background:rgba(201,167,255,.055);
+  border:1px solid rgba(201,167,255,.14);
+  color:#d7c7ff;
+  font-size:15px;
+  line-height:1.85;
+}
+.mini-arrow-chain .arrow-token{
+  color:#c9a7ff;
+  font-weight:900;
+  padding:0 5px;
+}
+.final-conclusion{
+  margin-top:12px;
+  padding:15px 18px;
+  border-radius:20px;
+  background:linear-gradient(135deg, rgba(184,222,127,.10) 0%, rgba(19,22,31,.88) 76%);
+  border:1px solid rgba(184,222,127,.24);
+  color:#e7f6c9;
+  font-size:16px;
+  line-height:1.8;
+}
+.final-conclusion strong{
+  color:#cfe99a;
+}
+@media(max-width:640px){
+  .path-table{grid-template-columns:76px 1fr;}
+  .path-label,.path-copy{padding:12px 12px;}
+}
+
+
+/* Highest Compression 融合版：核心提炼进入“视频到底讲了什么？” */
+.core-extract{
+  margin:14px 0 14px;
+  padding:16px 18px;
+  border-radius:22px;
+  background:linear-gradient(135deg, rgba(126,184,240,.10) 0%, rgba(19,22,31,.88) 76%);
+  border:1px solid rgba(126,184,240,.24);
+}
+.core-extract-label{
+  font-family:var(--num-font);
+  color:#9fcaff;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  margin-bottom:8px;
+}
+.core-extract p{
+  margin:0;
+  color:#eaf4ff;
+  font-size:18px;
+  line-height:1.85;
+}
+.core-extract strong{
+  color:#ffffff;
+}
+
+
+/* 配色微调：把“视频到底讲了什么？”从紫色系改为核心提炼 / Highest Compression 的蓝色系 */
+.section-chain{
+  border-left-color:var(--blue) !important;
+  background:linear-gradient(135deg,var(--blue-bg) 0%,var(--surface) 72%) !important;
+}
+.section-chain h2{
+  color:var(--blue) !important;
+}
+.core-extract{
+  background:linear-gradient(135deg,rgba(126,184,240,.10),rgba(255,255,255,.025)) !important;
+  border-color:var(--blue-border) !important;
+}
+.core-extract-label{
+  color:#9fcaff !important;
+}
+.core-extract p{
+  color:#dcecff !important;
+}
+.path-table{
+  border-color:var(--blue-border) !important;
+}
+.path-label{
+  color:var(--blue) !important;
+  background:var(--blue-bg) !important;
+}
+.mini-arrow-chain{
+  background:rgba(126,184,240,.055) !important;
+  border-color:var(--blue-border) !important;
+  color:#dcecff !important;
+}
+.mini-arrow-chain .arrow-token{
+  color:var(--blue) !important;
+}
+.final-conclusion{
+  background:linear-gradient(135deg,rgba(126,184,240,.10),rgba(255,255,255,.025)) !important;
+  border-color:var(--blue-border) !important;
+  color:#dcecff !important;
+}
+.final-conclusion strong{
+  color:#ffffff !important;
+}
+
+
+/* 配色微调：结论 banner 改为红色系 */
+.final-conclusion{
+  background:linear-gradient(135deg, rgba(240,112,112,.12) 0%, rgba(19,22,31,.88) 76%) !important;
+  border-color:rgba(240,112,112,.28) !important;
+  color:#f7dad6 !important;
+}
+.final-conclusion strong{
+  color:#ffffff !important;
+}
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">视频速览 · 总判定与一句话总结版</div>
+
+  <section class="hero score-skip">
+    <div class="panel hero-main">
+      <h1>魅力不是完美表演，而是让别人读到真实信号</h1>
+      <div class="meta-row">
+        <span class="pill"><strong>频道：</strong>Mock Channel</span>
+        <span class="pill"><strong>时长：</strong>18:06</span>
+        <span class="pill"><strong>日期：</strong>2026-04-21</span>
+        <span class="pill blue"><strong>主题：</strong>社交心理 / 魅力机制 / 关系吸引 / 自我呈现</span>
+        <a class="pill blue" href="https://example.com/watch/charm" target="_blank" rel="noreferrer"><strong>原视频：</strong>点击查看</a>
+      </div>
+      <div class="hero-summary">
+        <div class="summary-label">one-line brief</div>
+        <p><strong>一句话总结：</strong>这期视频主要讲：魅力来自他人能稳定读到善意、潜力和真实，而不是把自己表演得毫无缺点。</p>
+      </div>
+    </div>
+
+    <aside class="panel hero-side">
+      <div class="score-box">
+        <div class="score-label">replacement score</div>
+        <div class="score-num">3.6 <small>/ 10</small></div>
+      </div>
+      <div class="tag">报告基本可替代</div>
+      <p class="side-verdict"><strong>总判定：</strong>看报告基本够，原视频只建议跳看 08:20 | 12:40；不需要完整观看。</p>
+      <p class="side-verdict"><strong>局限：</strong>观点适合社交入门，论证主要依靠经验观察，缺少更系统的研究支撑。</p>
+    </aside>
+  </section>
+
+  <section class="grid">
+    <div class="panel section section-chain col-12">
+      <div class="section-note">what the video is actually saying</div>
+      <h2>视频到底讲了什么？</h2>
+      <div class="core-extract">
+        <div class="core-extract-label">highest compression · 核心提炼</div>
+        <p>魅力的核心不是完美展示自己，而是让对方同时读到安全感、成长性和不做作的真实信号。</p>
+      </div>
+      <div class="path-table">
+        <div class="path-row">
+          <div class="path-label">问题</div>
+          <div class="path-copy">视频从很多人把魅力理解成外形、话术和表演切入。</div>
+        </div>
+        <div class="path-row">
+          <div class="path-label">机制</div>
+          <div class="path-copy">它把魅力解释成善意、潜力、真实感和互动反馈共同形成的信号。</div>
+        </div>
+        <div class="path-row">
+          <div class="path-label">转折</div>
+          <div class="path-copy">它纠正了越完美越有吸引力的误区，强调适度真实更容易建立信任。</div>
+        </div>
+        <div class="path-row">
+          <div class="path-label">落点</div>
+          <div class="path-copy">最后落到减少过度包装，让表达、边界和行动保持一致。</div>
+        </div>
+      </div>
+      <div class="mini-arrow-chain">追求完美 <span class="arrow-token">→</span> 信号失真 <span class="arrow-token">→</span> 善意可读 <span class="arrow-token">→</span> 潜力可见 <span class="arrow-token">→</span> 真实稳定 <span class="arrow-token">→</span> 吸引形成</div>
+      <div class="final-conclusion"><strong>结论：</strong>魅力的核心不是表演得更完美，而是让别人读到你身上的善意、潜力和真实。</div>
+    </div>
+
+    <div class="panel section section-watch col-12">
+      <div class="section-note">where to watch if needed</div>
+      <h2>如果要看，只看哪里？</h2>
+      <div class="watch-list">
+        <div class="watch-item"><div class="watch-time">08:20 | 12:40</div><div><h3>首选片段：魅力三类信号</h3><p>这一段集中说明善意、潜力和真实如何共同影响吸引。</p></div></div>
+      </div>
+      <div class="only-one">只选一段：08:20 | 12:40。这一段已经覆盖报告之外最值得补看的解释和例子。</div>
+    </div>
+  </section>
+</main>
+
+<div class="feedback-launcher">
+  <button class="feedback-launcher-btn" id="openFeedback">纠偏反馈</button>
+</div>
+
+<div class="feedback-drawer" id="feedbackDrawer">
+  <div class="feedback-drawer-card">
+    <div class="feedback-drawer-head">
+      <h2>纠偏反馈</h2>
+      <button class="feedback-close-btn" id="closeFeedback">关闭</button>
+    </div>
+
+    <div class="wizard-progress" id="wizardProgress">
+      <div class="wizard-step is-active" data-step="1"><span>1</span><strong>基础判断</strong></div>
+      <div class="wizard-step" data-step="2"><span>2</span><strong>纠偏核心</strong></div>
+      <div class="wizard-step" data-step="3"><span>3</span><strong>原视频增量</strong></div>
+      <div class="wizard-step" data-step="4"><span>4</span><strong>报告字段</strong></div>
+    </div>
+
+    <div class="wizard-body">
+      <section class="step-pane is-active" data-step="1">
+        <div class="step-hero">
+          <p class="step-kicker">第一步</p>
+          <h3 class="step-title">先判断这次评分是偏高、偏低，还是大致准确</h3>
+          <p class="step-copy">这里只做方向判断。你选完以后，后面的题目会自动按这个方向切换，不会一次把所有内容都堆出来。</p>
+        </div>
+
+        <div class="choice-grid">
+          <label class="choice-card">
+            <input type="radio" name="bias_dir" value="high">
+            <span class="choice-card-title">评分标高了</span>
+            <span class="choice-card-copy">系统把这条视频写得比我真实感受更值、更稳、更值得看。</span>
+          </label>
+          <label class="choice-card">
+            <input type="radio" name="bias_dir" value="low">
+            <span class="choice-card-title">评分标低了</span>
+            <span class="choice-card-copy">系统低估了这条视频的价值，漏掉了真正有收获的部分。</span>
+          </label>
+          <label class="choice-card">
+            <input type="radio" name="bias_dir" value="ok">
+            <span class="choice-card-title">方向基本准确</span>
+            <span class="choice-card-copy">大方向我是认的，只想微调措辞、时间段或少数判断。</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="step-pane" data-step="2">
+        <div class="step-hero">
+          <p class="step-kicker">第二步</p>
+          <h3 class="step-title">补上你最核心的纠偏判断</h3>
+          <p class="step-copy">骨架不变：仍然回答你不认同什么、你认为应该打多少分、你为什么会这么改分。只是选项更贴合“报告能否替代原视频”的新模板。</p>
+        </div>
+
+        <div class="step-grid">
+          <div class="step-block tone-indigo" id="step2DisagreeBlock">
+            <div class="step-block-head">我不认同的地方</div>
+            <div class="option-grid two-col">
+              <label class="option"><input type="checkbox">总判定不准</label>
+              <label class="option"><input type="checkbox">评分和继续观看价值不匹配</label>
+              <label class="option"><input type="checkbox">一句话总结写偏了</label>
+              <label class="option"><input type="checkbox">核心提炼 / Highest Compression 不够锋利</label>
+              <label class="option"><input type="checkbox">推荐片段不准</label>
+              <label class="option"><input type="checkbox">报告替代性判断不准</label>
+            </div>
+          </div>
+
+          <div class="step-block tone-teal" id="step2ScoreBlock">
+            <div class="step-block-head">我认为的总分</div>
+            <p class="feedback-hint" id="scoreRangeHint">先在第一步选方向，这里的评分范围会自动按当前分数收窄。</p>
+            <div class="score-slider-wrap">
+              <div class="score-slider-top">
+                <span class="score-slider-scale" id="scoreSliderScale">先选择方向</span>
+                <span class="score-slider-value" id="scoreSliderValue">5.0</span>
+              </div>
+              <input class="score-slider" id="scoreSlider" type="range" min="5.0" max="5.0" step="0.1" value="5.0" disabled>
+            </div>
+          </div>
+
+          <div class="step-block tone-amber is-full" id="step2ReasonBlock">
+            <div class="step-block-head">我为什么会这么改分</div>
+            <p class="feedback-hint">这里只显示和你第一步方向一致的选项，核心判断围绕“原视频相对报告还有多少继续观看价值”。</p>
+
+            <div class="dir-panel option-grid two-col" data-dir="high" style="display:none">
+              <label class="option"><input type="checkbox">报告已经覆盖核心，原视频增量更少</label>
+              <label class="option"><input type="checkbox">推荐片段仍然偏长，压缩后也不损失信息</label>
+              <label class="option"><input type="checkbox">视频表达没有额外价值，不值得补看</label>
+              <label class="option"><input type="checkbox">方法我已经熟悉，对我没有新增量</label>
+              <label class="option"><input type="checkbox">总判定还不够狠，应该直接说看报告够了</label>
+            </div>
+            <div class="dir-panel option-grid two-col" data-dir="low" style="display:none">
+              <label class="option"><input type="checkbox">报告没有替代原视频，视频表达本身有价值</label>
+              <label class="option"><input type="checkbox">作者例子比报告更有说服力</label>
+              <label class="option"><input type="checkbox">推荐片段之外还有重要内容</label>
+              <label class="option"><input type="checkbox">视频结构和节奏本身值得看</label>
+              <label class="option"><input type="checkbox">总判定太保守，应该建议完整看或多看几段</label>
+            </div>
+            <div class="dir-panel option-grid two-col" data-dir="ok" style="display:none">
+              <label class="option"><input type="checkbox">总判定准确，只需要微调措辞</label>
+              <label class="option"><input type="checkbox">分数基本准确，但推荐时间段要调整</label>
+              <label class="option"><input type="checkbox">一句话总结可以更具体</label>
+              <label class="option"><input type="checkbox">核心提炼 / Highest Compression 可以更有洞察感</label>
+              <label class="option"><input type="checkbox">颜色、模块顺序或表达重心需要小修</label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="step-pane" data-step="3">
+        <div class="step-hero">
+          <p class="step-kicker">第三步</p>
+          <h3 class="step-title">判断原视频相对报告到底有没有增量</h3>
+          <p class="step-copy">这一步不改第一页骨架，只把判断重心从“视频值不值”转成“原视频相对这份报告，还有没有继续观看价值”。</p>
+        </div>
+
+        <div class="step-grid">
+          <div class="step-block tone-sky">
+            <div class="step-block-head">原视频有没有报告替代不了的东西</div>
+            <div class="dir-panel option-grid" data-dir="high" style="display:none">
+              <label class="option"><input type="radio" name="freshness_h">几乎没有，报告已经够</label>
+              <label class="option"><input type="radio" name="freshness_h">只有少量例子值得听</label>
+              <label class="option"><input type="radio" name="freshness_h">作者表达没有明显额外价值</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="low" style="display:none">
+              <label class="option"><input type="radio" name="freshness_l">作者表达本身有价值</label>
+              <label class="option"><input type="radio" name="freshness_l">视频完整节奏比报告更能说服我</label>
+              <label class="option"><input type="radio" name="freshness_l">报告漏掉了不能被压缩的理解过程</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="ok" style="display:none">
+              <label class="option"><input type="radio" name="freshness_o">报告基本够，视频只有少量补充</label>
+              <label class="option"><input type="radio" name="freshness_o">有些例子值得听，但不需要完整看</label>
+              <label class="option"><input type="radio" name="freshness_o">视频表达有一点价值，适合跳看</label>
+            </div>
+          </div>
+
+          <div class="step-block tone-violet">
+            <div class="step-block-head">原视频的信息密度如何</div>
+            <div class="dir-panel option-grid" data-dir="high" style="display:none">
+              <label class="option"><input type="radio" name="appl_h">核心内容很快讲完，后面偏重复</label>
+              <label class="option"><input type="radio" name="appl_h">有效内容集中在一小段</label>
+              <label class="option"><input type="radio" name="appl_h">压掉一大半也不影响理解</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="low" style="display:none">
+              <label class="option"><input type="radio" name="appl_l">信息密度比报告判断更高</label>
+              <label class="option"><input type="radio" name="appl_l">前后内容连续，适合完整看</label>
+              <label class="option"><input type="radio" name="appl_l">跳看会损失理解和说服力</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="ok" style="display:none">
+              <label class="option"><input type="radio" name="appl_o">信息密度适中，可以跳看</label>
+              <label class="option"><input type="radio" name="appl_o">有铺垫，但不算严重</label>
+              <label class="option"><input type="radio" name="appl_o">推荐片段能覆盖大部分价值</label>
+            </div>
+          </div>
+
+          <div class="step-block tone-teal">
+            <div class="step-block-head">视频主线是否被报告说清楚了</div>
+            <div class="dir-panel option-grid" data-dir="high" style="display:none">
+              <label class="option"><input type="radio" name="logic_h">报告已经说清楚了</label>
+              <label class="option"><input type="radio" name="logic_h">主线不复杂，不需要原视频</label>
+              <label class="option"><input type="radio" name="logic_h">视频只是重复解释同一件事</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="low" style="display:none">
+              <label class="option"><input type="radio" name="logic_l">主线对，但报告漏了关键转折</label>
+              <label class="option"><input type="radio" name="logic_l">报告把重心写偏了</label>
+              <label class="option"><input type="radio" name="logic_l">报告过度压缩，损失了理解</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="ok" style="display:none">
+              <label class="option"><input type="radio" name="logic_o">报告主线基本准确</label>
+              <label class="option"><input type="radio" name="logic_o">有一处重心需要调整</label>
+              <label class="option"><input type="radio" name="logic_o">主线对，但表述还能更顺</label>
+            </div>
+          </div>
+
+          <div class="step-block tone-lime">
+            <div class="step-block-head">原视频的观看价值主要在哪里</div>
+            <div class="dir-panel option-grid" data-dir="high" style="display:none">
+              <label class="option"><input type="radio" name="density_h">没有明显观看价值</label>
+              <label class="option"><input type="radio" name="density_h">只有方法步骤，报告能替代</label>
+              <label class="option"><input type="radio" name="density_h">只是情绪激励，不值得计入高分</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="low" style="display:none">
+              <label class="option"><input type="radio" name="density_l">作者举例很关键</label>
+              <label class="option"><input type="radio" name="density_l">表达节奏有助于理解</label>
+              <label class="option"><input type="radio" name="density_l">理论解释或失效条件值得看</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="ok" style="display:none">
+              <label class="option"><input type="radio" name="density_o">主要价值在方法步骤</label>
+              <label class="option"><input type="radio" name="density_o">主要价值在作者举例</label>
+              <label class="option"><input type="radio" name="density_o">主要价值在表达节奏，但跳看即可</label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="step-pane" data-step="4">
+        <div class="step-hero">
+          <p class="step-kicker">第四步</p>
+          <h3 class="step-title">最后确认报告字段哪里需要改</h3>
+          <p class="step-copy">这一步对应新模板：总判定、一句话总结、核心提炼 / Highest Compression、视频主线和推荐片段。它不改变第一页的评分偏好入口，只帮之后的报告更贴合你的主观判断。</p>
+        </div>
+
+        <div class="step-grid">
+          <div class="step-block tone-rose">
+            <div class="step-block-head">报告哪里写偏了</div>
+            <div class="dir-panel option-grid" data-dir="high" style="display:none">
+              <label class="option"><input type="checkbox">总判定过弱，明明不用看却还建议补看</label>
+              <label class="option"><input type="checkbox">把视频价值写高了</label>
+              <label class="option"><input type="checkbox">推荐片段太多或太长</label>
+              <label class="option"><input type="checkbox">没有说清“报告已经够了”</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="low" style="display:none">
+              <label class="option"><input type="checkbox">总判定过强，明明还值得看却写成报告够了</label>
+              <label class="option"><input type="checkbox">把视频价值写低了</label>
+              <label class="option"><input type="checkbox">漏掉了真正值得看的片段</label>
+              <label class="option"><input type="checkbox">没有保留视频表达本身的价值</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="ok" style="display:none">
+              <label class="option"><input type="checkbox">总判定基本准确</label>
+              <label class="option"><input type="checkbox">模块排序可以微调</label>
+              <label class="option"><input type="checkbox">措辞有点满或有点虚</label>
+              <label class="option"><input type="checkbox">整体我基本认同，只需要小修</label>
+            </div>
+          </div>
+
+          <div class="step-block tone-violet">
+            <div class="step-block-head">一句话总结 / 核心提炼 / Highest Compression 的问题</div>
+            <div class="dir-panel option-grid" data-dir="high" style="display:none">
+              <label class="option"><input type="radio" name="summary_h">一句话总结没有体现“报告够了”</label>
+              <label class="option"><input type="radio" name="summary_h">核心提炼 / Highest Compression 太像普通摘要，不够锋利</label>
+              <label class="option"><input type="radio" name="summary_h">把方法写得比实际更有新意</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="low" style="display:none">
+              <label class="option"><input type="radio" name="summary_l">一句话总结太保守，没有写出视频真正价值</label>
+              <label class="option"><input type="radio" name="summary_l">核心提炼 / Highest Compression 太抽象，没压出核心洞察</label>
+              <label class="option"><input type="radio" name="summary_l">主题对了，但操作角度没写进去</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="ok" style="display:none">
+              <label class="option"><input type="radio" name="summary_o">一句话总结基本准，不用动</label>
+              <label class="option"><input type="radio" name="summary_o">核心提炼 / Highest Compression 可以更有洞察感</label>
+              <label class="option"><input type="radio" name="summary_o">主线对，但个别词还可以更准</label>
+            </div>
+          </div>
+
+          <div class="step-block tone-teal">
+            <div class="step-block-head">视频主线 / 推荐片段的问题</div>
+            <div class="dir-panel option-grid" data-dir="high" style="display:none">
+              <label class="option"><input type="radio" name="segval_h">视频主线写得太散，应该更像论证链</label>
+              <label class="option"><input type="radio" name="segval_h">推荐段还是太长</label>
+              <label class="option"><input type="radio" name="segval_h">不需要推荐片段，报告已经够</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="low" style="display:none">
+              <label class="option"><input type="radio" name="segval_l">视频主线漏了关键转折</label>
+              <label class="option"><input type="radio" name="segval_l">漏掉了真正值得看的片段</label>
+              <label class="option"><input type="radio" name="segval_l">应该增加一个补看片段</label>
+            </div>
+            <div class="dir-panel option-grid" data-dir="ok" style="display:none">
+              <label class="option"><input type="radio" name="segval_o">这个时间段判断基本准</label>
+              <label class="option"><input type="radio" name="segval_o">起止点我会再小调一下</label>
+              <label class="option"><input type="radio" name="segval_o">视频主线基本准，但标题可以更直接</label>
+            </div>
+          </div>
+
+          <div class="step-block tone-lime">
+            <div class="step-block-head">合成时间段</div>
+            <p class="feedback-hint">可不选；点已选中的项可以取消。一次最多保留一个判断。</p>
+            <div class="option-grid two-col">
+              <label class="option"><input type="checkbox" class="solo-check" data-group="segment">10:51–15:08</label>
+              <label class="option"><input type="checkbox" class="solo-check" data-group="segment">01:59–05:12</label>
+              <label class="option"><input type="checkbox" class="solo-check" data-group="segment">07:28–10:41</label>
+              <label class="option"><input type="checkbox" class="solo-check" data-group="segment">没有明确时间段</label>
+            </div>
+          </div>
+
+        </div>
+      </section>
+    </div>
+
+    <div class="wizard-footer">
+      <div class="wizard-footer-copy" id="wizardFooterCopy">先做方向判断。只有这一步答完，后面的题目才会按你的判断方向展开。</div>
+      <div class="wizard-actions">
+        <button class="wizard-btn" id="prevStep" type="button">上一步</button>
+        <button class="wizard-btn primary" id="nextStep" type="button">下一步</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const feedbackDrawer = document.getElementById('feedbackDrawer');
+const openFeedback   = document.getElementById('openFeedback');
+const closeFeedback  = document.getElementById('closeFeedback');
+const scoreSlider    = document.getElementById('scoreSlider');
+const scoreSliderScale = document.getElementById('scoreSliderScale');
+const scoreSliderValue = document.getElementById('scoreSliderValue');
+const scoreRangeHint = document.getElementById('scoreRangeHint');
+const prevStepBtn = document.getElementById('prevStep');
+const nextStepBtn = document.getElementById('nextStep');
+const footerCopy = document.getElementById('wizardFooterCopy');
+const progressSteps = Array.from(document.querySelectorAll('.wizard-step'));
+const stepPanes = Array.from(document.querySelectorAll('.step-pane'));
+const step2DisagreeBlock = document.getElementById('step2DisagreeBlock');
+const step2ReasonBlock = document.getElementById('step2ReasonBlock');
+const baseScore = Number((document.querySelector('.score-num')?.textContent.match(/\d+(?:\.\d+)?/) || ['5.0'])[0]);
+let currentStep = 1;
+let scoreTouched = false;
+
+const stepCopyMap = {
+  1: '先做方向判断。只有这一步答完，后面的题目才会按你的判断方向展开。',
+  2: '现在补上最核心的三件事：你不认同什么、你会打多少分、你为什么改分。',
+  3: '这一步判断原视频相对报告还有多少增量，尤其是例子、表达节奏和不可压缩的理解过程。',
+  4: '最后确认新模板字段哪里需要改：总判定、一句话总结、核心提炼 / Highest Compression、视频主线和推荐片段。'
+};
+
+openFeedback.addEventListener('click',  () => {
+  currentStep = 1;
+  scoreTouched = false;
+  renderWizard();
+  feedbackDrawer.classList.add('is-open');
+});
+closeFeedback.addEventListener('click', () => feedbackDrawer.classList.remove('is-open'));
+feedbackDrawer.addEventListener('click', e => {
+  if (e.target === feedbackDrawer) feedbackDrawer.classList.remove('is-open');
+});
+scoreSlider.addEventListener('input', () => {
+  scoreTouched = true;
+  scoreSliderValue.textContent = Number(scoreSlider.value).toFixed(1);
+  maybeAdvanceStep2();
+});
+
+function getBiasDir() {
+  return document.querySelector('input[name="bias_dir"]:checked')?.value || '';
+}
+
+function switchDir(dir) {
+  document.querySelectorAll('.dir-panel').forEach(el => {
+    el.style.display = el.dataset.dir === dir ? '' : 'none';
+  });
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function updateScoreRange(dir) {
+  const fixedBase = Number(baseScore.toFixed(1));
+  let min = 0.0;
+  let max = 10.0;
+  let value = fixedBase;
+  let disabled = false;
+  let scaleText = '先选择方向';
+  let hintText = '先在第一步选方向，这里的评分范围会自动按当前分数收窄。';
+
+  if (dir === 'high') {
+    min = 0.0;
+    max = Number(Math.max(0, fixedBase - 0.1).toFixed(1));
+    value = clamp(Number(scoreSlider.value || max), min, max);
+    scaleText = `${min.toFixed(1)} 到 ${max.toFixed(1)}，只能低于当前 ${fixedBase.toFixed(1)}`;
+    hintText = `当前分数是 ${fixedBase.toFixed(1)}。既然你认为它标高了，这里只能往下改。`;
+  } else if (dir === 'low') {
+    min = Number(Math.min(10, fixedBase + 0.1).toFixed(1));
+    max = 10.0;
+    value = clamp(Number(scoreSlider.value || min), min, max);
+    scaleText = `${min.toFixed(1)} 到 ${max.toFixed(1)}，只能高于当前 ${fixedBase.toFixed(1)}`;
+    hintText = `当前分数是 ${fixedBase.toFixed(1)}。既然你认为它标低了，这里只能往上改。`;
+  } else if (dir === 'ok') {
+    min = fixedBase;
+    max = fixedBase;
+    value = fixedBase;
+    disabled = true;
+    scaleText = `保持当前 ${fixedBase.toFixed(1)} 分`;
+    hintText = `你选的是“大方向基本准确”，这里先保持当前分数 ${fixedBase.toFixed(1)}。`;
+  }
+
+  scoreSlider.min = min.toFixed(1);
+  scoreSlider.max = max.toFixed(1);
+  scoreSlider.value = value.toFixed(1);
+  scoreSlider.disabled = disabled;
+  scoreSliderScale.textContent = scaleText;
+  scoreRangeHint.textContent = hintText;
+  scoreSliderValue.textContent = value.toFixed(1);
+}
+
+function goToStep(step) {
+  currentStep = step;
+  renderWizard();
+}
+
+function maybeAdvanceStep2() {
+  if (currentStep !== 2) return;
+  const dir = getBiasDir();
+  if (!dir) return;
+  const disagreeDone = step2DisagreeBlock.querySelectorAll('input[type="checkbox"]:checked').length > 0;
+  const reasonDone = step2ReasonBlock.querySelectorAll(`.dir-panel[data-dir="${dir}"] input[type="checkbox"]:checked`).length > 0;
+  const scoreDone = dir === 'ok' ? true : scoreTouched;
+  if (disagreeDone && reasonDone && scoreDone) {
+    goToStep(3);
+  }
+}
+
+function maybeAdvanceStep3() {
+  if (currentStep !== 3) return;
+  const dir = getBiasDir();
+  const suffixMap = { high: 'h', low: 'l', ok: 'o' };
+  const suffix = suffixMap[dir];
+  if (!suffix) return;
+  const required = [`freshness_${suffix}`, `appl_${suffix}`, `logic_${suffix}`, `density_${suffix}`];
+  const ready = required.every(name => document.querySelector(`input[name="${name}"]:checked`));
+  if (ready) {
+    goToStep(4);
+  }
+}
+
+document.querySelectorAll('input[name="bias_dir"]').forEach(r => {
+  r.addEventListener('change', () => {
+    if (r.checked) {
+      scoreTouched = false;
+      switchDir(r.value);
+      updateScoreRange(r.value);
+      if (currentStep === 1) {
+        goToStep(2);
+      } else {
+        renderWizard();
+      }
+    }
+  });
+});
+
+document.querySelectorAll('.solo-check').forEach(input => {
+  input.addEventListener('change', () => {
+    if (!input.checked) return;
+    document.querySelectorAll(`.solo-check[data-group="${input.dataset.group}"]`).forEach(other => {
+      if (other !== input) other.checked = false;
+    });
+  });
+});
+
+step2DisagreeBlock.querySelectorAll('input[type="checkbox"]').forEach(input => {
+  input.addEventListener('change', maybeAdvanceStep2);
+});
+
+step2ReasonBlock.querySelectorAll('input[type="checkbox"]').forEach(input => {
+  input.addEventListener('change', maybeAdvanceStep2);
+});
+
+document.querySelectorAll([
+  'input[name="freshness_h"]','input[name="freshness_l"]','input[name="freshness_o"]',
+  'input[name="appl_h"]','input[name="appl_l"]','input[name="appl_o"]',
+  'input[name="logic_h"]','input[name="logic_l"]','input[name="logic_o"]',
+  'input[name="density_h"]','input[name="density_l"]','input[name="density_o"]'
+].join(',')).forEach(input => {
+  input.addEventListener('change', maybeAdvanceStep3);
+});
+
+function renderWizard() {
+  const dir = getBiasDir();
+  stepPanes.forEach(pane => {
+    pane.classList.toggle('is-active', Number(pane.dataset.step) === currentStep);
+  });
+  progressSteps.forEach(step => {
+    const stepNum = Number(step.dataset.step);
+    step.classList.toggle('is-active', stepNum === currentStep);
+    step.classList.toggle('is-done', stepNum < currentStep);
+  });
+  prevStepBtn.disabled = currentStep === 1;
+  nextStepBtn.disabled = currentStep === 1 && !dir;
+  nextStepBtn.textContent = currentStep === 4 ? '生成反馈报告' : '下一步';
+  footerCopy.textContent = stepCopyMap[currentStep];
+}
+
+prevStepBtn.addEventListener('click', () => {
+  if (currentStep === 1) return;
+  currentStep -= 1;
+  renderWizard();
+});
+
+nextStepBtn.addEventListener('click', () => {
+  if (currentStep === 1 && !getBiasDir()) return;
+  if (currentStep < 4) {
+    currentStep += 1;
+    renderWizard();
+    return;
+  }
+  feedbackDrawer.classList.remove('is-open');
+});
+
+switchDir(getBiasDir() || '');
+updateScoreRange(getBiasDir());
+renderWizard();
+</script>
+</body>
+</html>
