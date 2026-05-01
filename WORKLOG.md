@@ -4121,6 +4121,9 @@ python3 watchbrief_v5/scripts/cli.py \
   - 当前可运行 review 引擎是 `codex-cli` 和 `mock`。
   - Claude / Kimi adapter 未接入，选择后会明确报错，不伪装成功。
   - 当前正式输出格式是 HTML；PDF 导出和非 HTML renderer 未接入，选择后会明确报错。
+- 安全规则：
+  - WebUI 不接收、不保存、不转发明文 token。
+  - `.gitignore` 排除本地配置/密钥文件以及 `node_modules/`、`dist/`、`target/`。
 - 文档更新：
   - `README.md` 和 `USAGE_V5.md` 增加 WebUI 运行方式和能力边界。
   - `SKILL.md` 增加 WebUI 运行守则。

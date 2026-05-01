@@ -130,7 +130,9 @@ http://127.0.0.1:8765
 - 当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Kimi adapter 未接入。
 - 当前正式报告格式是 HTML；PDF 导出和非 HTML renderer 未接入，界面不会伪装可用。
 - WebUI 状态文件和日志写在 `~/.watchbrief/webui/`。
+- WebUI 不接收、不保存、不转发明文 token。
 - WebUI 不保存、不打印、不展示 cookies。
+- 本地配置、密钥和构建产物不得提交；`.gitignore` 已排除 `.env`、`*.local.*`、`secrets/`、`*.token`、`node_modules/`、`dist/` 和 `target/`。
 
 ## 6. 正式输出规则
 

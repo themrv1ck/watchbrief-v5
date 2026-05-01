@@ -5,6 +5,31 @@
 __pycache__/
 *.pyc
 
+# Local secrets and machine-specific config
+.env
+.env.*
+!.env.example
+*.local
+*.local.*
+*.local.json
+*.local.yaml
+*.local.yml
+config.local.*
+local_config.*
+local.settings.*
+secrets/
+*.token
+*.secret
+*.pem
+*.key
+
+# Dependency and build outputs
+node_modules/
+dist/
+target/
+build/
+.cache/
+
 WatchBrief-Runs/
 WatchBrief-Debug/
 *_debug*/

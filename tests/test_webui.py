@@ -127,6 +127,25 @@ class WebUITest(unittest.TestCase):
         self.assertEqual(preview["cwd"], str(webui.PROJECT_ROOT))
         self.assertIn(str(webui.CLI_PATH), preview["command"])
 
+    def test_token_like_fields_are_not_forwarded_to_cli_command(self) -> None:
+        command = webui.build_cli_command(
+            {
+                "source_url": "https://example.com/v",
+                "token": "SECRET_TOKEN",
+                "api_key": "SECRET_API_KEY",
+                "claude_token": "SECRET_CLAUDE",
+                "kimi_token": "SECRET_KIMI",
+                "codex_token": "SECRET_CODEX",
+            }
+        )
+
+        joined = " ".join(command)
+        self.assertNotIn("SECRET_TOKEN", joined)
+        self.assertNotIn("SECRET_API_KEY", joined)
+        self.assertNotIn("SECRET_CLAUDE", joined)
+        self.assertNotIn("SECRET_KIMI", joined)
+        self.assertNotIn("SECRET_CODEX", joined)
+
 
 if __name__ == "__main__":
     unittest.main()

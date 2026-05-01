@@ -26,6 +26,7 @@ description: WatchBrief V5 是视频观看决策报告生成器。它不是下�
 - WebUI 只构建并启动 `scripts/cli.py` 命令，不绕过 CLI、pipeline、validator 或 renderer。
 - 可配置项包括 Qwen 模型、Qwen endpoint、Codex 模型、Codex 账号目录、输出目录、登录态浏览器、转写器、缓存和诊断选项。
 - 当前可运行 review 引擎是 `codex-cli` 和 `mock`；Claude / Kimi、PDF 导出和非 HTML renderer 未接入时必须明确报错，不允许伪装成功。
+- WebUI 不接收、不保存、不转发明文 token；本地配置、密钥和构建产物不得提交。
 
 ## 真实 Codex Review
 
