@@ -54,11 +54,10 @@ def mlx_audio_python_candidates() -> list[Path]:
         candidates.append(Path(env_path).expanduser())
     skill_root = Path(__file__).resolve().parents[1]
     project_root = Path(os.environ.get("WATCHBRIEF_PROJECT_ROOT") or DEFAULT_PROJECT_ROOT).expanduser()
-    candidates.append(skill_root / ".venv-mlx" / "bin" / "python")
     candidates.append(project_root / ".venv-mlx" / "bin" / "python")
+    candidates.append(skill_root / ".venv-mlx" / "bin" / "python")
     candidates.append(skill_root.parent / ".venv-mlx" / "bin" / "python")
     candidates.append(Path.home() / ".hermes" / "skills" / "openclaw-imports" / "watchbrief_v5" / ".venv-mlx" / "bin" / "python")
-    candidates.append(Path.home() / ".hermes" / "skills" / "openclaw-imports" / "v1deodownload" / ".venv-mlx" / "bin" / "python")
     candidates.append(Path(sys.executable))
 
     unique: list[Path] = []

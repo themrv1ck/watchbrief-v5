@@ -54,7 +54,7 @@ python3 scripts/cli.py \
 - 默认转写器是 `--transcriber auto`。
 - `auto` 表示 MLX-Audio 优先，且不会静默 fallback 到 Whisper。
 - Whisper 只有显式 `--transcriber whisper` 或显式 `--allow-whisper-fallback` 时才允许使用。
-- MLX-Audio Python 优先查找 `WATCHBRIEF_MLX_AUDIO_PYTHON`，再查找当前 skill 根目录 `.venv-mlx/bin/python`、独立项目根目录 `/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python`、父级项目根目录 `.venv-mlx/bin/python`、Hermes 安装副本里的 `.venv-mlx/bin/python`，不依赖系统 `python3` 作为首选路径。
+- MLX-Audio Python 优先查找 `WATCHBRIEF_MLX_AUDIO_PYTHON`，再查找独立项目根目录 `/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python`、当前 skill 根目录 `.venv-mlx/bin/python`、父级项目根目录 `.venv-mlx/bin/python`、Hermes 安装副本里的 `.venv-mlx/bin/python`，不依赖系统 `python3` 作为首选路径，也不再依赖旧 `v1deodownload` skill 的 `.venv-mlx`。
 - MLX-Audio 不可用且未允许 fallback 时，失败为 `transcriber_unavailable`，错误信息必须列出已检查的 Python 候选路径。
 - `local_extract.py` 必须使用本地 Qwen-family 模型，不允许非 Qwen 模型。
 - Qwen 默认模型固定为 `qwen3-30b-a3b-instruct-2507-mlx`；只有显式传 `WATCHBRIEF_QWEN_MODEL` 或 `--qwen-model` 时才覆盖。

@@ -19,9 +19,11 @@ class AcquisitionTranscriberTest(unittest.TestCase):
         candidates = transcriber.mlx_audio_python_candidates()
         project_venv_python = ROOT / ".venv-mlx" / "bin" / "python"
         canonical_venv_python = Path("/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python")
+        old_v1_venv_python = Path("/Users/apple/.hermes/skills/openclaw-imports/v1deodownload/.venv-mlx/bin/python")
 
         self.assertIn(project_venv_python, candidates)
         self.assertIn(canonical_venv_python, candidates)
+        self.assertNotIn(old_v1_venv_python, candidates)
         self.assertLess(
             candidates.index(project_venv_python),
             candidates.index(Path(transcriber.sys.executable)),

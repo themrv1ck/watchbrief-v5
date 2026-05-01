@@ -4067,3 +4067,24 @@ python3 watchbrief_v5/scripts/cli.py \
 - 是否触发 Qwen / Codex review / MLX-Audio：否。
 - 是否删除旧 `v1deodownload`：否。
 - 备注：本段 WORKLOG 是推送完成后的记录提交，不改变 release tag 指向。
+
+## 2026-05-02 阶段二十 E：迁移 MLX-Audio 环境到新 WatchBrief V5 项目
+
+- 目标：让 WatchBrief V5 不再依赖旧 `v1deodownload` skill 的 `.venv-mlx`。
+- 新项目路径：`/Users/apple/Documents/New project/watchbrief_v5`。
+- 已复制 MLX-Audio 环境：
+  - 来源：`/Users/apple/.hermes/skills/openclaw-imports/v1deodownload/.venv-mlx`
+  - 目标：`/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx`
+- 新项目验证：
+  - `.venv-mlx/bin/python -V`：`Python 3.14.3`。
+  - `.venv-mlx/bin/python -c "import mlx_audio"`：PASS。
+- `.gitignore`：已排除 `.venv-mlx/`，环境目录不提交。
+- transcriber 路径规则：
+  - 优先使用 `WATCHBRIEF_MLX_AUDIO_PYTHON`。
+  - 默认候选第一位为 `/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python`。
+  - 已移除旧 `/Users/apple/.hermes/skills/openclaw-imports/v1deodownload/.venv-mlx/bin/python` fallback。
+- Hermes / Codex 运行副本同步规则：继续从新项目同步源码与文档，排除 `.venv-mlx/`，不让每个副本自带 MLX-Audio 环境。
+- 禁止事项执行情况：
+  - 未跑真实视频链路。
+  - 未触发 Qwen / Codex review。
+  - 未运行 MLX-Audio 转写任务，只做 `import mlx_audio` 轻量验证。

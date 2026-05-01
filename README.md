@@ -126,7 +126,7 @@ cache key 至少包含：`transcript_hash`、`qwen_model_id`、`qwen_prompt_fing
 --transcriber auto
 ```
 
-`auto` 只表示“优先使用 MLX-Audio”，不会静默 fallback 到 Whisper。WatchBrief 会优先查找 `WATCHBRIEF_MLX_AUDIO_PYTHON`，再查找当前 skill 根目录 `.venv-mlx/bin/python`、独立项目根目录 `/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python`、父级项目根目录 `.venv-mlx/bin/python`、Hermes 安装副本里的 `.venv-mlx/bin/python`。MLX-Audio 不可用且没有显式允许 fallback 时，会失败为：
+`auto` 只表示“优先使用 MLX-Audio”，不会静默 fallback 到 Whisper。WatchBrief 会优先查找 `WATCHBRIEF_MLX_AUDIO_PYTHON`，再查找独立项目根目录 `/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python`、当前 skill 根目录 `.venv-mlx/bin/python`、父级项目根目录 `.venv-mlx/bin/python`、Hermes 安装副本里的 `.venv-mlx/bin/python`。不再依赖旧 `v1deodownload` skill 的 `.venv-mlx`。MLX-Audio 不可用且没有显式允许 fallback 时，会失败为：
 
 ```text
 transcriber_unavailable: MLX-Audio unavailable. Checked Python candidates: ...
