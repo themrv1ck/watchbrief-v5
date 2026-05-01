@@ -21,6 +21,21 @@ cd "/Users/apple/Documents/New project/watchbrief_v5"
 
 以下命令都默认在这个目录执行。旧目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5` 不再作为 WatchBrief V5 的入口、同步源或依赖路径。
 
+### 0) 本地 WebUI
+
+```bash
+cd "/Users/apple/Documents/New project/watchbrief_v5"
+python3 scripts/webui.py --host 127.0.0.1 --port 8765
+```
+
+浏览器打开：
+
+```text
+http://127.0.0.1:8765
+```
+
+WebUI 支持自定义 Qwen 模型、Qwen endpoint、Codex 模型、Codex 账号目录、输出目录、登录态浏览器、转写器、缓存和诊断选项。当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Kimi、PDF 导出和非 HTML renderer 只在界面标注为未接入，不会伪装成功。
+
 ### 1) 单视频（默认 mock review）
 
 ```bash

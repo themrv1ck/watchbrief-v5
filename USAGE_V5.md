@@ -104,7 +104,35 @@ codex-cli / account2 / gpt-5.4
 - 不建议 WatchBrief 与 Hermes 本地模型重任务并发运行。
 - 并发风险是共享本机统一内存和推理算力，不是端口冲突。
 
-## 5. 正式输出规则
+## 5. WebUI 本地界面
+
+WatchBrief 提供一个标准库实现的本地 WebUI，入口：
+
+```bash
+cd "/Users/apple/Documents/New project/watchbrief_v5"
+python3 scripts/webui.py --host 127.0.0.1 --port 8765
+```
+
+浏览器打开：
+
+```text
+http://127.0.0.1:8765
+```
+
+规则：
+
+- WebUI 只负责本地任务提交和任务状态展示，底层仍调用 `scripts/cli.py`。
+- 支持自定义 Qwen 模型、Qwen endpoint、Qwen timeout、Codex 模型、Codex 账号目录、输出目录、登录态浏览器、转写器、缓存和诊断选项。
+- 默认不传 `--output-dir`，沿用 WatchBrief 正式默认输出路径。
+- 默认不传 `--open-output`，不会自动打开最终 HTML；用户显式勾选时才会传入。
+- 默认登录态为 `auto`，即 CLI 的 Chrome -> Safari 策略；显式选择 Chrome/Safari/Edge 时才传 `--cookies-from-browser`。
+- WebUI 默认 Codex 模型显示并传入 `gpt-5.4`；Codex 模型用于 Qwen 提炼后的 review / 评分一致性检查，不是 HTML renderer。
+- 当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Kimi adapter 未接入。
+- 当前正式报告格式是 HTML；PDF 导出和非 HTML renderer 未接入，界面不会伪装可用。
+- WebUI 状态文件和日志写在 `~/.watchbrief/webui/`。
+- WebUI 不保存、不打印、不展示 cookies。
+
+## 6. 正式输出规则
 
 ### 单视频
 
@@ -147,7 +175,7 @@ codex-cli / account2 / gpt-5.4
 - 如果同名目录存在，使用安全冲突后缀，例如 `-2`、`-3`，不覆盖已有目录。
 - 列表输出保持原始列表顺序，HTML 文件名前缀 `01/02/03...` 不按评分重排。
 
-## 6. WatchBrief-Runs 和 WatchBrief-Debug 规则
+## 7. WatchBrief-Runs 和 WatchBrief-Debug 规则
 
 `WatchBrief-Runs` 只用于：
 
@@ -173,7 +201,7 @@ codex-cli / account2 / gpt-5.4
 - 如果显式传 `--output-dir`，该目录就是最终诊断目录。
 - 诊断运行生成的 HTML 是 diagnostic artifact，不算正式交付。
 
-## 7. 字幕 / 音频 / 转写规则
+## 8. 字幕 / 音频 / 转写规则
 
 - 字幕优先。
 - 有字幕时不进入 `audio_downloader`。
@@ -185,7 +213,7 @@ codex-cli / account2 / gpt-5.4
 - 低覆盖 transcript 不进入 Qwen / Codex / renderer。
 - 低覆盖 transcript 不生成伪完成 HTML。
 
-## 8. Transcript Coverage Gate 规则
+## 9. Transcript Coverage Gate 规则
 
 如果满足以下条件，WatchBrief 会在 Qwen 前停止：
 
@@ -220,7 +248,7 @@ debug / manifest 会记录：
 - `transcript_source`
 - `transcript_quality_reason`
 
-## 9. 小红书 Board 规则
+## 10. 小红书 Board 规则
 
 支持 board URL 识别：
 
@@ -251,7 +279,7 @@ board resolver 会统计：
 - 不泄露 signed media URL。
 - 默认 Chrome -> Safari fallback。
 
-## 10. 推荐运行方式
+## 11. 推荐运行方式
 
 以下命令都在本机项目目录执行：
 
@@ -320,7 +348,7 @@ python3 scripts/cli.py \
 
 诊断命令会触发真实链路。只在需要复现问题时使用。
 
-## 11. 常用覆盖参数
+## 12. 常用覆盖参数
 
 显式指定浏览器：
 
@@ -356,7 +384,7 @@ python3 scripts/cli.py \
 
 列表任务里，显式 `--output-dir` 就是最终列表目录，不是父目录。
 
-## 12. 不要这样做
+## 13. 不要这样做
 
 - 不要在登录态失效时硬跑完整列表。
 - 不要把正式任务默认输出到 `WatchBrief-Runs`。
@@ -366,7 +394,7 @@ python3 scripts/cli.py \
 - 不要把小红书 `xsec_token` / signed media URL 写进 HTML、manifest 或 WORKLOG。
 - 不要手动删除历史 `WatchBrief-Debug`，除非已经确认里面没有需要保留的诊断资料。
 
-## 13. 自检命令
+## 14. 自检命令
 
 ```bash
 cd "/Users/apple/Documents/New project/watchbrief_v5"

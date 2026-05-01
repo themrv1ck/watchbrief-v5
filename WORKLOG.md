@@ -4105,3 +4105,26 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未触发 Qwen / Codex review / MLX-Audio。
   - 未改 renderer / schema / validator / HTML 模板。
   - 未提交 `.venv-mlx`。
+
+## 2026-05-02 WatchBrief V5 WebUI 定制入口
+
+- 新增 `scripts/webui.py`：标准库本地 WebUI，默认监听 `127.0.0.1:8765`，底层只构建并启动 `scripts/cli.py` 命令。
+- 新增 `tests/test_webui.py`：覆盖 WebUI 页面结构、命令构建、自定义 Qwen/Codex/output/browser/transcriber 选项、mock review、unsupported provider 和 PDF 未接入错误。
+- 支持配置项：
+  - Qwen 模型、Qwen endpoint、Qwen timeout。
+  - Codex 模型、Codex 账号目录、Codex account。
+  - 输出目录、正式/诊断模式、是否打开输出、是否保留 debug、是否强制重分析。
+  - 登录态浏览器：auto / chrome / safari / edge / none。
+  - cookies.txt 路径只传路径，不读取、不展示 cookie 内容。
+  - 转写器：auto / mlx_audio / whisper，支持 Whisper fallback 显式开关。
+- 明确限制：
+  - 当前可运行 review 引擎是 `codex-cli` 和 `mock`。
+  - Claude / Kimi adapter 未接入，选择后会明确报错，不伪装成功。
+  - 当前正式输出格式是 HTML；PDF 导出和非 HTML renderer 未接入，选择后会明确报错。
+- 文档更新：
+  - `README.md` 和 `USAGE_V5.md` 增加 WebUI 运行方式和能力边界。
+  - `SKILL.md` 增加 WebUI 运行守则。
+  - `scripts/check_watchbrief_skill.py` 将 `scripts/webui.py` 和 `tests/test_webui.py` 纳入 strict install 检查。
+- 验证：
+  - 未跑真实视频链路。
+  - 未触发 Qwen / Codex review / MLX-Audio。
