@@ -4039,3 +4039,31 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未删除旧项目或桌面历史文件。
   - 未 force push。
   - 未 push main。
+
+## 2026-05-02 阶段二十 B2：创建 GitHub 仓库并推送 WatchBrief V5
+
+- 当前本机项目路径：`/Users/apple/Documents/New project/watchbrief_v5`。
+- GitHub 账号：`themrv1ck`。
+- 目标仓库名：`watchbrief-v5`。
+- 目标仓库地址：`https://github.com/themrv1ck/watchbrief-v5`。
+- 创建方式：`gh repo create themrv1ck/watchbrief-v5 --private --source . --remote origin --push=false`。
+- 仓库可见性：PRIVATE。
+- remote：
+  - `origin https://github.com/themrv1ck/watchbrief-v5.git (fetch)`
+  - `origin https://github.com/themrv1ck/watchbrief-v5.git (push)`
+- 当前分支：`watchbrief-v5-stable-20260430`。
+- release commit：`d47caa9`。
+- tag：`watchbrief-v5-stable-20260430`。
+- 推送记录：
+  - 首次短 ref 推送失败，原因是分支和 tag 同名，Git 报 `src refspec watchbrief-v5-stable-20260430 matches more than one`。
+  - 已改用完整 refspec 推送分支：`refs/heads/watchbrief-v5-stable-20260430:refs/heads/watchbrief-v5-stable-20260430`。
+  - 已改用完整 refspec 推送 tag：`refs/tags/watchbrief-v5-stable-20260430:refs/tags/watchbrief-v5-stable-20260430`。
+- 是否推送稳定分支：是。
+- 是否推送 tag：是。
+- 是否推 main：否。
+- 是否 force push：否。
+- 是否改代码：否。
+- 是否跑真实视频链路：否。
+- 是否触发 Qwen / Codex review / MLX-Audio：否。
+- 是否删除旧 `v1deodownload`：否。
+- 备注：本段 WORKLOG 是推送完成后的记录提交，不改变 release tag 指向。
