@@ -8,8 +8,8 @@ WatchBrief V5 是 V4 的 clean rewrite（不修改 V4 正式副本），保留�
 
 - 新入口显示名：`WatchBrief`
 - 新调用名：`$watchbrief_v5`
-- 兼容入口：旧名 `$v1deodownload` 仍在，仍然指向 V4，不删除也不覆盖。
-- `watchbrief_v5` 仅新增能力，不替代 V4；两套可以并存切换。
+- 旧入口 `$v1deodownload` 已废弃，不再作为 WatchBrief V5 的回退入口或安装依赖。
+- `watchbrief_v5` 是当前唯一源头；Hermes / Codex 副本只作为运行副本。
 
 ## 推荐命令（按你当前目录执行）
 
@@ -19,7 +19,7 @@ Hermes / Codex 默认运行入口是独立项目目录：
 cd "/Users/apple/Documents/New project/watchbrief_v5"
 ```
 
-以下命令都默认在这个目录执行。旧目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5` 只保留历史记录，不再作为 WatchBrief V5 的默认运行入口。
+以下命令都默认在这个目录执行。旧目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5` 不再作为 WatchBrief V5 的入口、同步源或依赖路径。
 
 ### 1) 单视频（默认 mock review）
 
@@ -394,7 +394,7 @@ rsync -a watchbrief_v5/ ~/.codex/skills/watchbrief_v5/
 python3 scripts/check_watchbrief_skill.py --strict-install
 ```
 
-`watchbrief_v5` 与旧 `v1deodownload` 并存，V4 不受影响，可按需要回退到 `$v1deodownload`。
+`watchbrief_v5` 是当前唯一入口；旧 `v1deodownload` 不再作为 strict install 条件或运行回退。
 
 ## 说明
 

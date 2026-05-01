@@ -225,18 +225,12 @@ def check_tests() -> list[tuple[str, bool]]:
 def check_discoverability(strict_install: bool) -> list[tuple[str, bool]]:
     checks = []
     watch_dir = Path.home() / ".codex" / "skills" / "watchbrief_v5"
-    v1_dir = Path.home() / ".codex" / "skills" / "v1deodownload"
     if watch_dir.exists():
         checks.append(ok("codex installed watchbrief_v5"))
-        checks.append(ok("codex installed v1deodownload (compat)"))
     elif strict_install:
         checks.append(fail("watchbrief_v5 not installed under ~/.codex/skills"))
     else:
         checks.append((f"WARN: not installed in ~/.codex/skills/watchbrief_v5 (expected at {watch_dir})", True))
-    if v1_dir.exists():
-        checks.append(ok("compatibility fallback v1deodownload exists"))
-    else:
-        checks.append(("WARN: v1deodownload legacy path not found in ~/.codex/skills", True))
     return checks
 
 

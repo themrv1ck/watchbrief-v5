@@ -7,12 +7,11 @@ description: WatchBrief V5 是视频观看决策报告生成器。它不是下�
 
 ## 这是什么
 
-- clean rewrite，不在 V4 代码上打补丁，不改 V4 逻辑和可用性。
 - 外部可发现的 Skill 名称是 `watchbrief_v5`，显示名是 `WatchBrief`。
-- 旧入口 `v1deodownload` 保留，用于回退到 V4，当前阶段不要求下线旧版本。
+- 旧入口 `v1deodownload` 已废弃，不再作为 WatchBrief V5 的回退入口或安装依赖。
 - 正式使用手册是 `USAGE_V5.md`，日常运行守则以该文件为准。
 - 默认运行入口是独立项目目录 `/Users/apple/Documents/New project/watchbrief_v5`。Hermes / Codex 调用 WatchBrief V5 时必须先进入这个目录再运行 `python3 scripts/cli.py ...`。
-- 旧目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5` 只保留历史和回溯，不再作为 WatchBrief V5 默认运行入口。
+- 旧目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5` 不再作为 WatchBrief V5 的入口、同步源或依赖路径。
 
 ## 关键边界
 

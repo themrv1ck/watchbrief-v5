@@ -1,3 +1,3 @@
 metadata:
   display_name: "WatchBrief"
-  default_prompt: "Use $watchbrief_v5 from /Users/apple/Documents/New project/watchbrief_v5 to generate a clean, validated Chinese video viewing-decision report. If the user needs legacy behavior, use $v1deodownload (kept as V4)."
+  default_prompt: "Use $watchbrief_v5 from /Users/apple/Documents/New project/watchbrief_v5 to generate a clean, validated Chinese video viewing-decision report. Do not use the legacy $v1deodownload entry."

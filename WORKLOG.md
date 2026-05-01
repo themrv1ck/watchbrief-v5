@@ -4088,3 +4088,20 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未跑真实视频链路。
   - 未触发 Qwen / Codex review。
   - 未运行 MLX-Audio 转写任务，只做 `import mlx_audio` 轻量验证。
+
+## 2026-05-02 阶段二十 F：移除旧 v1deodownload strict install 依赖
+
+- 目标：WatchBrief V5 已独立后，strict install / tests / runtime 不再依赖旧 `v1deodownload` skill。
+- 修改范围：
+  - `scripts/check_watchbrief_skill.py`：strict install 只检查 `watchbrief_v5` 安装，不再检查 `~/.codex/skills/v1deodownload`。
+  - `scripts/transcriber.py`：候选路径继续以 `/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python` 为第一默认候选，不包含旧 `v1deodownload/.venv-mlx`。
+  - `tests/test_acquisition_transcriber.py`：断言 MLX-Audio 候选列表不包含 `v1deodownload`。
+  - `README.md`、`SKILL.md`、`USAGE_V5.md`、`agents/openai.yaml`：旧入口标记为废弃，不再作为回退入口、同步源或安装依赖。
+- 保留项：
+  - WORKLOG 历史记录中的旧路径仅作为历史记录保留。
+  - 本阶段不删除旧 `v1deodownload` skill 副本。
+- 禁止事项执行情况：
+  - 未跑真实视频链路。
+  - 未触发 Qwen / Codex review / MLX-Audio。
+  - 未改 renderer / schema / validator / HTML 模板。
+  - 未提交 `.venv-mlx`。

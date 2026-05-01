@@ -259,7 +259,7 @@ board resolver 会统计：
 cd "/Users/apple/Documents/New project/watchbrief_v5"
 ```
 
-Hermes / Codex 默认运行 WatchBrief V5 时也使用这个独立项目目录。旧目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5` 只保留历史记录，不再作为默认入口。
+Hermes / Codex 默认运行 WatchBrief V5 时也使用这个独立项目目录。旧目录 `/Users/apple/Documents/New project/v1deodownload/watchbrief_v5` 不再作为入口、同步源或依赖路径。
 
 ### 单视频
 
