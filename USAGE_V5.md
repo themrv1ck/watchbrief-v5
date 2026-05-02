@@ -94,7 +94,7 @@ export WATCHBRIEF_QWEN_BASE_URL="http://127.0.0.1:1234/v1"
 Codex review 默认使用：
 
 ```text
-codex-cli / account2 / gpt-5.4
+codex-cli / account2 / gpt-5.5
 ```
 
 运行守则：
@@ -135,7 +135,7 @@ http://127.0.0.1:8765
 - 默认不传 `--open-output`，不会自动打开最终 HTML；用户显式勾选时才会传入。
 - 默认登录态为 `auto`，即 CLI 的 Chrome -> Safari 策略；显式选择 Chrome/Safari/Edge 时才传 `--cookies-from-browser`。
 - WebUI 默认 review 引擎是 `local` 本地模式：不需要 Codex 账号，不调用 Codex，只基于 Qwen local_extract 和确定性规则生成报告。
-- 用户显式选择 `codex-cli` 时，Codex 模型默认显示并传入 `gpt-5.4`；Codex 模型用于 Qwen 提炼后的 review / 评分一致性检查，不是 HTML renderer。
+- 用户显式选择 `codex-cli` 时，Codex 模型默认显示并传入 `gpt-5.5`；Codex 模型用于 Qwen 提炼后的 review / 评分一致性检查，不是 HTML renderer。
 - 当前可运行的 review 引擎是 `local`、`codex-cli` 和 `mock`；Claude / Gemini / Kimi adapter 未接入。
 - 当前正式报告基础格式是 HTML。
 - PDF 导出已接入 WebUI：先生成 HTML，再用本机 Chrome / Edge / Chromium / Brave 的 headless print 生成同名 PDF。
@@ -312,7 +312,7 @@ python3 scripts/cli.py \
   --enable-codex-review \
   --codex-home-root ~/.watchbrief_codex \
   --codex-account account2 \
-  --codex-model gpt-5.4 \
+  --codex-model gpt-5.5 \
   --timeout 600 \
   --qwen-timeout 600
 ```
@@ -326,7 +326,7 @@ python3 scripts/cli.py \
   --enable-codex-review \
   --codex-home-root ~/.watchbrief_codex \
   --codex-account account2 \
-  --codex-model gpt-5.4 \
+  --codex-model gpt-5.5 \
   --timeout 600 \
   --qwen-timeout 600
 ```
@@ -340,7 +340,7 @@ python3 scripts/cli.py \
   --enable-codex-review \
   --codex-home-root ~/.watchbrief_codex \
   --codex-account account2 \
-  --codex-model gpt-5.4 \
+  --codex-model gpt-5.5 \
   --timeout 600 \
   --qwen-timeout 600
 ```
@@ -355,7 +355,7 @@ python3 scripts/cli.py \
   --enable-codex-review \
   --codex-home-root ~/.watchbrief_codex \
   --codex-account account2 \
-  --codex-model gpt-5.4 \
+  --codex-model gpt-5.5 \
   --timeout 600 \
   --qwen-timeout 600
 ```

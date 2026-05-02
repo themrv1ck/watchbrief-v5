@@ -501,7 +501,7 @@ def build_codex_cli_retry_prompt(
 def build_codex_cli_command(
     *,
     codex_bin: str = "codex",
-    model: str = "gpt-5.4",
+    model: str = "gpt-5.5",
     output_last_message: Path,
     cwd: Path = ROOT,
 ) -> list[str]:
@@ -639,7 +639,7 @@ def run_codex_review(
     *,
     enable_codex_review: bool = False,
     review_provider: str = "manual",
-    model: str = "gpt-5.4",
+    model: str = "gpt-5.5",
     codex_model: Optional[str] = None,
     codex_home: Optional[str] = None,
     codex_home_root: Optional[str] = None,
@@ -757,7 +757,7 @@ def main() -> int:
     parser.add_argument("--review-provider", choices=("manual", "mock", "codex", "codex-cli"), default="manual")
     parser.add_argument("--enable-codex-review", action="store_true")
     parser.add_argument("--dry-run-review-request", action="store_true", help="Write review_request.json without calling a model.")
-    parser.add_argument("--model", default="gpt-5.4")
+    parser.add_argument("--model", default="gpt-5.5")
     parser.add_argument("--codex-model", help="Codex CLI model. Overrides --model when set.")
     parser.add_argument("--codex-home", help="Explicit CODEX_HOME directory for Codex CLI login state.")
     parser.add_argument("--codex-home-root", help="Root containing Codex account directories.")

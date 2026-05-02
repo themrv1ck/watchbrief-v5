@@ -53,6 +53,12 @@ class WebUITest(unittest.TestCase):
         self.assertNotIn("--enable-codex-review", command)
         self.assertNotIn("--codex-model", command)
 
+    def test_codex_cli_default_model_is_gpt_55(self) -> None:
+        command = webui.build_cli_command({"source_url": "https://example.com/v", "review_provider": "codex-cli"})
+
+        self.assertIn("--codex-model", command)
+        self.assertIn("gpt-5.5", command)
+
     def test_build_cli_command_uses_custom_settings_without_opening_browser(self) -> None:
         command = webui.build_cli_command(
             {

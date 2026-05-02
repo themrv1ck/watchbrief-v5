@@ -4309,3 +4309,26 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未触发 Codex review。
   - 未触发 MLX-Audio 转写。
   - 未新增 token 输入框。
+
+## 2026-05-02 Codex 默认模型统一为 gpt-5.5
+
+- 发现：WebUI 显示 `gpt-5.4` 不是单纯显示问题，底层默认值也仍是 `gpt-5.4`。
+- 修改范围：
+  - `scripts/webui.py`
+  - `scripts/cli.py`
+  - `scripts/analyzer/codex_review.py`
+  - `README.md`
+  - `USAGE_V5.md`
+  - `SKILL.md`
+  - `tests/test_webui.py`
+- 结果：
+  - WebUI `DEFAULT_CODEX_MODEL` 改为 `gpt-5.5`。
+  - CLI `--model` 默认值改为 `gpt-5.5`。
+  - Codex review adapter 默认模型改为 `gpt-5.5`。
+  - 文档命令示例统一为 `--codex-model gpt-5.5`。
+  - WebUI 默认本地模式不传 Codex 模型；只有用户显式选择 `codex-cli` 时才传 `--codex-model gpt-5.5`。
+- 边界：
+  - 未跑真实视频链路。
+  - 未触发 Qwen。
+  - 未触发 Codex review。
+  - 未触发 MLX-Audio 转写。

@@ -39,7 +39,7 @@ LOG_DIR = STATE_DIR / "logs"
 
 DEFAULT_QWEN_MODEL = "qwen3-30b-a3b-instruct-2507-mlx"
 DEFAULT_QWEN_BASE_URL = "http://127.0.0.1:1234/v1"
-DEFAULT_CODEX_MODEL = "gpt-5.4"
+DEFAULT_CODEX_MODEL = "gpt-5.5"
 DEFAULT_CODEX_ACCOUNT = "account2"
 DEFAULT_CODEX_HOME_ROOT = "~/.watchbrief_codex"
 

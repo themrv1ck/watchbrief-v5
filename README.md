@@ -100,7 +100,7 @@ python3 scripts/cli.py \
   --source-url "https://example.com/your-video" \
   --review-provider codex-cli \
   --enable-codex-review \
-  --codex-model gpt-5.4 \
+  --codex-model gpt-5.5 \
   --timeout 600
 ```
 
@@ -113,7 +113,7 @@ python3 scripts/cli.py \
   --enable-codex-review \
   --codex-home-root ~/.watchbrief_codex \
   --codex-account default \
-  --codex-model gpt-5.4 \
+  --codex-model gpt-5.5 \
   --timeout 600
 ```
 
@@ -276,7 +276,7 @@ python3 scripts/cli.py \
   --enable-codex-review \
   --codex-home-root ~/.watchbrief_codex \
   --codex-account account2 \
-  --codex-model gpt-5.4 \
+  --codex-model gpt-5.5 \
   --timeout 600
 ```
 

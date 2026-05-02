@@ -308,7 +308,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="explicitly allow real Codex review call",
     )
-    parser.add_argument("--model", default="gpt-5.4", help="compat alias for --codex-model")
+    parser.add_argument("--model", default="gpt-5.5", help="compat alias for --codex-model")
     parser.add_argument("--codex-model", help="Codex CLI model when real review is enabled")
     parser.add_argument("--codex-home", help="explicit CODEX_HOME directory for Codex CLI")
     parser.add_argument("--codex-home-root", help="root directory containing Codex account homes")

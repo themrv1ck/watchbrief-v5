@@ -45,7 +45,7 @@ python3 scripts/cli.py \
   --source-url '<video_url>' \
   --review-provider codex-cli \
   --enable-codex-review \
-  --codex-model gpt-5.4
+  --codex-model gpt-5.5
 ```
 
 独立账号目录：
@@ -59,7 +59,7 @@ python3 scripts/cli.py \
   --enable-codex-review \
   --codex-home-root ~/.watchbrief_codex \
   --codex-account default \
-  --codex-model gpt-5.4
+  --codex-model gpt-5.5
 ```
 
 ## 转写与本地 Qwen
@@ -125,7 +125,7 @@ python3 scripts/cli.py \
   --source-file '<bilibili_urls.txt>' \
   --review-provider codex-cli \
   --enable-codex-review \
-  --codex-model gpt-5.4 \
+  --codex-model gpt-5.5 \
   --timeout 600
 ```
 
