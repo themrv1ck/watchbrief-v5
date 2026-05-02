@@ -11,10 +11,14 @@ class WebUITest(unittest.TestCase):
         html = webui.render_index_html()
 
         self.assertIn("WatchBrief WebUI", html)
+        self.assertIn("LOCAL-FIRST VIDEO REPORT", html)
+        self.assertIn("默认推荐配置已准备好", html)
         self.assertIn("新建任务", html)
         self.assertIn("模型与账号", html)
         self.assertIn("输出与登录态", html)
         self.assertIn("任务记录", html)
+        self.assertIn("输入来源", html)
+        self.assertIn("运行方式", html)
         self.assertIn("提炼模型后端", html)
         self.assertIn("Codex 提炼：未接入", html)
         self.assertIn("Gemini 提炼：未接入", html)
@@ -29,6 +33,7 @@ class WebUITest(unittest.TestCase):
         self.assertIn("报告格式", html)
         self.assertIn("PDF：未接入", html)
         self.assertIn("cookies.txt 路径", html)
+        self.assertIn("Claude / Gemini / Kimi", html)
 
     def test_build_cli_command_uses_custom_settings_without_opening_browser(self) -> None:
         command = webui.build_cli_command(

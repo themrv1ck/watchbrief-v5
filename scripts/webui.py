@@ -382,35 +382,50 @@ def render_index_html() -> str:
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">WB</span><strong>WatchBrief</strong></div>
+      <div class="brand"><span class="brand-mark">WB</span><div><strong>WatchBrief</strong><small>local report UI</small></div></div>
       <nav>
-        <button class="nav-item active" data-view="run">新建任务</button>
-        <button class="nav-item" data-view="models">模型与账号</button>
-        <button class="nav-item" data-view="output">输出与登录态</button>
-        <button class="nav-item" data-view="history">任务记录</button>
+        <button class="nav-item active" data-view="run"><span>01</span>新建任务</button>
+        <button class="nav-item" data-view="models"><span>02</span>模型与账号</button>
+        <button class="nav-item" data-view="output"><span>03</span>输出与登录态</button>
+        <button class="nav-item" data-view="history"><span>04</span>任务记录</button>
       </nav>
       <div class="status-box"><span class="status-dot"></span><small id="systemStatus">检测本机服务中</small></div>
     </aside>
     <main class="workspace">
       <form id="taskForm">
         <section class="view-panel" data-panel="run">
-          <header class="page-head">
-            <h1>新建观看决策任务</h1>
+          <header class="page-head hero-head">
+            <div>
+              <p class="eyebrow">LOCAL-FIRST VIDEO REPORT</p>
+              <h1>新建 WatchBrief</h1>
+              <p class="subtitle">默认推荐配置已准备好。</p>
+            </div>
             <button class="primary" type="submit">开始运行</button>
           </header>
-          <div class="input-row">
-            <label class="field wide">视频 / 列表 / board 链接<input name="source_url" placeholder="https://..." autocomplete="off" /></label>
-            <span class="or-label">或</span>
-            <label class="field">URL 文件路径<input name="source_file" placeholder="/Users/apple/Desktop/urls.txt" /></label>
+          <div class="quick-status-grid">
+            <div class="signal"><span>模型</span><strong id="quickModelStatus">检测中</strong></div>
+            <div class="signal"><span>转写</span><strong id="quickTranscriberStatus">检测中</strong></div>
+            <div class="signal"><span>Review</span><strong id="quickReviewStatus">检测中</strong></div>
           </div>
-          <div class="grid two">
-            <label class="field">运行模式<select name="diagnostic_run"><option value="">正式任务</option><option value="true">诊断 / 复现</option></select></label>
-            <label class="field">任务超时<select name="timeout">{_option("600", "600 秒", selected=True)}{_option("900", "900 秒")}{_option("1200", "1200 秒")}</select></label>
+          <div class="starter-panel">
+            <div class="step-title"><span>01</span><strong>输入来源</strong></div>
+            <div class="input-row">
+              <label class="field wide source-field">视频 / 列表 / board 链接<input name="source_url" placeholder="https://..." autocomplete="off" /></label>
+              <span class="or-label">或</span>
+              <label class="field">URL 文件路径<input name="source_file" placeholder="/Users/apple/Desktop/urls.txt" /></label>
+            </div>
           </div>
-          <div class="switch-grid">
-            <label><input type="checkbox" name="force_reanalysis" value="true" /> 强制重新分析</label>
-            <label><input type="checkbox" name="keep_debug_artifacts" value="true" /> 保留 debug artifacts</label>
-            <label><input type="checkbox" name="open_output" value="true" /> 完成后打开输出</label>
+          <div class="starter-panel compact">
+            <div class="step-title"><span>02</span><strong>运行方式</strong></div>
+            <div class="grid two">
+              <label class="field">运行模式<select name="diagnostic_run"><option value="">正式任务</option><option value="true">诊断 / 复现</option></select></label>
+              <label class="field">任务超时<select name="timeout">{_option("600", "600 秒", selected=True)}{_option("900", "900 秒")}{_option("1200", "1200 秒")}</select></label>
+            </div>
+            <div class="switch-grid">
+              <label><input type="checkbox" name="force_reanalysis" value="true" /> 强制重新分析</label>
+              <label><input type="checkbox" name="keep_debug_artifacts" value="true" /> 保留 debug</label>
+              <label><input type="checkbox" name="open_output" value="true" /> 完成后打开</label>
+            </div>
           </div>
           <section class="preview-block">
             <div class="section-title"><h2>命令预览</h2><button type="button" id="previewCommand">刷新预览</button></div>
@@ -419,7 +434,7 @@ def render_index_html() -> str:
         </section>
 
         <section class="view-panel hidden" data-panel="models">
-          <header class="page-head"><h1>模型与账号</h1><button class="primary" type="submit">开始运行</button></header>
+          <header class="page-head hero-head"><div><p class="eyebrow">RUNTIME</p><h1>模型与账号</h1><p class="subtitle">保持推荐即可，按需切换。</p></div><button class="primary" type="submit">开始运行</button></header>
           <div class="capability-grid">
             <div class="cap-card"><strong>本地模型</strong><span id="modelHint">检测中</span></div>
             <div class="cap-card"><strong>转写工具</strong><span id="transcriberHint">检测中</span></div>
@@ -453,11 +468,11 @@ def render_index_html() -> str:
             <label class="field">Codex 账号<input name="codex_account" value="{DEFAULT_CODEX_ACCOUNT}" /></label>
             <label class="field span-two">Mock response JSON<input name="mock_review_response" placeholder="/path/to/sample_payload.json" /></label>
           </div>
-          <div class="notice">WebUI 不接收 API token。Claude / Kimi 需要后端 adapter 后再开放。</div>
+          <div class="notice">WebUI 不接收 API token。Claude / Gemini / Kimi 需要后端 adapter 后再开放。</div>
         </section>
 
         <section class="view-panel hidden" data-panel="output">
-          <header class="page-head"><h1>输出与登录态</h1><button class="primary" type="submit">开始运行</button></header>
+          <header class="page-head hero-head"><div><p class="eyebrow">DELIVERY</p><h1>输出与登录态</h1><p class="subtitle">正式输出默认放到桌面。</p></div><button class="primary" type="submit">开始运行</button></header>
           <div class="grid two">
             <label class="field">输出方式<select name="output_mode">{_option("default", "正式默认：单视频桌面 HTML / 列表桌面文件夹", selected=True)}{_option("custom", "自定义最终目录")}{_option("diagnostic", "诊断临时目录")}</select></label>
             <label class="field">输出目录<input name="output_dir" placeholder="自定义时填写最终目录；正式默认可留空" /></label>
@@ -476,7 +491,7 @@ def render_index_html() -> str:
       </form>
 
       <section class="view-panel hidden" data-panel="history">
-        <header class="page-head"><h1>任务记录</h1><button type="button" id="refreshTasks">刷新</button></header>
+        <header class="page-head hero-head"><div><p class="eyebrow">HISTORY</p><h1>任务记录</h1><p class="subtitle">只记录 WebUI 启动的本地任务。</p></div><button type="button" id="refreshTasks">刷新</button></header>
         <div id="taskList" class="task-list"><div class="empty">暂无任务</div></div>
       </section>
     </main>
@@ -498,7 +513,356 @@ def render_index_html() -> str:
 
 
 STYLES_CSS = r"""
-:root{--bg:#f5f6f8;--panel:#ffffff;--ink:#20242c;--muted:#626a78;--line:#dfe3ea;--blue:#2563eb;--green:#11845b;--red:#c2413f;--soft:#eef2f7}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;color:var(--ink)}.app-shell{min-height:100vh;display:grid;grid-template-columns:220px minmax(0,1fr)300px}.sidebar{border-right:1px solid var(--line);background:#fff;padding:18px;display:flex;flex-direction:column;gap:20px}.brand{height:40px;display:flex;align-items:center;gap:10px}.brand-mark{width:34px;height:34px;border-radius:8px;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:800}.nav-item{width:100%;height:38px;border:0;background:transparent;border-radius:8px;text-align:left;padding:0 10px;font:inherit;color:var(--muted);cursor:pointer}.nav-item.active{background:var(--soft);color:var(--ink);font-weight:700}.status-box{margin-top:auto;border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;gap:8px;align-items:center}.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}.workspace{padding:22px;overflow:auto}.inspector{border-left:1px solid var(--line);background:#fff;padding:20px;overflow:auto}.page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}.page-head h1{margin:0;font-size:24px;letter-spacing:0}.grid{display:grid;gap:14px}.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.capability-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}.cap-card{border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px;display:grid;gap:6px;min-height:78px}.cap-card strong{font-size:13px}.cap-card span{font-size:12px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere}.input-row{display:grid;grid-template-columns:minmax(0,1.4fr)42px minmax(0,1fr);gap:12px;align-items:end}.or-label{height:40px;display:grid;place-items:center;color:var(--muted)}.field{display:grid;gap:7px;font-size:13px;color:var(--muted);font-weight:700}.field input,.field select{width:100%;height:40px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px;color:var(--ink);font:inherit;font-weight:500}.field.wide{min-width:0}.span-two{grid-column:span 2}.primary,#refreshTasks,#previewCommand{height:38px;border:0;border-radius:8px;background:var(--blue);color:#fff;font-weight:700;padding:0 14px;cursor:pointer}#refreshTasks,#previewCommand{background:#1f2937}.view-panel{max-width:980px}.hidden{display:none}.switch-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.switch-grid label,.inline-check{height:38px;border:1px solid var(--line);border-radius:8px;background:#fff;display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--ink);font-size:13px}.preview-block,.task-list{margin-top:18px;border:1px solid var(--line);border-radius:8px;background:#fff}.section-title{height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 12px}.section-title h2{font-size:15px;margin:0}pre{white-space:pre-wrap;overflow:auto}#commandPreview{min-height:92px;margin:0;padding:12px;color:#263244;background:#fbfcfe}.notice{margin-top:14px;border:1px solid #f0d8a8;background:#fff8eb;color:#76520e;border-radius:8px;padding:12px}.rule-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}.rule-strip span{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff;color:var(--muted);font-size:13px}.task-item{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px;border-bottom:1px solid var(--line)}.task-item:last-child{border-bottom:0}.pill{border-radius:999px;padding:4px 8px;font-size:12px;background:#e8f7ef;color:var(--green);font-weight:700}.pill.failed{background:#ffeceb;color:var(--red)}.pill.running{background:#eaf0ff;color:var(--blue)}.empty{padding:18px;color:var(--muted);text-align:center}dl{margin:0;display:grid;gap:12px}dt{font-size:12px;color:var(--muted);font-weight:700}dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}#toast{min-height:96px;margin-top:18px;border-radius:8px;background:#111827;color:#e5e7eb;padding:12px;font-size:12px}@media(max-width:1050px){.app-shell{grid-template-columns:1fr}.sidebar,.inspector{border:0}.grid.two,.input-row,.switch-grid,.rule-strip,.capability-grid{grid-template-columns:1fr}.span-two{grid-column:auto}}
+:root{
+  --bg:#f4f7fb;
+  --panel:#ffffff;
+  --ink:#171b22;
+  --muted:#667085;
+  --line:#d8e0ea;
+  --line-strong:#b8c7d9;
+  --nav:#101820;
+  --cyan:#0e7490;
+  --green:#11845b;
+  --red:#c2413f;
+  --soft:#edf5f8;
+  --blue:#1d4ed8;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  min-height:100vh;
+  background-color:var(--bg);
+  background-image:
+    linear-gradient(rgba(16,24,32,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16,24,32,.05) 1px, transparent 1px);
+  background-size:28px 28px;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;
+  color:var(--ink);
+}
+.app-shell{
+  min-height:100vh;
+  display:grid;
+  grid-template-columns:228px minmax(0,1fr)310px;
+}
+.sidebar{
+  background:var(--nav);
+  color:#eef6f8;
+  padding:18px;
+  display:flex;
+  flex-direction:column;
+  gap:22px;
+}
+.brand{
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.brand strong{display:block;font-size:16px}
+.brand small{display:block;color:#9fb4c0;font-size:12px;margin-top:2px}
+.brand-mark{
+  width:36px;
+  height:36px;
+  border-radius:8px;
+  background:#e8fbff;
+  color:#0b3440;
+  display:grid;
+  place-items:center;
+  font-weight:800;
+}
+nav{display:grid;gap:8px}
+.nav-item{
+  width:100%;
+  min-height:42px;
+  border:1px solid transparent;
+  background:transparent;
+  border-radius:8px;
+  text-align:left;
+  padding:0 10px;
+  font:inherit;
+  color:#b7c7d0;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.nav-item span{
+  width:28px;
+  height:24px;
+  border-radius:6px;
+  display:grid;
+  place-items:center;
+  background:rgba(255,255,255,.08);
+  color:#d6f7ff;
+  font-size:12px;
+  font-weight:800;
+}
+.nav-item.active{
+  background:#eefbff;
+  color:#0b3440;
+  font-weight:800;
+}
+.nav-item.active span{background:#0e7490;color:#fff}
+.status-box{
+  margin-top:auto;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:8px;
+  padding:12px;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  color:#d5e5ec;
+}
+.status-dot{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#22c55e;
+  flex:0 0 auto;
+}
+.workspace{padding:24px;overflow:auto}
+.inspector{
+  border-left:1px solid var(--line);
+  background:rgba(255,255,255,.88);
+  padding:22px;
+  overflow:auto;
+}
+.page-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:18px;
+}
+.hero-head h1{
+  margin:2px 0 4px;
+  font-size:30px;
+  line-height:1.15;
+  letter-spacing:0;
+}
+.eyebrow{
+  margin:0;
+  color:var(--cyan);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:0;
+}
+.subtitle{
+  margin:0;
+  color:var(--muted);
+  font-size:14px;
+}
+.grid{display:grid;gap:14px}
+.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.quick-status-grid,.capability-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:14px;
+}
+.signal,.cap-card,.starter-panel,.preview-block,.task-list,.rule-strip span{
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:rgba(255,255,255,.94);
+  box-shadow:0 12px 30px rgba(15,23,42,.06);
+}
+.signal{
+  min-height:74px;
+  padding:12px;
+  display:grid;
+  align-content:center;
+  gap:6px;
+}
+.signal span,.cap-card strong{
+  font-size:12px;
+  color:var(--muted);
+  font-weight:800;
+}
+.signal strong{
+  font-size:15px;
+  overflow-wrap:anywhere;
+}
+.cap-card{
+  padding:12px;
+  display:grid;
+  gap:6px;
+  min-height:80px;
+}
+.cap-card span{
+  font-size:12px;
+  line-height:1.45;
+  color:var(--muted);
+  overflow-wrap:anywhere;
+}
+.starter-panel{
+  padding:14px;
+  margin-bottom:14px;
+}
+.starter-panel.compact{padding-bottom:10px}
+.step-title{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:12px;
+}
+.step-title span{
+  width:30px;
+  height:26px;
+  border-radius:6px;
+  display:grid;
+  place-items:center;
+  background:#e7f8fb;
+  color:#0e7490;
+  font-size:12px;
+  font-weight:900;
+}
+.step-title strong{font-size:15px}
+.input-row{
+  display:grid;
+  grid-template-columns:minmax(0,1.4fr)42px minmax(0,1fr);
+  gap:12px;
+  align-items:end;
+}
+.or-label{
+  height:44px;
+  display:grid;
+  place-items:center;
+  color:var(--muted);
+}
+.field{
+  display:grid;
+  gap:7px;
+  font-size:13px;
+  color:var(--muted);
+  font-weight:800;
+}
+.field input,.field select{
+  width:100%;
+  height:42px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#fff;
+  padding:0 11px;
+  color:var(--ink);
+  font:inherit;
+  font-weight:500;
+  outline:none;
+}
+.source-field input{height:48px;font-size:15px}
+.field input:focus,.field select:focus{
+  border-color:var(--cyan);
+  box-shadow:0 0 0 3px rgba(14,116,144,.12);
+}
+.field.wide{min-width:0}
+.span-two{grid-column:span 2}
+.primary,#refreshTasks,#previewCommand{
+  min-height:40px;
+  border:0;
+  border-radius:8px;
+  background:var(--cyan);
+  color:#fff;
+  font-weight:800;
+  padding:0 16px;
+  cursor:pointer;
+}
+.primary{min-width:118px}
+#refreshTasks,#previewCommand{background:#18232d}
+.view-panel{max-width:1040px}
+.hidden{display:none}
+.switch-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  margin-top:14px;
+}
+.switch-grid label,.inline-check{
+  min-height:40px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#fff;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:0 10px;
+  color:var(--ink);
+  font-size:13px;
+}
+.section-title{
+  min-height:44px;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 12px;
+}
+.section-title h2{font-size:15px;margin:0}
+pre{white-space:pre-wrap;overflow:auto}
+#commandPreview{
+  min-height:92px;
+  margin:0;
+  padding:12px;
+  color:#20303f;
+  background:#fbfdff;
+}
+.notice{
+  margin-top:14px;
+  border:1px solid #cbe9ef;
+  background:#f0fbfd;
+  color:#164e63;
+  border-radius:8px;
+  padding:12px;
+}
+.rule-strip{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  margin-top:14px;
+}
+.rule-strip span{
+  padding:12px;
+  color:var(--muted);
+  font-size:13px;
+  box-shadow:none;
+}
+.task-item{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:12px;
+  align-items:center;
+  padding:12px;
+  border-bottom:1px solid var(--line);
+}
+.task-item:last-child{border-bottom:0}
+.pill{
+  border-radius:8px;
+  padding:4px 8px;
+  font-size:12px;
+  background:#e8f7ef;
+  color:var(--green);
+  font-weight:800;
+}
+.pill.failed{background:#ffeceb;color:var(--red)}
+.pill.running{background:#eaf6ff;color:#0e7490}
+.empty{padding:18px;color:var(--muted);text-align:center}
+.inspector h2{margin-top:0}
+dl{margin:0;display:grid;gap:12px}
+dt{font-size:12px;color:var(--muted);font-weight:800}
+dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+#toast{
+  min-height:110px;
+  margin-top:18px;
+  border-radius:8px;
+  background:#111827;
+  color:#e5e7eb;
+  padding:12px;
+  font-size:12px;
+}
+@media(max-width:1050px){
+  .app-shell{grid-template-columns:1fr}
+  .sidebar,.inspector{border:0}
+  .grid.two,.input-row,.switch-grid,.rule-strip,.capability-grid,.quick-status-grid{grid-template-columns:1fr}
+  .span-two{grid-column:auto}
+}
 """
 
 
@@ -574,6 +938,9 @@ async function loadStatus() {
     const transcriberText = transcriber.recommendation_reason || '未完成转写工具检测';
     const reviewText = review.codex_cli_ok ? `Codex CLI 可用：${review.codex_cli_path}` : '未检测到 Codex CLI；Mock 可用于开发自测';
     $('#systemStatus').textContent = `模型 ${localModel.qwen_ok ? '可用' : '未就绪'} · 转写 ${transcriber.recommended || 'auto'} · Codex ${review.codex_cli_ok ? '可用' : '未检测到'}`;
+    $('#quickModelStatus').textContent = localModel.qwen_ok ? 'Qwen 可用' : '需要配置';
+    $('#quickTranscriberStatus').textContent = transcriber.recommended === 'whisper' ? 'Whisper' : (transcriber.recommended || 'auto');
+    $('#quickReviewStatus').textContent = review.codex_cli_ok ? 'Codex CLI' : 'Mock';
     $('#modelHint').textContent = modelText;
     $('#transcriberHint').textContent = transcriberText;
     $('#reviewHint').textContent = reviewText;

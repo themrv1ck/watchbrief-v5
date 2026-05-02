@@ -4223,3 +4223,24 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未触发 Codex review。
   - 未触发 MLX-Audio 转写。
   - 未改 renderer / schema / validator / HTML 模板。
+
+## 2026-05-02 WebUI 傻瓜式布局与简约科技视觉
+
+- 目标：把 WebUI 从配置面板进一步收口成普通用户更容易理解的本地工具界面。
+- 修改范围：
+  - `scripts/webui.py`
+  - `tests/test_webui.py`
+- 交互调整：
+  - 左侧导航改为 `01/02/03/04` 步骤式入口。
+  - 第一屏突出“输入来源”和“运行方式”，默认推荐配置在第一屏可直接运行。
+  - 第一屏新增模型、转写、Review 三个状态芯片，读取 `/api/status` 后显示本机当前可用状态。
+  - 模型、账号、输出、登录态等高级选项仍保留在后续页面。
+- 视觉调整：
+  - 改为浅色科技网格背景、深色左侧导航、青绿色主操作色。
+  - 加大主输入框，减少第一屏信息密度。
+  - 保持 8px 圆角和固定字号，不引入前端框架、构建工具或新依赖。
+- 边界：
+  - 未改变 CLI / pipeline / renderer / schema / validator。
+  - 未新增 token 输入框。
+  - 未跑真实视频链路。
+  - 未触发 Qwen / Codex review / MLX-Audio。
