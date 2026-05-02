@@ -25,6 +25,7 @@ from scripts.analyzer.codex_review import (
     run_codex_review,
 )
 from scripts.analyzer.local_extract import DEFAULT_QWEN_MODEL, build_local_extract_payload
+from scripts.analyzer.local_review import LOCAL_REVIEW_MODEL_ID, build_local_review_response
 from scripts.cli import make_review_response_provider
 from scripts.validator import WatchBriefValidationError
 
@@ -347,6 +348,35 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
                     timeout=1,
                 )
                 self.assertEqual(provider({}, {}, {})["title"], payload["title"])
+
+    def test_local_review_provider_builds_schema_valid_payload_without_codex(self) -> None:
+        local_extract = self.build_local_extract()
+        request = build_review_request(local_extract)
+        with mock.patch("scripts.cli.run_codex_review", side_effect=AssertionError("must not call codex")):
+            provider = make_review_response_provider(
+                mock_review_response=None,
+                review_provider="local",
+                enable_codex_review=False,
+                model="gpt-test",
+                codex_model=None,
+                codex_home=None,
+                codex_home_root=None,
+                codex_account=None,
+                timeout=1,
+            )
+            raw = provider({}, request, local_extract)
+
+        parsed = parse_review_response(raw, stability_metadata={**request["stability_metadata"], "codex_model": LOCAL_REVIEW_MODEL_ID})
+        self.assertEqual(parsed["codex_model"], LOCAL_REVIEW_MODEL_ID)
+        self.assertEqual(parsed["tag"], "只建议跳看")
+        self.assertIn("本地模式", parsed["content_caveat"])
+
+    def test_build_local_review_response_uses_qwen_extract_fields(self) -> None:
+        response = build_local_review_response(self.build_local_extract())
+
+        self.assertIn("任务结构", response["one_line_brief"])
+        self.assertEqual(response["watch_segments"][0]["priority"], "primary")
+        self.assertEqual(response["codex_model"], LOCAL_REVIEW_MODEL_ID)
 
     def test_cli_manual_provider_without_enablement_does_not_call_codex(self) -> None:
         with mock.patch("scripts.cli.run_codex_review", side_effect=AssertionError("must not call codex")):

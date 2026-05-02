@@ -2,7 +2,7 @@
 """WatchBrief V5 pipeline orchestration.
 
 This module only orchestrates already-built stages. It does not call Codex,
-OpenAI, or any cloud model. Review output must be supplied by a mock/manual
+OpenAI, or any cloud model. Review output must be supplied by a mock/manual/local
 response provider.
 """
 

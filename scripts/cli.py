@@ -22,6 +22,7 @@ if __package__ in (None, ""):
         sys.path.insert(0, str(root))
     from scripts.analyzer.codex_review import run_codex_review
     from scripts.analyzer.local_extract import DEFAULT_QWEN_MODEL
+    from scripts.analyzer.local_review import LOCAL_REVIEW_MODEL_ID, build_local_review_response
     from scripts.cookie_strategy import DEFAULT_COOKIE_BROWSER_ATTEMPTS
     from scripts.resolver import resolve_url
     from scripts.video_pipeline import PipelineDependencies, PipelineError, process_source
@@ -34,6 +35,7 @@ if __package__ in (None, ""):
 else:
     from .analyzer.codex_review import run_codex_review
     from .analyzer.local_extract import DEFAULT_QWEN_MODEL
+    from .analyzer.local_review import LOCAL_REVIEW_MODEL_ID, build_local_review_response
     from .cookie_strategy import DEFAULT_COOKIE_BROWSER_ATTEMPTS
     from .resolver import resolve_url
     from .video_pipeline import PipelineDependencies, PipelineError, process_source
@@ -231,6 +233,12 @@ def make_review_response_provider(
 
         return provider
 
+    if review_provider in {"local", "local-rules"}:
+        def provider(_item: dict[str, Any], _request: dict[str, Any], extract: dict[str, Any]) -> dict[str, Any]:
+            return build_local_review_response(extract)
+
+        return provider
+
     if not enable_codex_review:
         raise ValueError("real Codex CLI review requires --enable-codex-review")
     if review_provider not in {"manual", "codex", "codex-cli"}:
@@ -292,7 +300,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--review-provider",
-        choices=("manual", "mock", "codex", "codex-cli"),
+        choices=("manual", "mock", "codex", "codex-cli", "local", "local-rules"),
         default="manual",
     )
     parser.add_argument(
@@ -414,6 +422,7 @@ def main() -> int:
         local_extract_options["qwen_api_base"] = args.qwen_api_base
     local_extract_options["qwen_timeout"] = args.qwen_timeout if args.qwen_timeout is not None else args.timeout
 
+    review_model_id = LOCAL_REVIEW_MODEL_ID if args.review_provider in {"local", "local-rules"} else (args.codex_model or args.model)
     deps = PipelineDependencies(
         resolve_url_func=source_resolver,
         resolver_options=resolver_options if source_path is not None or source_resolver is resolve_url else {},
@@ -422,7 +431,7 @@ def main() -> int:
         transcriber_options=transcriber_options,
         local_extract_options=local_extract_options,
         review_options={
-            "codex_model": args.codex_model or args.model,
+            "codex_model": review_model_id,
             "report_cache_enabled": True,
             "force_reanalysis": args.force_reanalysis,
         },

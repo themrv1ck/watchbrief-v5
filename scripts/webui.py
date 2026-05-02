@@ -43,7 +43,7 @@ DEFAULT_CODEX_MODEL = "gpt-5.4"
 DEFAULT_CODEX_ACCOUNT = "account2"
 DEFAULT_CODEX_HOME_ROOT = "~/.watchbrief_codex"
 
-SUPPORTED_REVIEW_PROVIDERS = {"codex-cli", "mock"}
+SUPPORTED_REVIEW_PROVIDERS = {"local", "codex-cli", "mock"}
 UNSUPPORTED_REVIEW_PROVIDERS = {"claude", "gemini", "kimi", "manual"}
 SUPPORTED_EXTRACT_PROVIDERS = {"local-qwen"}
 UNSUPPORTED_EXTRACT_PROVIDERS = {"codex-extract", "gemini-extract", "claude-extract"}
@@ -87,11 +87,11 @@ def _validate_qwen_model(model: str) -> None:
 
 
 def _review_provider(payload: dict[str, Any]) -> str:
-    provider = _clean_text(payload.get("review_provider") or payload.get("account_provider")) or "codex-cli"
+    provider = _clean_text(payload.get("review_provider") or payload.get("account_provider")) or "local"
     if provider in UNSUPPORTED_REVIEW_PROVIDERS:
-        raise ValueError(f"{provider} 适配器尚未接入；当前 WebUI 可运行 codex-cli 或 mock")
+        raise ValueError(f"{provider} 适配器尚未接入；当前 WebUI 可运行 local、codex-cli 或 mock")
     if provider not in SUPPORTED_REVIEW_PROVIDERS:
-        raise ValueError("review_provider 只支持 codex-cli 或 mock")
+        raise ValueError("review_provider 只支持 local、codex-cli 或 mock")
     return provider
 
 
@@ -325,7 +325,7 @@ def local_capabilities(*, force: bool = False) -> dict[str, Any]:
         "review": {
             "codex_cli_ok": bool(codex_path),
             "codex_cli_path": codex_path or "",
-            "supported": ["codex-cli", "mock"],
+            "supported": ["local", "codex-cli", "mock"],
             "placeholders": ["claude", "gemini", "kimi"],
         },
         "report": {
@@ -537,27 +537,30 @@ def render_index_html() -> str:
       <div class="status-box"><span class="status-dot"></span><small id="systemStatus">检测本机服务中</small></div>
     </aside>
     <main class="workspace">
+      <button class="config-toggle" id="toggleInspector" type="button" aria-pressed="false">隐藏当前配置</button>
       <section class="view-panel" data-panel="welcome">
         <header class="page-head hero-head">
           <div>
             <p class="eyebrow">WELCOME</p>
             <h1>三步生成观看决策报告</h1>
-            <p class="subtitle">先贴链接，再确认配置，最后生成 HTML 或 PDF。</p>
+            <p class="subtitle">像填表一样使用：先登录浏览器，再贴链接，最后点开始。</p>
           </div>
           <button class="primary" type="button" data-jump="run">开始新任务</button>
         </header>
         <div class="welcome-grid">
-          <div class="welcome-card"><span>1</span><strong>新建任务</strong><p>在“新建任务”里粘贴 YouTube、Bilibili、小红书单视频、列表或 board 链接。也可以选择本地 URL 文件。</p></div>
-          <div class="welcome-card"><span>2</span><strong>设置能力</strong><p>在“设置”里配置本地 Qwen endpoint、转写工具、Codex CLI、登录态、输出目录和报告格式。</p></div>
-          <div class="welcome-card"><span>3</span><strong>查看结果</strong><p>正式单视频默认输出桌面 HTML；列表输出桌面任务文件夹。选择 PDF 时会在 HTML 旁生成同名 PDF。</p></div>
+          <div class="welcome-card"><span>1</span><strong>先登录浏览器</strong><p>打开 Chrome，登录 YouTube、Bilibili 或小红书。WatchBrief 只在你的电脑借用登录状态，不会把密码或 cookie 写进报告。</p></div>
+          <div class="welcome-card"><span>2</span><strong>粘贴链接</strong><p>在“新建任务”里粘贴单视频、播放列表或收藏页链接。不会用你的账号乱跑别的页面。</p></div>
+          <div class="welcome-card"><span>3</span><strong>点开始运行</strong><p>默认生成桌面 HTML。选 PDF 时，会在 HTML 旁边再生成一个同名 PDF。</p></div>
         </div>
         <div class="starter-panel">
-          <div class="step-title"><span>配置</span><strong>你通常需要先确认这些数据</strong></div>
-          <div class="guide-grid">
-            <div><strong>模型</strong><p>本地 Qwen 模型和 endpoint 在“设置 → 模型与账号”。没有本地模型时先启动 LM Studio 或 OpenAI-compatible 服务。</p></div>
-            <div><strong>转写</strong><p>MLX-Audio 会优先使用；没有 MLX-Audio 但有 Whisper 时，WebUI 会推荐 Whisper。</p></div>
-            <div><strong>账号</strong><p>Codex CLI 使用本机登录态；WebUI 不接收、不保存 API token。</p></div>
-            <div><strong>输出</strong><p>输出目录、HTML/PDF、浏览器登录态在“设置 → 输出与登录态”。</p></div>
+          <div class="step-title"><span>清单</span><strong>完全不懂代码也照着做</strong></div>
+          <div class="kid-checklist">
+            <div><b>第一步</b><strong>浏览器先登录</strong><p>你平时在哪个平台看视频，就先在 Chrome 里登录那个平台。WatchBrief 不保存你的密码，不展示 cookie。</p></div>
+            <div><b>第二步</b><strong>选一个“大脑”</strong><p>没有 Codex 账号，就用“本地模式（无 Codex）”。它用你电脑里的本地 Qwen 做报告，不调用 Codex。</p></div>
+            <div><b>第三步</b><strong>选一个“耳朵”</strong><p>视频没字幕时才需要转写。检测到 MLX-Audio 就用 MLX-Audio；没有它但有 Whisper，就推荐 Whisper。</p></div>
+            <div><b>第四步</b><strong>选放哪里</strong><p>不懂就留空。单视频会放到桌面 HTML，列表会放到桌面文件夹。想自己选地方，再填输出目录。</p></div>
+            <div><b>第五步</b><strong>选报告格式</strong><p>HTML 最稳。PDF 需要你电脑有 Chrome / Edge / Chromium / Brave，WebUI 会从 HTML 再打印成 PDF。</p></div>
+            <div><b>第六步</b><strong>不要填 token</strong><p>这个页面不需要你粘贴 Claude、Codex、Kimi token。以后接云模型，也只会让你选择已配置好的本机账号。</p></div>
           </div>
         </div>
       </section>
@@ -630,7 +633,8 @@ def render_index_html() -> str:
           <label class="inline-check"><input type="checkbox" name="allow_whisper_fallback" value="true" /> 允许 MLX-Audio 不可用时回退 Whisper</label>
           <div class="grid two">
             <label class="field">Review 引擎<select name="review_provider">
-              {_option("codex-cli", "Codex CLI", selected=True)}
+              {_option("local", "本地模式（无 Codex）", selected=True)}
+              {_option("codex-cli", "Codex CLI")}
               {_option("mock", "Mock JSON")}
               {_option("claude", "Claude：未接入", disabled=True)}
               {_option("gemini", "Gemini：未接入", disabled=True)}
@@ -641,7 +645,7 @@ def render_index_html() -> str:
             <label class="field">Codex 账号<input name="codex_account" value="{DEFAULT_CODEX_ACCOUNT}" /></label>
             <label class="field span-two">Mock response JSON<input name="mock_review_response" placeholder="/path/to/sample_payload.json" /></label>
           </div>
-          <div class="notice">WebUI 不接收 API token。Claude / Gemini / Kimi 需要后端 adapter 后再开放。</div>
+          <div class="notice">没有 Codex 账号就选“本地模式（无 Codex）”。它不调用 Codex；Claude / Gemini / Kimi 需要后端 adapter 后再开放。</div>
         </section>
 
         <section class="view-panel hidden" data-panel="output">
@@ -673,11 +677,11 @@ def render_index_html() -> str:
       </section>
     </main>
     <aside class="inspector">
-      <h2>当前配置</h2>
+      <div class="inspector-head"><h2>当前配置</h2><span>可隐藏</span></div>
       <dl id="summary">
         <dt>源项目</dt><dd>{html.escape(str(PROJECT_ROOT))}</dd>
         <dt>默认 Qwen</dt><dd>{DEFAULT_QWEN_MODEL}</dd>
-        <dt>默认 review</dt><dd id="summaryReview">Codex CLI / {DEFAULT_CODEX_MODEL}</dd>
+        <dt>默认 review</dt><dd id="summaryReview">本地模式（无 Codex）</dd>
         <dt>推荐转写器</dt><dd id="summaryTranscriber">读取本机后决定</dd>
         <dt>输出格式</dt><dd id="summaryReport">HTML；PDF 需本机浏览器导出</dd>
       </dl>
@@ -720,6 +724,12 @@ body{
   min-height:100vh;
   display:grid;
   grid-template-columns:228px minmax(0,1fr)310px;
+}
+.app-shell.inspector-hidden{
+  grid-template-columns:228px minmax(0,1fr);
+}
+.app-shell.inspector-hidden .inspector{
+  display:none;
 }
 .sidebar{
   background:var(--nav);
@@ -798,11 +808,41 @@ nav{display:grid;gap:8px}
   flex:0 0 auto;
 }
 .workspace{padding:24px;overflow:auto}
+.config-toggle{
+  position:sticky;
+  top:0;
+  z-index:4;
+  float:right;
+  min-height:36px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#fff;
+  color:#0e7490;
+  font:inherit;
+  font-size:13px;
+  font-weight:900;
+  padding:0 12px;
+  cursor:pointer;
+  box-shadow:0 10px 24px rgba(15,23,42,.08);
+}
 .inspector{
   border-left:1px solid var(--line);
   background:rgba(255,255,255,.88);
   padding:22px;
   overflow:auto;
+}
+.inspector-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:14px;
+}
+.inspector-head h2{margin:0}
+.inspector-head span{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:800;
 }
 .page-head{
   display:flex;
@@ -872,6 +912,30 @@ nav{display:grid;gap:8px}
   border-radius:8px;
   padding:12px;
   background:#fff;
+}
+.kid-checklist{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.kid-checklist div{
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#fff;
+  padding:12px;
+  display:grid;
+  gap:6px;
+}
+.kid-checklist b{
+  color:#0e7490;
+  font-size:12px;
+}
+.kid-checklist strong{font-size:15px}
+.kid-checklist p{
+  margin:0;
+  color:var(--muted);
+  line-height:1.55;
+  font-size:13px;
 }
 .settings-tabs{
   display:flex;
@@ -1078,7 +1142,6 @@ pre{white-space:pre-wrap;overflow:auto}
 .pill.failed{background:#ffeceb;color:var(--red)}
 .pill.running{background:#eaf6ff;color:#0e7490}
 .empty{padding:18px;color:var(--muted);text-align:center}
-.inspector h2{margin-top:0}
 dl{margin:0;display:grid;gap:12px}
 dt{font-size:12px;color:var(--muted);font-weight:800}
 dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
@@ -1094,7 +1157,7 @@ dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
 @media(max-width:1050px){
   .app-shell{grid-template-columns:1fr}
   .sidebar,.inspector{border:0}
-  .grid.two,.input-row,.switch-grid,.rule-strip,.capability-grid,.quick-status-grid,.welcome-grid,.guide-grid{grid-template-columns:1fr}
+  .grid.two,.input-row,.switch-grid,.rule-strip,.capability-grid,.quick-status-grid,.welcome-grid,.guide-grid,.kid-checklist{grid-template-columns:1fr}
   .span-two{grid-column:auto}
 }
 """
@@ -1177,15 +1240,15 @@ async function loadStatus() {
       ? `检测到 Qwen：${(localModel.qwen_models || []).slice(0, 2).join(', ')}`
       : (localModel.ok ? 'endpoint 在线，但没有 Qwen-family 模型' : '未检测到本地 OpenAI-compatible endpoint');
     const transcriberText = transcriber.recommendation_reason || '未完成转写工具检测';
-    const reviewText = review.codex_cli_ok ? `Codex CLI 可用：${review.codex_cli_path}` : '未检测到 Codex CLI；Mock 可用于开发自测';
+    const reviewText = review.codex_cli_ok ? `本地模式可用；Codex CLI 可选：${review.codex_cli_path}` : '本地模式可用；未检测到 Codex CLI';
     $('#systemStatus').textContent = `模型 ${localModel.qwen_ok ? '可用' : '未就绪'} · 转写 ${transcriber.recommended || 'auto'} · Codex ${review.codex_cli_ok ? '可用' : '未检测到'}`;
     $('#quickModelStatus').textContent = localModel.qwen_ok ? 'Qwen 可用' : '需要配置';
     $('#quickTranscriberStatus').textContent = transcriber.recommended === 'whisper' ? 'Whisper' : (transcriber.recommended || 'auto');
-    $('#quickReviewStatus').textContent = review.codex_cli_ok ? 'Codex CLI' : 'Mock';
+    $('#quickReviewStatus').textContent = '本地模式';
     $('#modelHint').textContent = modelText;
     $('#transcriberHint').textContent = transcriberText;
     $('#reviewHint').textContent = reviewText;
-    $('#summaryReview').textContent = review.codex_cli_ok ? 'Codex CLI / gpt-5.4' : 'Codex CLI 未检测到；Mock 仅用于测试';
+    $('#summaryReview').textContent = review.codex_cli_ok ? '默认本地模式；Codex CLI 可切换' : '默认本地模式（无 Codex）';
     $('#summaryTranscriber').textContent = transcriber.recommended || 'auto';
     $('#summaryReport').textContent = status.report?.pdf?.ok ? 'HTML / PDF 可用' : 'HTML；PDF 需要 Chrome / Edge / Chromium';
     $('#outputHints').textContent = `本机 Desktop：${paths.desktop || '未检测'}；WebUI 状态目录：${paths.webui_state || '未检测'}。正式默认输出不需要填写 output_dir。`;
@@ -1207,6 +1270,14 @@ function showPanel(view) {
   if (view === 'history') loadTasks();
 }
 
+function toggleInspector() {
+  const shell = document.querySelector('.app-shell');
+  const hidden = shell.classList.toggle('inspector-hidden');
+  const button = $('#toggleInspector');
+  button.textContent = hidden ? '显示当前配置' : '隐藏当前配置';
+  button.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+}
+
 document.querySelectorAll('.nav-item').forEach((button) => {
   button.addEventListener('click', () => showPanel(button.dataset.view));
 });
@@ -1219,6 +1290,7 @@ document.querySelectorAll('.settings-tab').forEach((button) => {
   button.addEventListener('click', () => showPanel(button.dataset.settingsView));
 });
 
+$('#toggleInspector').addEventListener('click', toggleInspector);
 $('#previewCommand').addEventListener('click', previewCommand);
 $('#refreshTasks').addEventListener('click', loadTasks);
 $('#taskForm').addEventListener('input', previewCommand);

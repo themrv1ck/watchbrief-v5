@@ -20,7 +20,7 @@ class PipelineScopeTest(unittest.TestCase):
 
     def test_pipeline_contract_documents_no_prefetch_and_mock_review_only(self) -> None:
         text = (ROOT / "CONTRACT_V5.md").read_text(encoding="utf-8")
-        self.assertIn("mock/manual review response provider", text)
+        self.assertIn("mock/manual/local review response provider", text)
         self.assertIn("prefetching subtitles, audio, or transcripts", text)
         self.assertIn("merging list transcripts into one analysis blob", text)
 

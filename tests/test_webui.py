@@ -15,6 +15,13 @@ class WebUITest(unittest.TestCase):
         self.assertIn("WatchBrief WebUI", html)
         self.assertIn("LOCAL-FIRST VIDEO REPORT", html)
         self.assertIn("默认推荐配置已准备好", html)
+        self.assertIn("隐藏当前配置", html)
+        self.assertIn('id="toggleInspector"', html)
+        self.assertIn("inspector-hidden", webui.STYLES_CSS)
+        self.assertIn("toggleInspector", webui.APP_JS)
+        self.assertIn("完全不懂代码也照着做", html)
+        self.assertIn("WatchBrief 不保存你的密码，不展示 cookie", html)
+        self.assertIn("本地模式（无 Codex）", html)
         self.assertIn("新建任务", html)
         self.assertIn("模型与账号", html)
         self.assertIn("输出与登录态", html)
@@ -26,6 +33,7 @@ class WebUITest(unittest.TestCase):
         self.assertIn("Gemini 提炼：未接入", html)
         self.assertIn("本地 Qwen 模型", html)
         self.assertIn("Review 引擎", html)
+        self.assertIn("没有 Codex 账号就选", html)
         self.assertIn("Codex CLI", html)
         self.assertIn("Claude：未接入", html)
         self.assertIn("Gemini：未接入", html)
@@ -36,6 +44,14 @@ class WebUITest(unittest.TestCase):
         self.assertIn("PDF（同时保留 HTML）", html)
         self.assertIn("cookies.txt 路径", html)
         self.assertIn("Claude / Gemini / Kimi", html)
+
+    def test_local_review_provider_is_default_without_codex_enablement(self) -> None:
+        command = webui.build_cli_command({"source_url": "https://example.com/v"})
+
+        self.assertIn("--review-provider", command)
+        self.assertIn("local", command)
+        self.assertNotIn("--enable-codex-review", command)
+        self.assertNotIn("--codex-model", command)
 
     def test_build_cli_command_uses_custom_settings_without_opening_browser(self) -> None:
         command = webui.build_cli_command(
@@ -289,7 +305,7 @@ class WebUITest(unittest.TestCase):
                 "review": {
                     "codex_cli_ok": True,
                     "codex_cli_path": "/usr/local/bin/codex",
-                    "supported": ["codex-cli", "mock"],
+                    "supported": ["local", "codex-cli", "mock"],
                     "placeholders": ["claude", "gemini", "kimi"],
                 },
                 "report": {"formats": [], "renderers": []},

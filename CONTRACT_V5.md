@@ -250,8 +250,8 @@ Allowed:
 
 - resolver to transcript acquisition orchestration
 - transcript material to local_extract
-- local_extract to Codex review request
-- mock/manual review response parsing
+- local_extract to Codex review request or local rules review
+- mock/manual/local review response parsing
 - validator-backed renderer call
 - single video pipeline
 - list framework that processes items strictly one by one
@@ -269,7 +269,7 @@ Forbidden:
 - schema changes
 - HTML template changes
 
-`video_pipeline.py` requires a mock/manual review response provider. Without that provider the pipeline must fail before rendering instead of calling a model.
+`video_pipeline.py` requires a mock/manual/local review response provider. Without that provider the pipeline must fail before rendering instead of calling a model.
 For list sources, `video_pipeline.py` writes `00-watch-order.html` only after all per-video HTML attempts are finished.
 
 ## Phase 8 Boundary
@@ -279,7 +279,7 @@ Phase 8 adds only the real Codex CLI review adapter.
 Allowed:
 
 - explicit Codex CLI review adapter inside `codex_review.py`
-- keep the existing mock/manual review path
+- keep the existing mock/manual/local review path
 - dry-run review request output for manual testing
 - classify live review failures as `codex_cli_missing`, `codex_not_logged_in`, `auth_failed`, `quota_limited`, `timeout`, `empty_response`, `invalid_json`, `schema_invalid`, `validator_failed`, or `model_error`
 - validate model output by schema, then validator, before any renderer receives it

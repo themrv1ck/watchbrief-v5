@@ -61,7 +61,7 @@ class AnalyzerScopeTest(unittest.TestCase):
         text = (ROOT / "CONTRACT_V5.md").read_text(encoding="utf-8")
         self.assertIn("Phase 8 Boundary", text)
         self.assertIn("explicitly enabled", text)
-        self.assertIn("mock/manual review path", text)
+        self.assertIn("mock/manual/local review path", text)
         self.assertIn("schema, then validator", text)
 
 

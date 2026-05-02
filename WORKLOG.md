@@ -4277,3 +4277,35 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未新增 token 输入框。
   - 未跑真实视频链路。
   - 未触发 Qwen / Codex review / MLX-Audio。
+
+## 2026-05-02 WebUI 当前配置可隐藏与无 Codex 本地模式
+
+- 目标：让 GitHub 独立用户更容易上手，不需要 Hermes / OpenClaw，也不强制需要 Codex 账号。
+- 修改范围：
+  - `scripts/analyzer/local_review.py`
+  - `scripts/cli.py`
+  - `scripts/video_pipeline.py`
+  - `scripts/webui.py`
+  - `tests/test_analyzer_codex_review.py`
+  - `tests/test_analyzer_scope.py`
+  - `tests/test_pipeline_scope.py`
+  - `tests/test_webui.py`
+  - `CONTRACT_V5.md`
+  - `README.md`
+  - `USAGE_V5.md`
+  - `SKILL.md`
+- UI 调整：
+  - 第一页右侧“当前配置”面板新增隐藏/显示开关。
+  - 欢迎页新增傻瓜式配置清单：先登录浏览器、选择“大脑”、选择“耳朵”、选择输出位置、选择 HTML/PDF、不粘贴 token。
+  - 文案明确：WatchBrief 不保存密码，不展示 cookie；浏览器登录态只在本机采集链路使用。
+- 本地模式：
+  - WebUI 默认 review 引擎改为 `local`。
+  - CLI 新增 `--review-provider local` / `local-rules`。
+  - `local` review 不调用 Codex，只把 Qwen local_extract 输出用本地确定性规则整理成 schema-valid report。
+  - `codex-cli` 仍可显式选择；Claude / Gemini / Kimi 仍为未接入能力，不伪装成功。
+- 边界：
+  - 未跑真实视频链路。
+  - 未触发 Qwen。
+  - 未触发 Codex review。
+  - 未触发 MLX-Audio 转写。
+  - 未新增 token 输入框。
