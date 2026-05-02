@@ -435,6 +435,20 @@ def subtitle_debug_from_error(exc: BaseException) -> dict[str, Any]:
 
 
 def local_extract_start_debug(options: dict[str, Any]) -> dict[str, Any]:
+    external_provider = str(options.get("external_extract_provider") or "").strip()
+    if external_provider:
+        external_model = str(options.get("external_model_id") or "").strip()
+        external_api_base = str(options.get("external_api_base") or "").strip()
+        model_id = f"{external_provider}:{external_model}".rstrip(":")
+        return {
+            "qwen_model": model_id,
+            "qwen_base_url": external_api_base,
+            "qwen_api_base": external_api_base,
+            "extract_provider": external_provider,
+            "external_model_id": external_model,
+            "external_api_base": external_api_base,
+            "timeout": int(options.get("qwen_timeout") or 120),
+        }
     qwen_base_url = configured_qwen_api_base(options.get("qwen_api_base"))
     return {
         "qwen_model": configured_qwen_model(options.get("qwen_model")) or "auto",

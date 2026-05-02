@@ -21,7 +21,9 @@ if __package__ in (None, ""):
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
     from scripts.analyzer.codex_review import run_codex_review
-    from scripts.analyzer.local_extract import DEFAULT_QWEN_MODEL
+    from scripts.analyzer.cloud_review import run_cloud_review
+    from scripts.analyzer.external_extract import build_external_extract_payload
+    from scripts.analyzer.local_extract import DEFAULT_QWEN_MODEL, build_local_extract_payload
     from scripts.analyzer.local_review import LOCAL_REVIEW_MODEL_ID, build_local_review_response
     from scripts.cookie_strategy import DEFAULT_COOKIE_BROWSER_ATTEMPTS
     from scripts.resolver import resolve_url
@@ -34,7 +36,9 @@ if __package__ in (None, ""):
     )
 else:
     from .analyzer.codex_review import run_codex_review
-    from .analyzer.local_extract import DEFAULT_QWEN_MODEL
+    from .analyzer.cloud_review import run_cloud_review
+    from .analyzer.external_extract import build_external_extract_payload
+    from .analyzer.local_extract import DEFAULT_QWEN_MODEL, build_local_extract_payload
     from .analyzer.local_review import LOCAL_REVIEW_MODEL_ID, build_local_review_response
     from .cookie_strategy import DEFAULT_COOKIE_BROWSER_ATTEMPTS
     from .resolver import resolve_url
@@ -50,6 +54,13 @@ else:
 ReviewResponseProvider = Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], dict[str, Any]]
 DEFAULT_COOKIES_FROM_BROWSER = "chrome"
 DEFAULT_COOKIE_BROWSERS = DEFAULT_COOKIE_BROWSER_ATTEMPTS
+EXTERNAL_REVIEW_PROVIDERS = {"gemini", "claude", "kimi", "openai-compatible"}
+EXTERNAL_EXTRACT_PROVIDERS = {"local-openai-compatible", "openai-compatible", "gemini", "claude", "kimi", "codex-cli-extract"}
+DEFAULT_EXTRACT_API_BASES = {
+    "gemini": "https://generativelanguage.googleapis.com/v1beta",
+    "claude": "https://api.anthropic.com/v1",
+    "kimi": "https://api.moonshot.ai/v1",
+}
 
 
 def safe_slug(value: str, fallback: str) -> str:
@@ -221,7 +232,10 @@ def make_review_response_provider(
     codex_home: str | None,
     codex_home_root: str | None,
     codex_account: str | None,
-    timeout: int,
+    review_model: str | None = None,
+    review_api_base: str | None = None,
+    review_api_key_env: str | None = None,
+    timeout: int = 120,
 ) -> ReviewResponseProvider:
     if mock_review_response is not None:
         mock_payload = json.loads(mock_review_response.read_text(encoding="utf-8"))
@@ -236,6 +250,21 @@ def make_review_response_provider(
     if review_provider in {"local", "local-rules"}:
         def provider(_item: dict[str, Any], _request: dict[str, Any], extract: dict[str, Any]) -> dict[str, Any]:
             return build_local_review_response(extract)
+
+        return provider
+
+    if review_provider in EXTERNAL_REVIEW_PROVIDERS:
+        def provider(_item: dict[str, Any], request: dict[str, Any], extract: dict[str, Any]) -> str:
+            debug_dir = Path(str(request["_watchbrief_debug_dir"])) if request.get("_watchbrief_debug_dir") else None
+            return run_cloud_review(
+                extract,
+                review_provider=review_provider,
+                model=review_model or "",
+                api_base=review_api_base or "",
+                api_key_env=review_api_key_env or "",
+                timeout=timeout,
+                debug_dir=debug_dir,
+            )
 
         return provider
 
@@ -300,7 +329,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--review-provider",
-        choices=("manual", "mock", "codex", "codex-cli", "local", "local-rules"),
+        choices=("manual", "mock", "codex", "codex-cli", "local", "local-rules", "gemini", "claude", "kimi", "openai-compatible"),
         default="manual",
     )
     parser.add_argument(
@@ -313,6 +342,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--codex-home", help="explicit CODEX_HOME directory for Codex CLI")
     parser.add_argument("--codex-home-root", help="root directory containing Codex account homes")
     parser.add_argument("--codex-account", help="account folder under --codex-home-root")
+    parser.add_argument("--review-model", help="model id for Gemini/Claude/Kimi/OpenAI-compatible review providers")
+    parser.add_argument("--review-api-base", help="API base for OpenAI-compatible review providers")
+    parser.add_argument("--review-api-key-env", help="environment variable name that contains the review provider API key")
+    parser.add_argument(
+        "--extract-provider",
+        choices=("local-qwen", "local-openai-compatible", "openai-compatible", "gemini", "claude", "kimi", "codex-cli-extract"),
+        default="local-qwen",
+        help="transcript extraction backend before review",
+    )
+    parser.add_argument("--extract-model", help="model id for non-Qwen extraction providers")
+    parser.add_argument("--extract-api-base", help="API base for non-Qwen extraction providers")
+    parser.add_argument("--extract-api-key-env", help="environment variable name that contains the extraction provider API key")
     parser.add_argument("--force-reanalysis", action="store_true", help="ignore validated report cache and run Codex review again")
     parser.add_argument("--timeout", type=int, default=120, help="codex review timeout seconds")
     parser.add_argument("--transcriber", choices=("auto", "mlx_audio", "whisper"), default="auto", help="transcriber provider. auto means MLX-Audio only.")
@@ -363,6 +404,9 @@ def main() -> int:
             codex_home=args.codex_home,
             codex_home_root=args.codex_home_root,
             codex_account=args.codex_account,
+            review_model=args.review_model,
+            review_api_base=args.review_api_base,
+            review_api_key_env=args.review_api_key_env,
             timeout=args.timeout,
         )
     except ValueError as exc:
@@ -416,15 +460,57 @@ def main() -> int:
         transcriber_options["model"] = args.mlx_model
 
     local_extract_options: dict[str, Any] = {}
-    if args.qwen_model:
-        local_extract_options["qwen_model"] = args.qwen_model
-    if args.qwen_api_base:
-        local_extract_options["qwen_api_base"] = args.qwen_api_base
-    local_extract_options["qwen_timeout"] = args.qwen_timeout if args.qwen_timeout is not None else args.timeout
+    build_local_extract_func = None
+    if args.extract_provider == "local-qwen":
+        if args.qwen_model:
+            local_extract_options["qwen_model"] = args.qwen_model
+        if args.qwen_api_base:
+            local_extract_options["qwen_api_base"] = args.qwen_api_base
+        local_extract_options["qwen_timeout"] = args.qwen_timeout if args.qwen_timeout is not None else args.timeout
+    else:
+        extract_timeout = args.qwen_timeout if args.qwen_timeout is not None else args.timeout
+        extract_api_base = (
+            args.extract_api_base
+            or (args.qwen_api_base if args.extract_provider == "local-openai-compatible" else "")
+            or DEFAULT_EXTRACT_API_BASES.get(args.extract_provider, "")
+        )
+        local_extract_options.update({
+            "external_extract_provider": args.extract_provider,
+            "external_model_id": args.extract_model or "",
+            "external_api_base": extract_api_base,
+            "qwen_timeout": extract_timeout,
+        })
 
-    review_model_id = LOCAL_REVIEW_MODEL_ID if args.review_provider in {"local", "local-rules"} else (args.codex_model or args.model)
+        def external_extract_func(metadata: dict[str, Any], transcript_segments: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
+            kwargs.pop("external_extract_provider", None)
+            kwargs.pop("external_model_id", None)
+            kwargs.pop("external_api_base", None)
+            kwargs.pop("qwen_timeout", None)
+            return build_external_extract_payload(
+                metadata,
+                transcript_segments,
+                provider=args.extract_provider,
+                model=args.extract_model or "",
+                api_base=extract_api_base,
+                api_key_env=args.extract_api_key_env or "",
+                timeout=extract_timeout,
+                codex_home=args.codex_home,
+                codex_home_root=args.codex_home_root,
+                codex_account=args.codex_account,
+                **kwargs,
+            )
+
+        build_local_extract_func = external_extract_func
+
+    if args.review_provider in {"local", "local-rules"}:
+        review_model_id = LOCAL_REVIEW_MODEL_ID
+    elif args.review_provider in EXTERNAL_REVIEW_PROVIDERS:
+        review_model_id = args.review_model or args.review_provider
+    else:
+        review_model_id = args.codex_model or args.model
     deps = PipelineDependencies(
         resolve_url_func=source_resolver,
+        build_local_extract_func=build_local_extract_func or build_local_extract_payload,
         resolver_options=resolver_options if source_path is not None or source_resolver is resolve_url else {},
         subtitle_options=subtitle_options,
         audio_download_options=audio_download_options,

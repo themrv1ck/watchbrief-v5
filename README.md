@@ -34,7 +34,7 @@ python3 scripts/webui.py --host 127.0.0.1 --port 8765
 http://127.0.0.1:8765
 ```
 
-WebUI 面向从 GitHub 下载后独立使用的用户，不要求 Hermes / OpenClaw。首页是欢迎说明书，按“先登录浏览器 -> 粘贴链接 -> 点开始运行”的傻瓜流程说明；右侧“当前配置”面板可以隐藏或显示；模型、账号、输出、登录态放在“设置”二级菜单。它会读取本机能力并给出默认建议：本地 OpenAI-compatible Qwen endpoint、可用 Qwen 模型、MLX-Audio / Whisper 转写器、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。没有 MLX-Audio 但检测到 Whisper 时，WebUI 的“推荐转写器”会生成 `--transcriber whisper`。当前真实可用的提炼后端是本地 Qwen；Codex / Gemini / Claude 提炼适配器尚未接入。当前可运行的 review 引擎是 `local`、`codex-cli` 和 `mock`：`local` 是无 Codex 账号的本地规则模式，不调用 Codex；Claude / Gemini / Kimi review 未接入时不会伪装成功。PDF 导出已接入：CLI 仍先生成 HTML，WebUI 再用本机 Chrome / Edge / Chromium / Brave 的 headless print 生成同名 PDF。WebUI 不接收、不保存、不转发明文 token。
+WebUI 面向从 GitHub 下载后独立使用的用户，不要求 Hermes / OpenClaw。首页是欢迎说明书，按“先登录浏览器 -> 粘贴链接 -> 点开始运行”的傻瓜流程说明；右侧“当前配置”面板可以隐藏或显示；模型、账号、输出、登录态放在“设置”二级菜单。它会读取本机能力并给出默认建议：本地 OpenAI-compatible endpoint 与模型列表、可用 Qwen 模型、MLX-Audio / Whisper 转写器、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。没有 MLX-Audio 但检测到 Whisper 时，WebUI 的“推荐转写器”会生成 `--transcriber whisper`。提炼后端现在支持 `local-qwen`、`local-openai-compatible`、`openai-compatible`、`gemini`、`claude`、`kimi` 和 `codex-cli-extract`；review 引擎支持 `local`、`codex-cli`、`gemini`、`claude`、`kimi`、`openai-compatible` 和 `mock`。`local` 是无 Codex 账号的本地规则模式，不调用 Codex。Gemini / Claude / Kimi / OpenAI-compatible 只读取环境变量里的 API key，WebUI 只填写环境变量名字，不接收、不保存、不转发明文 token。PDF 导出已接入：CLI 仍先生成 HTML，WebUI 再用本机 Chrome / Edge / Chromium / Brave 的 headless print 生成同名 PDF。
 
 安全提交规则：
 
@@ -180,7 +180,31 @@ export WATCHBRIEF_QWEN_BASE_URL="http://127.0.0.1:1234/v1"
 export WATCHBRIEF_QWEN_MODEL="qwen3-30b-a3b-instruct-2507-mlx"
 ```
 
-如果没有指定模型，WatchBrief 默认使用 `qwen3-30b-a3b-instruct-2507-mlx`。也可以用 `WATCHBRIEF_QWEN_MODEL` 或 `--qwen-model` 显式覆盖；非 Qwen 模型会被拒绝。
+如果没有指定模型，WatchBrief 默认使用 `qwen3-30b-a3b-instruct-2507-mlx`。`local-qwen` 提炼路径可以用 `WATCHBRIEF_QWEN_MODEL` 或 `--qwen-model` 显式覆盖；非 Qwen 模型会被拒绝。需要 Gemma / Llama / Mistral 等非 Qwen 本地模型时，使用显式外部提炼路径：
+
+```bash
+python3 scripts/cli.py \
+  --source-url "https://example.com/your-video" \
+  --extract-provider local-openai-compatible \
+  --extract-model "gemma-3-local" \
+  --extract-api-base "http://127.0.0.1:1234/v1" \
+  --review-provider local \
+  --timeout 600
+```
+
+需要 Gemini / Claude / Kimi 时，不要在命令里粘贴 token，只导出环境变量后传变量名：
+
+```bash
+export GEMINI_API_KEY="..."
+
+python3 scripts/cli.py \
+  --source-url "https://example.com/your-video" \
+  --extract-provider gemini \
+  --extract-api-key-env GEMINI_API_KEY \
+  --review-provider gemini \
+  --review-api-key-env GEMINI_API_KEY \
+  --timeout 600
+```
 
 当前正式规则是 WatchBrief 和 Hermes 都作为客户端连接 LM Studio 的 `http://127.0.0.1:1234/v1` endpoint，通过请求里的 `model` 字段选择不同模型。两者不是运行在 `1234` 端口上，不存在客户端抢端口问题；风险是并发重任务共享本机统一内存和推理算力，因此不建议同时跑 WatchBrief 完整视频链路和 Hermes 本地模型重任务。
 
@@ -396,7 +420,7 @@ WatchOrder 对 board 会显示总 note 数、视频 note 数和图文跳过数�
 | `audio_downloader` | 下载失败/转码失败 | 检查 yt-dlp、输出目录权限与音频码率兼容性 |
 | `transcriber` | 转写失败 / `transcriber_unavailable` | 默认需要 MLX-Audio；没有 MLX-Audio 时显式用 `--transcriber whisper` 或 `--allow-whisper-fallback` |
 | `transcript_quality` | `transcript_coverage_too_low` | 最终转写覆盖率不足，停止在 Qwen 前；检查 ASR 是否只覆盖片头或极少内容。平台字幕时间轴明显超过视频时长、覆盖太短或内容太少时会先丢弃字幕并改走音频转写 |
-| `local_extract` | `local_qwen_unavailable` / non_qwen_model_rejected / local_qwen_invalid_response | 检查 LM Studio 是否启动、是否有 Qwen-family 模型、`WATCHBRIEF_QWEN_MODEL` 是否包含 qwen |
+| `local_extract` | `local_qwen_unavailable` / non_qwen_model_rejected / local_qwen_invalid_response / external_extract_model_missing / api_key_missing | `local-qwen` 检查 LM Studio 和 Qwen-family 模型；非 Qwen 本地模型改用 `--extract-provider local-openai-compatible`；云模型检查 API key 环境变量是否已设置 |
 | `codex_review` | codex_cli_missing/codex_not_logged_in/auth/quota/timeout/empty/invalid_json/schema/validator/model | 检查 Codex CLI 是否安装、是否登录、账号目录是否正确、额度、超时和返回 JSON；必要时切回 mock review 继续验证链路 |
 | `validator` | 字段、分段、tag/topic、结论污染 | 修正模型输出结构后重跑该条 |
 | `renderer` | 渲染前校验失败 | 模块不允许兜底，先修 payload 后重试 |

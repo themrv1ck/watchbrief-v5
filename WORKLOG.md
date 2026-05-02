@@ -4332,3 +4332,43 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未触发 Qwen。
   - 未触发 Codex review。
   - 未触发 MLX-Audio 转写。
+
+## 2026-05-02 WebUI 外部模型接口接入
+
+- 目标：让不使用 Hermes / OpenClaw 的 GitHub 用户，可以在 WebUI/CLI 里选择本地通用模型、Gemini、Claude、Kimi、OpenAI-compatible 或 Codex CLI，而不是只依赖本地 Qwen + Codex。
+- 修改范围：
+  - `scripts/analyzer/model_clients.py`
+  - `scripts/analyzer/external_extract.py`
+  - `scripts/analyzer/cloud_review.py`
+  - `scripts/cli.py`
+  - `scripts/video_pipeline.py`
+  - `scripts/webui.py`
+  - `scripts/check_watchbrief_skill.py`
+  - `tests/test_webui.py`
+  - `tests/test_external_model_adapters.py`
+  - `tests/test_analyzer_scope.py`
+  - `README.md`
+  - `USAGE_V5.md`
+  - `SKILL.md`
+  - `CONTRACT_V5.md`
+- 已接入：
+  - 提炼后端：`local-qwen`、`local-openai-compatible`、`openai-compatible`、`gemini`、`claude`、`kimi`、`codex-cli-extract`。
+  - Review 引擎：`local`、`codex-cli`、`gemini`、`claude`、`kimi`、`openai-compatible`、`mock`。
+  - 本地非 Qwen 模型如 Gemma / Llama / Mistral 通过 `--extract-provider local-openai-compatible --extract-model <model>` 使用。
+  - Gemini / Claude / Kimi / OpenAI-compatible 只读取环境变量里的 API key；WebUI 只填写环境变量名字，不接收明文 token。
+  - WebUI 状态接口只显示 API key 环境变量是否存在，不显示密钥内容。
+- 保持占位：
+  - 非 HTML renderer 仍未接入，PDF 仍是 HTML 后处理导出。
+  - 手工 review UI 仍未接入；`mock` JSON 仍用于测试。
+- 验证：
+  - `python3 -m py_compile scripts/cli.py scripts/webui.py scripts/video_pipeline.py scripts/analyzer/model_clients.py scripts/analyzer/external_extract.py scripts/analyzer/cloud_review.py`：PASS。
+  - `python3 -m unittest discover -s tests -p 'test_webui.py'`：19 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_external_model_adapters.py'`：3 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_*.py'`：399 tests OK，skipped=3。
+  - `python3 scripts/check_watchbrief_skill.py --strict-install`：PASS。
+- 边界：
+  - 未跑真实视频链路。
+  - 未触发真实 Qwen。
+  - 未触发真实 Codex review。
+  - 未触发 MLX-Audio。
+  - 未保存、打印、展示 cookies 或 token。

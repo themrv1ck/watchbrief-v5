@@ -182,9 +182,9 @@ Current behavior:
 - MLX-Audio Python lookup must prefer `WATCHBRIEF_MLX_AUDIO_PYTHON`, the canonical standalone project `.venv-mlx/bin/python`, the current skill-root `.venv-mlx/bin/python`, the parent project-root `.venv-mlx/bin/python`, and Hermes installed skill `.venv-mlx/bin/python` before considering the current Python executable. It must not depend on the legacy `v1deodownload` skill `.venv-mlx`.
 - If MLX-Audio is unavailable and fallback is not explicitly allowed, the acquisition layer fails with `transcriber_unavailable` and a message that lists checked Python candidates.
 
-### Local Qwen Extract Strategy
+### Extract Strategy
 
-`local_extract.py` must call a local Qwen-family model through an OpenAI-compatible LM Studio endpoint before building the Codex review request.
+The default extraction path is `local-qwen`: it must call a local Qwen-family model through an OpenAI-compatible LM Studio endpoint before building the review request. Non-Qwen extraction is allowed only through explicit external adapters, never by passing a non-Qwen model id to `local-qwen`.
 
 Rules:
 
@@ -194,7 +194,9 @@ Rules:
 - The model can be explicitly overridden with `WATCHBRIEF_QWEN_MODEL` or `--qwen-model`.
 - WatchBrief and Hermes are clients of the LM Studio `http://127.0.0.1:1234/v1` endpoint. They select different local models through the request `model` field; they do not run on port `1234`.
 - Do not run the full WatchBrief video pipeline concurrently with Hermes local-model heavy tasks. The risk is shared Mac unified memory and compute, not a port conflict.
-- Non-Qwen model ids are rejected.
+- In `local-qwen`, non-Qwen model ids are rejected.
+- Non-Qwen local models must use `--extract-provider local-openai-compatible --extract-model <model>`.
+- Other OpenAI-compatible / Gemini / Claude / Kimi / Codex extraction must use explicit `--extract-provider`; API keys must be read from environment variables only.
 - If no Qwen-family model is available, fail with `local_qwen_unavailable`.
 - Qwen output is an intermediate JSON only. It must not include `replacement_score`, `tag`, `watch_verdict`, `final_conclusion`, `watch_segments`, or HTML.
 - Qwen output must include `important_terms` and `corrected_terms`; local deterministic entity normalization must standardize clear aliases for `叔本华 / Schopenhauer`、`尼采 / Nietzsche`、`柏拉图 / Plato`、`萨特 / Sartre`、`阿兰·德波顿 / Alain de Botton`.
@@ -202,7 +204,7 @@ Rules:
 - Qwen request timeout must fail as `stage=local_extract`, `reason_code=local_qwen_timeout`; it must not be wrapped as generic `pipeline_failed`.
 - Qwen non-JSON or malformed JSON must fail as `local_qwen_invalid_response`.
 - Qwen intermediate JSON that does not satisfy the local_extract intermediate contract must fail as `local_extract_invalid_output`.
-- The item manifest must record `local_extract` started/completed/failed state with `qwen_base_url`, Qwen model setting, and timeout.
+- The item manifest must record `local_extract` started/completed/failed state with the actual model id, endpoint/base URL when applicable, extraction provider when applicable, and timeout.
 
 ### Transcript Coverage Gate
 

@@ -24,6 +24,7 @@ REQUIRED_TEST_FILES = [
     "test_template_sources.py",
     "test_watch_order.py",
     "test_webui.py",
+    "test_external_model_adapters.py",
     "test_video_pipeline.py",
     "test_acquisition_scope.py",
     "test_bilibili_content_provider.py",
@@ -38,7 +39,10 @@ REQUIRED_SCRIPTS = [
     "scripts/webui.py",
     "scripts/bilibili_content_provider.py",
     "scripts/analyzer/codex_review.py",
+    "scripts/analyzer/cloud_review.py",
+    "scripts/analyzer/external_extract.py",
     "scripts/analyzer/local_extract.py",
+    "scripts/analyzer/model_clients.py",
     "scripts/transcript_source_adapter.py",
 ]
 VIDEO_TEMPLATE_REQUIRED = [

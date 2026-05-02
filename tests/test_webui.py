@@ -29,21 +29,24 @@ class WebUITest(unittest.TestCase):
         self.assertIn("输入来源", html)
         self.assertIn("运行方式", html)
         self.assertIn("提炼模型后端", html)
-        self.assertIn("Codex 提炼：未接入", html)
-        self.assertIn("Gemini 提炼：未接入", html)
+        self.assertIn("本地通用模型：Gemma / Llama / Mistral", html)
+        self.assertIn("Gemini API", html)
+        self.assertIn("Claude API", html)
+        self.assertIn("Kimi API", html)
+        self.assertIn("Codex CLI 提炼", html)
         self.assertIn("本地 Qwen 模型", html)
+        self.assertIn("提炼 API key 环境变量", html)
         self.assertIn("Review 引擎", html)
         self.assertIn("没有 Codex 账号就选", html)
         self.assertIn("Codex CLI", html)
-        self.assertIn("Claude：未接入", html)
-        self.assertIn("Gemini：未接入", html)
-        self.assertIn("Kimi：未接入", html)
+        self.assertIn("OpenAI-compatible API", html)
+        self.assertIn("Review API key 环境变量", html)
         self.assertIn("推荐：读取本机后自动选择", html)
         self.assertIn("输出方式", html)
         self.assertIn("报告格式", html)
         self.assertIn("PDF（同时保留 HTML）", html)
         self.assertIn("cookies.txt 路径", html)
-        self.assertIn("Claude / Gemini / Kimi", html)
+        self.assertIn("不要填 token", html)
 
     def test_local_review_provider_is_default_without_codex_enablement(self) -> None:
         command = webui.build_cli_command({"source_url": "https://example.com/v"})
@@ -207,11 +210,69 @@ class WebUITest(unittest.TestCase):
         self.assertIn("/tmp/mock-payload.json", command)
         self.assertNotIn("--enable-codex-review", command)
 
-    def test_unsupported_provider_and_pdf_fail_clearly(self) -> None:
-        with self.assertRaisesRegex(ValueError, "Claude|claude"):
-            webui.build_cli_command({"source_url": "https://example.com/v", "review_provider": "claude"})
-        with self.assertRaisesRegex(ValueError, "Gemini|gemini"):
-            webui.build_cli_command({"source_url": "https://example.com/v", "review_provider": "gemini"})
+    def test_cloud_review_provider_is_forwarded_without_codex_enablement(self) -> None:
+        command = webui.build_cli_command(
+            {
+                "source_url": "https://example.com/v",
+                "review_provider": "gemini",
+                "review_model": "gemini-2.5-flash",
+                "review_api_key_env": "GEMINI_API_KEY",
+            }
+        )
+
+        self.assertIn("--review-provider", command)
+        self.assertIn("gemini", command)
+        self.assertIn("--review-model", command)
+        self.assertIn("gemini-2.5-flash", command)
+        self.assertIn("--review-api-key-env", command)
+        self.assertIn("GEMINI_API_KEY", command)
+        self.assertNotIn("--enable-codex-review", command)
+
+    def test_local_openai_compatible_extract_supports_non_qwen_model(self) -> None:
+        command = webui.build_cli_command(
+            {
+                "source_url": "https://example.com/v",
+                "extract_provider": "local-openai-compatible",
+                "extract_model": "gemma-3-local",
+                "qwen_api_base": "http://127.0.0.1:1234/v1",
+            }
+        )
+
+        self.assertIn("--extract-provider", command)
+        self.assertIn("local-openai-compatible", command)
+        self.assertIn("--extract-model", command)
+        self.assertIn("gemma-3-local", command)
+        self.assertIn("--extract-api-base", command)
+        self.assertIn("http://127.0.0.1:1234/v1", command)
+        self.assertNotIn("--qwen-model", command)
+
+    def test_gemini_extract_uses_env_name_not_token_value(self) -> None:
+        command = webui.build_cli_command(
+            {
+                "source_url": "https://example.com/v",
+                "extract_provider": "gemini",
+                "extract_api_key_env": "GEMINI_API_KEY",
+            }
+        )
+
+        self.assertIn("--extract-provider", command)
+        self.assertIn("gemini", command)
+        self.assertIn("--extract-model", command)
+        self.assertIn("gemini-2.5-flash", command)
+        self.assertIn("--extract-api-key-env", command)
+        self.assertIn("GEMINI_API_KEY", command)
+        self.assertNotIn("SECRET", " ".join(command))
+
+        with self.assertRaisesRegex(ValueError, "环境变量名字"):
+            webui.build_cli_command(
+                {
+                    "source_url": "https://example.com/v",
+                    "review_provider": "gemini",
+                    "review_api_key_env": "sk-real-token-value",
+                }
+            )
+
+    def test_unsupported_provider_and_renderer_fail_clearly(self) -> None:
         with self.assertRaisesRegex(ValueError, "gemini-extract|提炼"):
             webui.build_cli_command({"source_url": "https://example.com/v", "extract_provider": "gemini-extract"})
         with self.assertRaisesRegex(ValueError, "renderer"):
@@ -311,8 +372,14 @@ class WebUITest(unittest.TestCase):
                 "review": {
                     "codex_cli_ok": True,
                     "codex_cli_path": "/usr/local/bin/codex",
-                    "supported": ["local", "codex-cli", "mock"],
-                    "placeholders": ["claude", "gemini", "kimi"],
+                    "supported": ["local", "codex-cli", "gemini", "claude", "kimi", "openai-compatible", "mock"],
+                    "placeholders": ["manual-review-ui"],
+                    "api_key_envs": {
+                        "gemini": {"env": "GEMINI_API_KEY", "configured": False},
+                        "claude": {"env": "ANTHROPIC_API_KEY", "configured": False},
+                        "kimi": {"env": "MOONSHOT_API_KEY", "configured": False},
+                        "openai_compatible": {"env": "WATCHBRIEF_OPENAI_COMPATIBLE_API_KEY", "configured": False},
+                    },
                 },
                 "report": {"formats": [], "renderers": []},
                 "paths": {

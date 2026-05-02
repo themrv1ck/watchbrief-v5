@@ -97,6 +97,14 @@ Codex review 默认使用：
 codex-cli / account2 / gpt-5.5
 ```
 
+没有本地 Qwen 时：
+
+- 本地已有 Gemma / Llama / Mistral 等 OpenAI-compatible 模型，可以选择 `local-openai-compatible`，填写模型名和 endpoint。
+- 其他 OpenAI-compatible 云端或自建服务，可以选择 `openai-compatible`，填写模型名、endpoint 和 API key 环境变量名。
+- 没有本地大模型，可以选择 Gemini / Claude / Kimi / Codex CLI。
+- 云模型密钥只通过环境变量读取，例如 `GEMINI_API_KEY`、`ANTHROPIC_API_KEY`、`MOONSHOT_API_KEY`。
+- WebUI 和 CLI 不接收明文 token，不把 token 写入配置、HTML、manifest 或 WORKLOG。
+
 运行守则：
 
 - WatchBrief 与 Hermes 都只是连接 LM Studio 的 `127.0.0.1:1234/v1` endpoint，不是运行在 `1234` 端口上。
@@ -127,16 +135,17 @@ http://127.0.0.1:8765
 - 首页配置清单会解释每个设置的目的：浏览器登录态、本地模型、转写工具、输出位置、HTML/PDF 和 token 边界。
 - 右侧“当前配置”面板可以隐藏或显示，避免第一页被配置内容占满。
 - “设置”是二级菜单，包含“模型与账号”和“输出与登录态”。
-- 会读取本机能力：本地 Qwen endpoint / 模型列表、MLX-Audio、Whisper、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。
-- 支持自定义 Qwen 模型、Qwen endpoint、Qwen timeout、Codex 模型、Codex 账号目录、输出方式、输出目录、登录态浏览器、转写器、缓存和诊断选项。
-- 当前真实可用的提炼模型后端是本地 Qwen / OpenAI-compatible endpoint；Codex / Gemini / Claude 作为提炼后端尚未接入。
+- 会读取本机能力：本地 OpenAI-compatible endpoint / 模型列表、Qwen 模型、MLX-Audio、Whisper、Codex CLI、Desktop / Downloads / Documents 路径、云模型 API key 环境变量是否存在，以及 WebUI 状态目录。
+- 支持自定义 Qwen 模型、Qwen endpoint、Qwen timeout、非 Qwen 本地模型名、外部 API endpoint、API key 环境变量名、Codex 模型、Codex 账号目录、输出方式、输出目录、登录态浏览器、转写器、缓存和诊断选项。
+- 当前真实可用的提炼模型后端是 `local-qwen`、`local-openai-compatible`、`openai-compatible`、`gemini`、`claude`、`kimi` 和 `codex-cli-extract`。
 - 转写器默认是“推荐”：检测到 MLX-Audio 时使用 CLI 默认 `auto`；没有 MLX-Audio 但有 Whisper 时生成 `--transcriber whisper`。
 - 默认不传 `--output-dir`，沿用 WatchBrief 正式默认输出路径。
 - 默认不传 `--open-output`，不会自动打开最终 HTML；用户显式勾选时才会传入。
 - 默认登录态为 `auto`，即 CLI 的 Chrome -> Safari 策略；显式选择 Chrome/Safari/Edge 时才传 `--cookies-from-browser`。
-- WebUI 默认 review 引擎是 `local` 本地模式：不需要 Codex 账号，不调用 Codex，只基于 Qwen local_extract 和确定性规则生成报告。
+- WebUI 默认 review 引擎是 `local` 本地模式：不需要 Codex 账号，不调用 Codex，只基于提炼结果和确定性规则生成报告。
 - 用户显式选择 `codex-cli` 时，Codex 模型默认显示并传入 `gpt-5.5`；Codex 模型用于 Qwen 提炼后的 review / 评分一致性检查，不是 HTML renderer。
-- 当前可运行的 review 引擎是 `local`、`codex-cli` 和 `mock`；Claude / Gemini / Kimi adapter 未接入。
+- 当前可运行的 review 引擎是 `local`、`codex-cli`、`gemini`、`claude`、`kimi`、`openai-compatible` 和 `mock`。
+- Gemini / Claude / Kimi / OpenAI-compatible 只读取环境变量里的 API key；WebUI 只填写环境变量名字，例如 `GEMINI_API_KEY`，不要粘贴 token 内容。
 - 当前正式报告基础格式是 HTML。
 - PDF 导出已接入 WebUI：先生成 HTML，再用本机 Chrome / Edge / Chromium / Brave 的 headless print 生成同名 PDF。
 - 如果本机没有可用浏览器，可设置 `WATCHBRIEF_PDF_BROWSER=/path/to/chrome-like-browser`。

@@ -27,10 +27,10 @@ description: WatchBrief V5 是视频观看决策报告生成器。它不是下�
 - WebUI 面向 GitHub 独立用户，不要求 Hermes / OpenClaw；它会读取本机 Qwen endpoint / 模型列表、MLX-Audio、Whisper、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。
 - WebUI 首页必须是欢迎说明页，用傻瓜式清单解释浏览器登录态、本地模型、转写工具、输出位置、HTML/PDF 和 token 边界；右侧“当前配置”面板必须可隐藏/显示。
 - 模型、账号、输出、登录态等配置放在“设置”二级菜单。
-- 可配置项包括提炼模型后端、Qwen 模型、Qwen endpoint、Codex 模型、Codex 账号目录、输出方式、输出目录、登录态浏览器、转写器、缓存和诊断选项。
-- 当前真实可用的提炼后端是本地 Qwen；Codex / Gemini / Claude 提炼适配器未接入时必须禁用或明确报错。
+- 可配置项包括提炼模型后端、Qwen 模型、Qwen endpoint、非 Qwen 本地模型名、外部 API endpoint、API key 环境变量名、Codex 模型、Codex 账号目录、输出方式、输出目录、登录态浏览器、转写器、缓存和诊断选项。
+- 当前真实可用的提炼后端是 `local-qwen`、`local-openai-compatible`、`openai-compatible`、`gemini`、`claude`、`kimi` 和 `codex-cli-extract`。云模型只读取环境变量里的 API key；WebUI 只允许填写环境变量名字，不接收明文 token。
 - WebUI 的推荐转写器规则：检测到 MLX-Audio 时保持 CLI 默认 `auto`；没有 MLX-Audio 但有 Whisper CLI 时生成 `--transcriber whisper`。
-- 当前可运行 review 引擎是 `local`、`codex-cli` 和 `mock`。`local` 是无 Codex 账号的本地规则模式，不调用 Codex；Claude / Gemini / Kimi 和非 HTML renderer 未接入时必须明确报错，不允许伪装成功。
+- 当前可运行 review 引擎是 `local`、`codex-cli`、`gemini`、`claude`、`kimi`、`openai-compatible` 和 `mock`。`local` 是无 Codex 账号的本地规则模式，不调用 Codex；非 HTML renderer 未接入时必须明确报错，不允许伪装成功。
 - PDF 导出由 WebUI 后处理完成：CLI 先生成 HTML，WebUI 再用本机 Chrome / Edge / Chromium / Brave headless print 生成同名 PDF；没有可用浏览器时必须明确报错。
 - WebUI 不接收、不保存、不转发明文 token；本地配置、密钥和构建产物不得提交。
 
@@ -69,7 +69,8 @@ python3 scripts/cli.py \
 - Whisper 只有显式 `--transcriber whisper` 或显式 `--allow-whisper-fallback` 时才允许使用。
 - MLX-Audio Python 优先查找 `WATCHBRIEF_MLX_AUDIO_PYTHON`，再查找独立项目根目录 `/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python`、当前 skill 根目录 `.venv-mlx/bin/python`、父级项目根目录 `.venv-mlx/bin/python`、Hermes 安装副本里的 `.venv-mlx/bin/python`，不依赖系统 `python3` 作为首选路径，也不再依赖旧 `v1deodownload` skill 的 `.venv-mlx`。
 - MLX-Audio 不可用且未允许 fallback 时，失败为 `transcriber_unavailable`，错误信息必须列出已检查的 Python 候选路径。
-- `local_extract.py` 必须使用本地 Qwen-family 模型，不允许非 Qwen 模型。
+- 默认 `local-qwen` 提炼路径必须使用本地 Qwen-family 模型，不允许非 Qwen 模型。
+- 非 Qwen 本地模型只能通过显式 `--extract-provider local-openai-compatible --extract-model <model>` 使用；其他 OpenAI-compatible / Gemini / Claude / Kimi / Codex 提炼只能通过显式 `--extract-provider` 使用。
 - Qwen 默认模型固定为 `qwen3-30b-a3b-instruct-2507-mlx`；只有显式传 `WATCHBRIEF_QWEN_MODEL` 或 `--qwen-model` 时才覆盖。
 - Qwen endpoint 默认 `http://127.0.0.1:1234/v1`，优先用 `WATCHBRIEF_QWEN_BASE_URL` 覆盖；`WATCHBRIEF_QWEN_API_BASE` 和 `--qwen-api-base` 继续可用。
 - 当前正式规则是 WatchBrief 和 Hermes 都作为客户端连接 LM Studio 的 `http://127.0.0.1:1234/v1` endpoint，通过请求里的 `model` 字段选择不同模型；两者不是运行在 `1234` 端口上。

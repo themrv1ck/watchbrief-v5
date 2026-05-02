@@ -24,7 +24,7 @@ class AnalyzerScopeTest(unittest.TestCase):
             "from playwright",
         ]
         for path in (ROOT / "scripts" / "analyzer").glob("*.py"):
-            if path.name in {"codex_review.py", "local_extract.py"}:
+            if path.name in {"codex_review.py", "local_extract.py", "model_clients.py"}:
                 continue
             source = path.read_text(encoding="utf-8").lower()
             for forbidden in forbidden_imports:

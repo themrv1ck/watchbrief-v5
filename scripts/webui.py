@@ -43,15 +43,36 @@ DEFAULT_CODEX_MODEL = "gpt-5.5"
 DEFAULT_CODEX_ACCOUNT = "account2"
 DEFAULT_CODEX_HOME_ROOT = "~/.watchbrief_codex"
 
-SUPPORTED_REVIEW_PROVIDERS = {"local", "codex-cli", "mock"}
-UNSUPPORTED_REVIEW_PROVIDERS = {"claude", "gemini", "kimi", "manual"}
-SUPPORTED_EXTRACT_PROVIDERS = {"local-qwen"}
-UNSUPPORTED_EXTRACT_PROVIDERS = {"codex-extract", "gemini-extract", "claude-extract"}
+SUPPORTED_REVIEW_PROVIDERS = {"local", "codex-cli", "mock", "gemini", "claude", "kimi", "openai-compatible"}
+UNSUPPORTED_REVIEW_PROVIDERS = {"manual"}
+SUPPORTED_EXTRACT_PROVIDERS = {"local-qwen", "local-openai-compatible", "openai-compatible", "gemini", "claude", "kimi", "codex-cli-extract"}
+UNSUPPORTED_EXTRACT_PROVIDERS: set[str] = set()
 SUPPORTED_REPORT_FORMATS = {"html", "pdf"}
 SUPPORTED_RENDERERS = {"local-html", "pdf-export"}
 SUPPORTED_BROWSER_AUTH = {"auto", "chrome", "safari", "edge", "none"}
 SUPPORTED_TRANSCRIBERS = {"recommended", "auto", "mlx_audio", "whisper"}
 SUPPORTED_OUTPUT_MODES = {"default", "custom", "diagnostic"}
+EXTERNAL_REVIEW_PROVIDERS = {"gemini", "claude", "kimi", "openai-compatible"}
+DEFAULT_REVIEW_MODELS = {
+    "gemini": "gemini-2.5-flash",
+    "claude": "claude-sonnet-4-20250514",
+    "kimi": "kimi-k2.5",
+    "openai-compatible": "",
+}
+DEFAULT_EXTRACT_MODELS = {
+    "gemini": "gemini-2.5-flash",
+    "claude": "claude-sonnet-4-20250514",
+    "kimi": "kimi-k2.5",
+    "codex-cli-extract": DEFAULT_CODEX_MODEL,
+    "local-openai-compatible": "",
+    "openai-compatible": "",
+}
+DEFAULT_API_KEY_ENVS = {
+    "gemini": "GEMINI_API_KEY",
+    "claude": "ANTHROPIC_API_KEY",
+    "kimi": "MOONSHOT_API_KEY",
+    "openai-compatible": "WATCHBRIEF_OPENAI_COMPATIBLE_API_KEY",
+}
 CAPABILITY_CACHE_SECONDS = 8
 PDF_BROWSER_ENV = "WATCHBRIEF_PDF_BROWSER"
 
@@ -86,21 +107,30 @@ def _validate_qwen_model(model: str) -> None:
         raise ValueError("WatchBrief local_extract 只接受 Qwen-family 模型，模型名必须包含 qwen")
 
 
+def _env_name(value: Any, field_name: str) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text):
+        raise ValueError(f"{field_name} 只能填写环境变量名字，例如 GEMINI_API_KEY；不要粘贴 token 值")
+    return text
+
+
 def _review_provider(payload: dict[str, Any]) -> str:
     provider = _clean_text(payload.get("review_provider") or payload.get("account_provider")) or "local"
     if provider in UNSUPPORTED_REVIEW_PROVIDERS:
-        raise ValueError(f"{provider} 适配器尚未接入；当前 WebUI 可运行 local、codex-cli 或 mock")
+        raise ValueError(f"{provider} 不是可运行 review provider")
     if provider not in SUPPORTED_REVIEW_PROVIDERS:
-        raise ValueError("review_provider 只支持 local、codex-cli 或 mock")
+        raise ValueError("review_provider 只支持 local、codex-cli、mock、gemini、claude、kimi、openai-compatible")
     return provider
 
 
 def _extract_provider(payload: dict[str, Any]) -> str:
     provider = _clean_text(payload.get("extract_provider")) or "local-qwen"
     if provider in UNSUPPORTED_EXTRACT_PROVIDERS:
-        raise ValueError(f"{provider} 提炼适配器尚未接入；当前 WebUI 可运行 local-qwen")
+        raise ValueError(f"{provider} 提炼适配器不可用")
     if provider not in SUPPORTED_EXTRACT_PROVIDERS:
-        raise ValueError("extract_provider 只支持 local-qwen")
+        raise ValueError("提炼 extract_provider 只支持 local-qwen、local-openai-compatible、openai-compatible、gemini、claude、kimi、codex-cli-extract")
     return provider
 
 
@@ -140,13 +170,27 @@ def local_model_status(api_base: str | None = None) -> dict[str, Any]:
         if isinstance(item, dict) and item.get("id")
     ] if isinstance(rows, list) else []
     qwen_models = [model for model in models if "qwen" in model.lower()]
+    non_qwen_models = [model for model in models if "qwen" not in model.lower()]
     return {
         "ok": True,
         "qwen_ok": bool(qwen_models),
         "base_url": base_url,
         "models": models[:50],
         "qwen_models": qwen_models[:50],
+        "non_qwen_models": non_qwen_models[:50],
         "error": "",
+    }
+
+
+def api_key_env_status() -> dict[str, Any]:
+    return {
+        "gemini": {"env": "GEMINI_API_KEY", "configured": bool(os.environ.get("GEMINI_API_KEY"))},
+        "claude": {"env": "ANTHROPIC_API_KEY", "configured": bool(os.environ.get("ANTHROPIC_API_KEY"))},
+        "kimi": {"env": "MOONSHOT_API_KEY", "configured": bool(os.environ.get("MOONSHOT_API_KEY"))},
+        "openai_compatible": {
+            "env": "WATCHBRIEF_OPENAI_COMPATIBLE_API_KEY",
+            "configured": bool(os.environ.get("WATCHBRIEF_OPENAI_COMPATIBLE_API_KEY")),
+        },
     }
 
 
@@ -325,8 +369,13 @@ def local_capabilities(*, force: bool = False) -> dict[str, Any]:
         "review": {
             "codex_cli_ok": bool(codex_path),
             "codex_cli_path": codex_path or "",
-            "supported": ["local", "codex-cli", "mock"],
-            "placeholders": ["claude", "gemini", "kimi"],
+            "supported": ["local", "codex-cli", "gemini", "claude", "kimi", "openai-compatible", "mock"],
+            "placeholders": ["manual-review-ui"],
+            "api_key_envs": api_key_env_status(),
+        },
+        "extract": {
+            "supported": ["local-qwen", "local-openai-compatible", "openai-compatible", "gemini", "claude", "kimi", "codex-cli-extract"],
+            "api_key_envs": api_key_env_status(),
         },
         "report": {
             "formats": [{"id": "html", "available": True}, {"id": "pdf", "available": pdf_status["ok"]}],
@@ -379,33 +428,70 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
         command.extend(["--output-dir", output_dir])
 
     provider = _review_provider(payload)
+    extract_provider = _extract_provider(payload)
     command.extend(["--review-provider", provider])
     if provider == "codex-cli":
         command.append("--enable-codex-review")
         codex_model = _clean_text(payload.get("codex_model")) or DEFAULT_CODEX_MODEL
         command.extend(["--codex-model", codex_model])
+    elif provider == "mock":
+        mock_response = _clean_text(payload.get("mock_review_response"))
+        if not mock_response:
+            raise ValueError("mock review 需要填写 mock_review_response JSON 文件路径")
+        command.extend(["--mock-review-response", mock_response])
+    elif provider in EXTERNAL_REVIEW_PROVIDERS:
+        review_model = _clean_text(payload.get("review_model")) or DEFAULT_REVIEW_MODELS.get(provider, "")
+        if provider == "openai-compatible" and not review_model:
+            raise ValueError("OpenAI-compatible review 必须填写 review_model，例如 gemma-3、gpt-4.1 或你的服务模型名")
+        if review_model:
+            command.extend(["--review-model", review_model])
+        review_api_base = _clean_text(payload.get("review_api_base"))
+        if provider == "openai-compatible" and not review_api_base:
+            review_api_base = _clean_text(payload.get("qwen_api_base")) or DEFAULT_QWEN_BASE_URL
+        if review_api_base:
+            command.extend(["--review-api-base", review_api_base])
+        review_api_key_env = _env_name(
+            payload.get("review_api_key_env") or DEFAULT_API_KEY_ENVS.get(provider, ""),
+            "review_api_key_env",
+        )
+        if review_api_key_env:
+            command.extend(["--review-api-key-env", review_api_key_env])
+
+    if provider == "codex-cli" or extract_provider == "codex-cli-extract":
         codex_home_root = _clean_text(payload.get("codex_home_root")) or DEFAULT_CODEX_HOME_ROOT
         if codex_home_root:
             command.extend(["--codex-home-root", codex_home_root])
         codex_account = _clean_text(payload.get("codex_account")) or DEFAULT_CODEX_ACCOUNT
         if codex_account:
             command.extend(["--codex-account", codex_account])
-    elif provider == "mock":
-        mock_response = _clean_text(payload.get("mock_review_response"))
-        if not mock_response:
-            raise ValueError("mock review 需要填写 mock_review_response JSON 文件路径")
-        command.extend(["--mock-review-response", mock_response])
-
-    extract_provider = _extract_provider(payload)
-    if extract_provider != "local-qwen":
-        raise ValueError("当前只支持 local-qwen 提炼后端")
-    qwen_model = _clean_text(payload.get("qwen_model")) or DEFAULT_QWEN_MODEL
-    _validate_qwen_model(qwen_model)
-    command.extend(["--qwen-model", qwen_model])
 
     qwen_api_base = _clean_text(payload.get("qwen_api_base"))
-    if qwen_api_base:
-        command.extend(["--qwen-api-base", qwen_api_base])
+    if extract_provider == "local-qwen":
+        qwen_model = _clean_text(payload.get("qwen_model")) or DEFAULT_QWEN_MODEL
+        _validate_qwen_model(qwen_model)
+        command.extend(["--qwen-model", qwen_model])
+        if qwen_api_base:
+            command.extend(["--qwen-api-base", qwen_api_base])
+    else:
+        command.extend(["--extract-provider", extract_provider])
+        extract_model = _clean_text(payload.get("extract_model")) or DEFAULT_EXTRACT_MODELS.get(extract_provider, "")
+        if extract_provider in {"local-openai-compatible", "openai-compatible"} and not extract_model:
+            raise ValueError("OpenAI-compatible 提炼必须填写 extract_model，例如 gemma-3、llama、gpt-4.1 或你的服务模型名")
+        if extract_model:
+            command.extend(["--extract-model", extract_model])
+        extract_api_base = _clean_text(payload.get("extract_api_base"))
+        if extract_provider == "local-openai-compatible" and not extract_api_base:
+            extract_api_base = qwen_api_base or DEFAULT_QWEN_BASE_URL
+        if extract_provider == "openai-compatible" and not extract_api_base:
+            raise ValueError("OpenAI-compatible 提炼必须填写 extract_api_base")
+        if extract_api_base:
+            command.extend(["--extract-api-base", extract_api_base])
+        extract_api_key_env = _env_name(
+            payload.get("extract_api_key_env") or DEFAULT_API_KEY_ENVS.get(extract_provider, ""),
+            "extract_api_key_env",
+        )
+        if extract_api_key_env:
+            command.extend(["--extract-api-key-env", extract_api_key_env])
 
     timeout = _positive_int(payload.get("timeout"), "timeout")
     if timeout:
@@ -556,11 +642,11 @@ def render_index_html() -> str:
           <div class="step-title"><span>清单</span><strong>完全不懂代码也照着做</strong></div>
           <div class="kid-checklist">
             <div><b>第一步</b><strong>浏览器先登录</strong><p>你平时在哪个平台看视频，就先在 Chrome 里登录那个平台。WatchBrief 不保存你的密码，不展示 cookie。</p></div>
-            <div><b>第二步</b><strong>选一个“大脑”</strong><p>没有 Codex 账号，就用“本地模式（无 Codex）”。它用你电脑里的本地 Qwen 做报告，不调用 Codex。</p></div>
+            <div><b>第二步</b><strong>选一个“大脑”</strong><p>有本地 Qwen 就用默认。没有 Qwen，可以选本地通用模型（Gemma / Llama 等）、Gemini、Claude、Kimi 或 Codex CLI。</p></div>
             <div><b>第三步</b><strong>选一个“耳朵”</strong><p>视频没字幕时才需要转写。检测到 MLX-Audio 就用 MLX-Audio；没有它但有 Whisper，就推荐 Whisper。</p></div>
             <div><b>第四步</b><strong>选放哪里</strong><p>不懂就留空。单视频会放到桌面 HTML，列表会放到桌面文件夹。想自己选地方，再填输出目录。</p></div>
             <div><b>第五步</b><strong>选报告格式</strong><p>HTML 最稳。PDF 需要你电脑有 Chrome / Edge / Chromium / Brave，WebUI 会从 HTML 再打印成 PDF。</p></div>
-            <div><b>第六步</b><strong>不要填 token</strong><p>这个页面不需要你粘贴 Claude、Codex、Kimi token。以后接云模型，也只会让你选择已配置好的本机账号。</p></div>
+            <div><b>第六步</b><strong>不要填 token</strong><p>这个页面只填环境变量名字，比如 GEMINI_API_KEY，不粘贴 token 内容。你的密钥留在本机环境变量里。</p></div>
           </div>
         </div>
       </section>
@@ -619,13 +705,19 @@ def render_index_html() -> str:
           <div class="grid two">
             <label class="field">提炼模型后端<select name="extract_provider">
               {_option("local-qwen", "本地 Qwen / OpenAI-compatible", selected=True)}
-              {_option("codex-extract", "Codex 提炼：未接入", disabled=True)}
-              {_option("gemini-extract", "Gemini 提炼：未接入", disabled=True)}
-              {_option("claude-extract", "Claude 提炼：未接入", disabled=True)}
+              {_option("local-openai-compatible", "本地通用模型：Gemma / Llama / Mistral")}
+              {_option("openai-compatible", "OpenAI-compatible API")}
+              {_option("gemini", "Gemini API")}
+              {_option("claude", "Claude API")}
+              {_option("kimi", "Kimi API")}
+              {_option("codex-cli-extract", "Codex CLI 提炼")}
             </select></label>
             <label class="field">本地 Qwen 模型<input name="qwen_model" value="{DEFAULT_QWEN_MODEL}" /></label>
             <label class="field">Qwen endpoint<input name="qwen_api_base" placeholder="{DEFAULT_QWEN_BASE_URL}" /></label>
             <label class="field">Qwen timeout<input name="qwen_timeout" placeholder="默认跟随任务超时" /></label>
+            <label class="field">提炼模型名<input name="extract_model" placeholder="非 Qwen 时填写，例如 gemma-3 或 gemini-2.5-flash" /></label>
+            <label class="field">提炼 API endpoint<input name="extract_api_base" placeholder="本地通用模型可留空，默认用 127.0.0.1:1234/v1" /></label>
+            <label class="field span-two">提炼 API key 环境变量<input name="extract_api_key_env" placeholder="只填变量名，例如 GEMINI_API_KEY；不要填 token" /></label>
             <label class="field">转写器<select name="transcriber">{_option("recommended", "推荐：读取本机后自动选择", selected=True)}{_option("auto", "auto：MLX-Audio")}{_option("mlx_audio", "MLX-Audio")}{_option("whisper", "Whisper")}</select></label>
             <label class="field">MLX-Audio 模型<input name="mlx_model" placeholder="默认 mlx-community/whisper-large-v3-turbo" /></label>
             <label class="field">Whisper 模型<input name="whisper_model" placeholder="base" /></label>
@@ -635,17 +727,21 @@ def render_index_html() -> str:
             <label class="field">Review 引擎<select name="review_provider">
               {_option("local", "本地模式（无 Codex）", selected=True)}
               {_option("codex-cli", "Codex CLI")}
+              {_option("gemini", "Gemini API")}
+              {_option("claude", "Claude API")}
+              {_option("kimi", "Kimi API")}
+              {_option("openai-compatible", "OpenAI-compatible API")}
               {_option("mock", "Mock JSON")}
-              {_option("claude", "Claude：未接入", disabled=True)}
-              {_option("gemini", "Gemini：未接入", disabled=True)}
-              {_option("kimi", "Kimi：未接入", disabled=True)}
             </select></label>
             <label class="field">Codex 模型<input name="codex_model" value="{DEFAULT_CODEX_MODEL}" /></label>
             <label class="field">Codex 账号目录<input name="codex_home_root" value="{DEFAULT_CODEX_HOME_ROOT}" /></label>
             <label class="field">Codex 账号<input name="codex_account" value="{DEFAULT_CODEX_ACCOUNT}" /></label>
+            <label class="field">Review 模型名<input name="review_model" placeholder="例如 gemini-2.5-flash / claude-sonnet-4-20250514 / kimi-k2.5" /></label>
+            <label class="field">Review API endpoint<input name="review_api_base" placeholder="OpenAI-compatible 时填写；本地可用 127.0.0.1:1234/v1" /></label>
+            <label class="field span-two">Review API key 环境变量<input name="review_api_key_env" placeholder="只填变量名，例如 ANTHROPIC_API_KEY；不要填 token" /></label>
             <label class="field span-two">Mock response JSON<input name="mock_review_response" placeholder="/path/to/sample_payload.json" /></label>
           </div>
-          <div class="notice">没有 Codex 账号就选“本地模式（无 Codex）”。它不调用 Codex；Claude / Gemini / Kimi 需要后端 adapter 后再开放。</div>
+          <div class="notice">没有 Codex 账号就选“本地模式（无 Codex）”。没有 Qwen 时，可以切到本地通用模型或云端模型；密钥只通过环境变量读取。</div>
         </section>
 
         <section class="view-panel hidden" data-panel="output">
@@ -1235,20 +1331,24 @@ async function loadStatus() {
     const localModel = status.local_model || {};
     const transcriber = status.transcriber || {};
     const review = status.review || {};
+    const apiKeys = review.api_key_envs || {};
     const paths = status.paths || {};
     const modelText = localModel.qwen_ok
       ? `检测到 Qwen：${(localModel.qwen_models || []).slice(0, 2).join(', ')}`
-      : (localModel.ok ? 'endpoint 在线，但没有 Qwen-family 模型' : '未检测到本地 OpenAI-compatible endpoint');
+      : (localModel.ok ? `endpoint 在线，可用模型：${(localModel.models || []).slice(0, 3).join(', ') || '未列出'}` : '未检测到本地 OpenAI-compatible endpoint');
     const transcriberText = transcriber.recommendation_reason || '未完成转写工具检测';
-    const reviewText = review.codex_cli_ok ? `本地模式可用；Codex CLI 可选：${review.codex_cli_path}` : '本地模式可用；未检测到 Codex CLI';
-    $('#systemStatus').textContent = `模型 ${localModel.qwen_ok ? '可用' : '未就绪'} · 转写 ${transcriber.recommended || 'auto'} · Codex ${review.codex_cli_ok ? '可用' : '未检测到'}`;
-    $('#quickModelStatus').textContent = localModel.qwen_ok ? 'Qwen 可用' : '需要配置';
+    const cloudReady = ['gemini', 'claude', 'kimi', 'openai_compatible'].filter((key) => apiKeys[key]?.configured).map((key) => apiKeys[key].env);
+    const reviewText = review.codex_cli_ok
+      ? `本地模式可用；Codex CLI 可选：${review.codex_cli_path}${cloudReady.length ? '；已配置：' + cloudReady.join(', ') : ''}`
+      : `本地模式可用；${cloudReady.length ? '已配置：' + cloudReady.join(', ') : '未检测到云模型环境变量'}`;
+    $('#systemStatus').textContent = `模型 ${(localModel.qwen_ok || localModel.ok || cloudReady.length) ? '可配置' : '未就绪'} · 转写 ${transcriber.recommended || 'auto'} · Codex ${review.codex_cli_ok ? '可用' : '未检测到'}`;
+    $('#quickModelStatus').textContent = localModel.qwen_ok ? 'Qwen 可用' : (localModel.ok ? '本地通用模型可选' : (cloudReady.length ? '云模型可选' : '需要配置'));
     $('#quickTranscriberStatus').textContent = transcriber.recommended === 'whisper' ? 'Whisper' : (transcriber.recommended || 'auto');
     $('#quickReviewStatus').textContent = '本地模式';
     $('#modelHint').textContent = modelText;
     $('#transcriberHint').textContent = transcriberText;
     $('#reviewHint').textContent = reviewText;
-    $('#summaryReview').textContent = review.codex_cli_ok ? '默认本地模式；Codex CLI 可切换' : '默认本地模式（无 Codex）';
+    $('#summaryReview').textContent = review.codex_cli_ok ? '默认本地模式；Codex / 云模型可切换' : '默认本地模式；可配置云模型环境变量';
     $('#summaryTranscriber').textContent = transcriber.recommended || 'auto';
     $('#summaryReport').textContent = status.report?.pdf?.ok ? 'HTML / PDF 可用' : 'HTML；PDF 需要 Chrome / Edge / Chromium';
     $('#outputHints').textContent = `本机 Desktop：${paths.desktop || '未检测'}；WebUI 状态目录：${paths.webui_state || '未检测'}。正式默认输出不需要填写 output_dir。`;
