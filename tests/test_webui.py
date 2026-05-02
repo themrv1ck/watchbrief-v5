@@ -19,6 +19,9 @@ class WebUITest(unittest.TestCase):
         self.assertIn('id="toggleInspector"', html)
         self.assertIn("inspector-hidden", webui.STYLES_CSS)
         self.assertIn("toggleInspector", webui.APP_JS)
+        self.assertIn("applyEngineProfiles", webui.APP_JS)
+        self.assertIn("DEFAULT_EXTRACT_PROFILES", webui.APP_JS)
+        self.assertIn("DEFAULT_REVIEW_PROFILES", webui.APP_JS)
         self.assertIn("完全不懂代码也照着做", html)
         self.assertIn("WatchBrief 不保存你的密码，不展示 cookie", html)
         self.assertIn("本地模式（无 Codex）", html)
@@ -34,9 +37,14 @@ class WebUITest(unittest.TestCase):
         self.assertIn("Claude API", html)
         self.assertIn("Kimi API", html)
         self.assertIn("Codex CLI 提炼", html)
+        self.assertIn('data-extract-panel="qwen"', html)
+        self.assertIn('data-extract-panel="external"', html)
+        self.assertIn("选择提炼引擎后", html)
         self.assertIn("本地 Qwen 模型", html)
         self.assertIn("提炼 API key 环境变量", html)
         self.assertIn("Review 引擎", html)
+        self.assertIn('data-review-panel="codex"', html)
+        self.assertIn('data-review-panel="cloud"', html)
         self.assertIn("没有 Codex 账号就选", html)
         self.assertIn("Codex CLI", html)
         self.assertIn("OpenAI-compatible API", html)
@@ -224,8 +232,29 @@ class WebUITest(unittest.TestCase):
         self.assertIn("gemini", command)
         self.assertIn("--review-model", command)
         self.assertIn("gemini-2.5-flash", command)
+        self.assertIn("--review-api-base", command)
+        self.assertIn("https://generativelanguage.googleapis.com/v1beta", command)
         self.assertIn("--review-api-key-env", command)
         self.assertIn("GEMINI_API_KEY", command)
+        self.assertNotIn("--enable-codex-review", command)
+
+    def test_claude_review_uses_grouped_default_model_and_env(self) -> None:
+        command = webui.build_cli_command(
+            {
+                "source_url": "https://example.com/v",
+                "review_provider": "claude",
+            }
+        )
+
+        self.assertIn("--review-provider", command)
+        self.assertIn("claude", command)
+        self.assertIn("--review-model", command)
+        self.assertIn("claude-sonnet-4-20250514", command)
+        self.assertIn("--review-api-base", command)
+        self.assertIn("https://api.anthropic.com/v1", command)
+        self.assertIn("--review-api-key-env", command)
+        self.assertIn("ANTHROPIC_API_KEY", command)
+        self.assertNotIn("--codex-home-root", command)
         self.assertNotIn("--enable-codex-review", command)
 
     def test_local_openai_compatible_extract_supports_non_qwen_model(self) -> None:
@@ -259,6 +288,8 @@ class WebUITest(unittest.TestCase):
         self.assertIn("gemini", command)
         self.assertIn("--extract-model", command)
         self.assertIn("gemini-2.5-flash", command)
+        self.assertIn("--extract-api-base", command)
+        self.assertIn("https://generativelanguage.googleapis.com/v1beta", command)
         self.assertIn("--extract-api-key-env", command)
         self.assertIn("GEMINI_API_KEY", command)
         self.assertNotIn("SECRET", " ".join(command))
@@ -271,6 +302,25 @@ class WebUITest(unittest.TestCase):
                     "review_api_key_env": "sk-real-token-value",
                 }
             )
+
+    def test_codex_extract_uses_codex_account_group_without_codex_review(self) -> None:
+        command = webui.build_cli_command(
+            {
+                "source_url": "https://example.com/v",
+                "extract_provider": "codex-cli-extract",
+                "review_provider": "local",
+            }
+        )
+
+        self.assertIn("--extract-provider", command)
+        self.assertIn("codex-cli-extract", command)
+        self.assertIn("--extract-model", command)
+        self.assertIn("gpt-5.5", command)
+        self.assertIn("--codex-home-root", command)
+        self.assertIn("~/.watchbrief_codex", command)
+        self.assertIn("--codex-account", command)
+        self.assertIn("account2", command)
+        self.assertNotIn("--enable-codex-review", command)
 
     def test_unsupported_provider_and_renderer_fail_clearly(self) -> None:
         with self.assertRaisesRegex(ValueError, "gemini-extract|提炼"):

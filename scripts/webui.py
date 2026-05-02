@@ -73,6 +73,12 @@ DEFAULT_API_KEY_ENVS = {
     "kimi": "MOONSHOT_API_KEY",
     "openai-compatible": "WATCHBRIEF_OPENAI_COMPATIBLE_API_KEY",
 }
+DEFAULT_API_BASES = {
+    "local-openai-compatible": DEFAULT_QWEN_BASE_URL,
+    "gemini": "https://generativelanguage.googleapis.com/v1beta",
+    "claude": "https://api.anthropic.com/v1",
+    "kimi": "https://api.moonshot.ai/v1",
+}
 CAPABILITY_CACHE_SECONDS = 8
 PDF_BROWSER_ENV = "WATCHBRIEF_PDF_BROWSER"
 
@@ -445,7 +451,7 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
             raise ValueError("OpenAI-compatible review 必须填写 review_model，例如 gemma-3、gpt-4.1 或你的服务模型名")
         if review_model:
             command.extend(["--review-model", review_model])
-        review_api_base = _clean_text(payload.get("review_api_base"))
+        review_api_base = _clean_text(payload.get("review_api_base")) or DEFAULT_API_BASES.get(provider, "")
         if provider == "openai-compatible" and not review_api_base:
             review_api_base = _clean_text(payload.get("qwen_api_base")) or DEFAULT_QWEN_BASE_URL
         if review_api_base:
@@ -479,7 +485,7 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
             raise ValueError("OpenAI-compatible 提炼必须填写 extract_model，例如 gemma-3、llama、gpt-4.1 或你的服务模型名")
         if extract_model:
             command.extend(["--extract-model", extract_model])
-        extract_api_base = _clean_text(payload.get("extract_api_base"))
+        extract_api_base = _clean_text(payload.get("extract_api_base")) or DEFAULT_API_BASES.get(extract_provider, "")
         if extract_provider == "local-openai-compatible" and not extract_api_base:
             extract_api_base = qwen_api_base or DEFAULT_QWEN_BASE_URL
         if extract_provider == "openai-compatible" and not extract_api_base:
@@ -712,12 +718,17 @@ def render_index_html() -> str:
               {_option("kimi", "Kimi API")}
               {_option("codex-cli-extract", "Codex CLI 提炼")}
             </select></label>
-            <label class="field">本地 Qwen 模型<input name="qwen_model" value="{DEFAULT_QWEN_MODEL}" /></label>
-            <label class="field">Qwen endpoint<input name="qwen_api_base" placeholder="{DEFAULT_QWEN_BASE_URL}" /></label>
-            <label class="field">Qwen timeout<input name="qwen_timeout" placeholder="默认跟随任务超时" /></label>
-            <label class="field">提炼模型名<input name="extract_model" placeholder="非 Qwen 时填写，例如 gemma-3 或 gemini-2.5-flash" /></label>
-            <label class="field">提炼 API endpoint<input name="extract_api_base" placeholder="本地通用模型可留空，默认用 127.0.0.1:1234/v1" /></label>
-            <label class="field span-two">提炼 API key 环境变量<input name="extract_api_key_env" placeholder="只填变量名，例如 GEMINI_API_KEY；不要填 token" /></label>
+            <div class="engine-note" id="extractEngineHint">选择提炼引擎后，模型、endpoint 和 API key 环境变量会跟着切换。</div>
+            <div class="subgrid span-two" data-extract-panel="qwen">
+              <label class="field">本地 Qwen 模型<input name="qwen_model" value="{DEFAULT_QWEN_MODEL}" /></label>
+              <label class="field">Qwen endpoint<input name="qwen_api_base" placeholder="{DEFAULT_QWEN_BASE_URL}" /></label>
+              <label class="field">Qwen timeout<input name="qwen_timeout" placeholder="默认跟随任务超时" /></label>
+            </div>
+            <div class="subgrid span-two is-hidden" data-extract-panel="external">
+              <label class="field">提炼模型名<input name="extract_model" data-profiled="extract_model" placeholder="非 Qwen 时填写，例如 gemma-3 或 gemini-2.5-flash" /></label>
+              <label class="field">提炼 API endpoint<input name="extract_api_base" data-profiled="extract_api_base" placeholder="本地通用模型可留空，默认用 127.0.0.1:1234/v1" /></label>
+              <label class="field span-two">提炼 API key 环境变量<input name="extract_api_key_env" data-profiled="extract_api_key_env" placeholder="只填变量名，例如 GEMINI_API_KEY；不要填 token" /></label>
+            </div>
             <label class="field">转写器<select name="transcriber">{_option("recommended", "推荐：读取本机后自动选择", selected=True)}{_option("auto", "auto：MLX-Audio")}{_option("mlx_audio", "MLX-Audio")}{_option("whisper", "Whisper")}</select></label>
             <label class="field">MLX-Audio 模型<input name="mlx_model" placeholder="默认 mlx-community/whisper-large-v3-turbo" /></label>
             <label class="field">Whisper 模型<input name="whisper_model" placeholder="base" /></label>
@@ -733,13 +744,20 @@ def render_index_html() -> str:
               {_option("openai-compatible", "OpenAI-compatible API")}
               {_option("mock", "Mock JSON")}
             </select></label>
-            <label class="field">Codex 模型<input name="codex_model" value="{DEFAULT_CODEX_MODEL}" /></label>
-            <label class="field">Codex 账号目录<input name="codex_home_root" value="{DEFAULT_CODEX_HOME_ROOT}" /></label>
-            <label class="field">Codex 账号<input name="codex_account" value="{DEFAULT_CODEX_ACCOUNT}" /></label>
-            <label class="field">Review 模型名<input name="review_model" placeholder="例如 gemini-2.5-flash / claude-sonnet-4-20250514 / kimi-k2.5" /></label>
-            <label class="field">Review API endpoint<input name="review_api_base" placeholder="OpenAI-compatible 时填写；本地可用 127.0.0.1:1234/v1" /></label>
-            <label class="field span-two">Review API key 环境变量<input name="review_api_key_env" placeholder="只填变量名，例如 ANTHROPIC_API_KEY；不要填 token" /></label>
-            <label class="field span-two">Mock response JSON<input name="mock_review_response" placeholder="/path/to/sample_payload.json" /></label>
+            <div class="engine-note" id="reviewEngineHint">选择 Review 引擎后，模型、账号目录或 API key 环境变量会跟着切换。</div>
+            <div class="subgrid span-two is-hidden" data-review-panel="codex">
+              <label class="field">Codex 模型<input name="codex_model" value="{DEFAULT_CODEX_MODEL}" /></label>
+              <label class="field">Codex 账号目录<input name="codex_home_root" value="{DEFAULT_CODEX_HOME_ROOT}" /></label>
+              <label class="field">Codex 账号<input name="codex_account" value="{DEFAULT_CODEX_ACCOUNT}" /></label>
+            </div>
+            <div class="subgrid span-two is-hidden" data-review-panel="cloud">
+              <label class="field">Review 模型名<input name="review_model" data-profiled="review_model" placeholder="例如 gemini-2.5-flash / claude-sonnet-4-20250514 / kimi-k2.5" /></label>
+              <label class="field">Review API endpoint<input name="review_api_base" data-profiled="review_api_base" placeholder="OpenAI-compatible 时填写；本地可用 127.0.0.1:1234/v1" /></label>
+              <label class="field span-two">Review API key 环境变量<input name="review_api_key_env" data-profiled="review_api_key_env" placeholder="只填变量名，例如 ANTHROPIC_API_KEY；不要填 token" /></label>
+            </div>
+            <div class="subgrid span-two is-hidden" data-review-panel="mock">
+              <label class="field span-two">Mock response JSON<input name="mock_review_response" placeholder="/path/to/sample_payload.json" /></label>
+            </div>
           </div>
           <div class="notice">没有 Codex 账号就选“本地模式（无 Codex）”。没有 Qwen 时，可以切到本地通用模型或云端模型；密钥只通过环境变量读取。</div>
         </section>
@@ -1163,6 +1181,23 @@ nav{display:grid;gap:8px}
 #refreshTasks,#previewCommand{background:#18232d}
 .view-panel{max-width:1040px}
 .hidden{display:none}
+.is-hidden{display:none!important}
+.subgrid{
+  grid-column:1/-1;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+.engine-note{
+  min-height:42px;
+  border:1px solid #cbe9ef;
+  border-radius:8px;
+  background:#f0fbfd;
+  color:#164e63;
+  padding:10px 12px;
+  font-size:13px;
+  line-height:1.45;
+}
 .switch-grid{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -1253,7 +1288,7 @@ dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
 @media(max-width:1050px){
   .app-shell{grid-template-columns:1fr}
   .sidebar,.inspector{border:0}
-  .grid.two,.input-row,.switch-grid,.rule-strip,.capability-grid,.quick-status-grid,.welcome-grid,.guide-grid,.kid-checklist{grid-template-columns:1fr}
+  .grid.two,.subgrid,.input-row,.switch-grid,.rule-strip,.capability-grid,.quick-status-grid,.welcome-grid,.guide-grid,.kid-checklist{grid-template-columns:1fr}
   .span-two{grid-column:auto}
 }
 """
@@ -1262,6 +1297,34 @@ dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
 APP_JS = r"""
 const $ = (s) => document.querySelector(s);
 const toast = (msg) => { $('#toast').textContent = msg; };
+
+const DEFAULT_EXTRACT_PROFILES = {
+  'local-openai-compatible': {model:'', base:'http://127.0.0.1:1234/v1', env:'', hint:'本地 Gemma / Llama / Mistral：填 LM Studio 或 Ollama 暴露的模型名，endpoint 默认本机 1234。'},
+  'openai-compatible': {model:'', base:'', env:'WATCHBRIEF_OPENAI_COMPATIBLE_API_KEY', hint:'OpenAI-compatible 云端或自建服务：模型名、endpoint、API key 环境变量必须成组填写。'},
+  gemini: {model:'gemini-2.5-flash', base:'https://generativelanguage.googleapis.com/v1beta', env:'GEMINI_API_KEY', hint:'Gemini 提炼：模型和 GEMINI_API_KEY 环境变量一起使用。'},
+  claude: {model:'claude-sonnet-4-20250514', base:'https://api.anthropic.com/v1', env:'ANTHROPIC_API_KEY', hint:'Claude 提炼：模型和 ANTHROPIC_API_KEY 环境变量一起使用。'},
+  kimi: {model:'kimi-k2.5', base:'https://api.moonshot.ai/v1', env:'MOONSHOT_API_KEY', hint:'Kimi 提炼：模型和 MOONSHOT_API_KEY 环境变量一起使用。'},
+  'codex-cli-extract': {model:'gpt-5.5', base:'', env:'', hint:'Codex CLI 提炼：使用下方 Codex 模型、账号目录和账号。'}
+};
+
+const DEFAULT_REVIEW_PROFILES = {
+  local: {model:'', base:'', env:'', hint:'本地模式：不需要账号、不需要 API key，不调用 Codex 或云模型。'},
+  'codex-cli': {model:'gpt-5.5', base:'', env:'', hint:'Codex CLI：使用 Codex 模型、账号目录和账号。'},
+  gemini: {model:'gemini-2.5-flash', base:'https://generativelanguage.googleapis.com/v1beta', env:'GEMINI_API_KEY', hint:'Gemini review：使用 Gemini 模型和 GEMINI_API_KEY。'},
+  claude: {model:'claude-sonnet-4-20250514', base:'https://api.anthropic.com/v1', env:'ANTHROPIC_API_KEY', hint:'Claude review：使用 Claude 模型和 ANTHROPIC_API_KEY。'},
+  kimi: {model:'kimi-k2.5', base:'https://api.moonshot.ai/v1', env:'MOONSHOT_API_KEY', hint:'Kimi review：使用 Kimi 模型和 MOONSHOT_API_KEY。'},
+  'openai-compatible': {model:'', base:'http://127.0.0.1:1234/v1', env:'WATCHBRIEF_OPENAI_COMPATIBLE_API_KEY', hint:'OpenAI-compatible review：模型、endpoint、API key 环境变量必须成组填写。'},
+  mock: {model:'', base:'', env:'', hint:'Mock：只用于测试，需要选择一个本地 JSON 文件路径。'}
+};
+
+const PROFILE_DEFAULTS = {
+  extract_model: ['', 'gemini-2.5-flash', 'claude-sonnet-4-20250514', 'kimi-k2.5', 'gpt-5.5'],
+  extract_api_base: ['', 'http://127.0.0.1:1234/v1', 'https://generativelanguage.googleapis.com/v1beta', 'https://api.anthropic.com/v1', 'https://api.moonshot.ai/v1'],
+  extract_api_key_env: ['', 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'MOONSHOT_API_KEY', 'WATCHBRIEF_OPENAI_COMPATIBLE_API_KEY'],
+  review_model: ['', 'gemini-2.5-flash', 'claude-sonnet-4-20250514', 'kimi-k2.5', 'gpt-5.5'],
+  review_api_base: ['', 'http://127.0.0.1:1234/v1', 'https://generativelanguage.googleapis.com/v1beta', 'https://api.anthropic.com/v1', 'https://api.moonshot.ai/v1'],
+  review_api_key_env: ['', 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'MOONSHOT_API_KEY', 'WATCHBRIEF_OPENAI_COMPATIBLE_API_KEY']
+};
 
 function formPayload() {
   const data = Object.fromEntries(new FormData($('#taskForm')).entries());
@@ -1282,6 +1345,51 @@ function shellQuote(value) {
   const text = String(value);
   if (/^[A-Za-z0-9_/:=.,@%+-]+$/.test(text)) return text;
   return "'" + text.replaceAll("'", "'\\''") + "'";
+}
+
+function setProfileValue(name, value) {
+  const input = document.querySelector(`[name="${name}"]`);
+  if (!input) return;
+  const defaults = PROFILE_DEFAULTS[name] || [''];
+  if (!input.value || defaults.includes(input.value)) {
+    input.value = value || '';
+  }
+}
+
+function setVisible(selector, visible) {
+  document.querySelectorAll(selector).forEach((node) => node.classList.toggle('is-hidden', !visible));
+}
+
+function applyEngineProfiles() {
+  const extractProvider = document.querySelector('[name="extract_provider"]')?.value || 'local-qwen';
+  const reviewProvider = document.querySelector('[name="review_provider"]')?.value || 'local';
+  const extractProfile = DEFAULT_EXTRACT_PROFILES[extractProvider] || {};
+  const reviewProfile = DEFAULT_REVIEW_PROFILES[reviewProvider] || DEFAULT_REVIEW_PROFILES.local;
+  const extractIsQwen = extractProvider === 'local-qwen';
+  const extractIsExternal = !extractIsQwen;
+  const needsCodex = reviewProvider === 'codex-cli' || extractProvider === 'codex-cli-extract';
+
+  setVisible('[data-extract-panel="qwen"]', extractIsQwen);
+  setVisible('[data-extract-panel="external"]', extractIsExternal);
+  setVisible('[data-review-panel="codex"]', needsCodex);
+  setVisible('[data-review-panel="cloud"]', ['gemini', 'claude', 'kimi', 'openai-compatible'].includes(reviewProvider));
+  setVisible('[data-review-panel="mock"]', reviewProvider === 'mock');
+
+  if (extractIsExternal) {
+    setProfileValue('extract_model', extractProfile.model || '');
+    setProfileValue('extract_api_base', extractProfile.base || '');
+    setProfileValue('extract_api_key_env', extractProfile.env || '');
+  }
+  if (['gemini', 'claude', 'kimi', 'openai-compatible'].includes(reviewProvider)) {
+    setProfileValue('review_model', reviewProfile.model || '');
+    setProfileValue('review_api_base', reviewProfile.base || '');
+    setProfileValue('review_api_key_env', reviewProfile.env || '');
+  }
+
+  $('#extractEngineHint').textContent = extractIsQwen
+    ? '本地 Qwen：使用 Qwen 模型、Qwen endpoint 和 Qwen timeout。'
+    : (extractProfile.hint || '外部提炼：模型、endpoint 和环境变量跟随引擎。');
+  $('#reviewEngineHint').textContent = reviewProfile.hint || 'Review 引擎会决定模型、账号目录和环境变量。';
 }
 
 async function previewCommand() {
@@ -1393,7 +1501,16 @@ document.querySelectorAll('.settings-tab').forEach((button) => {
 $('#toggleInspector').addEventListener('click', toggleInspector);
 $('#previewCommand').addEventListener('click', previewCommand);
 $('#refreshTasks').addEventListener('click', loadTasks);
-$('#taskForm').addEventListener('input', previewCommand);
+$('#taskForm').addEventListener('input', () => {
+  applyEngineProfiles();
+  previewCommand();
+});
+document.querySelectorAll('[name="extract_provider"], [name="review_provider"]').forEach((select) => {
+  select.addEventListener('change', () => {
+    applyEngineProfiles();
+    previewCommand();
+  });
+});
 $('#taskForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
@@ -1405,6 +1522,7 @@ $('#taskForm').addEventListener('submit', async (event) => {
   }
 });
 
+applyEngineProfiles();
 loadStatus();
 loadTasks();
 previewCommand();

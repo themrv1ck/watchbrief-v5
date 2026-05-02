@@ -4372,3 +4372,31 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未触发真实 Codex review。
   - 未触发 MLX-Audio。
   - 未保存、打印、展示 cookies 或 token。
+
+## 2026-05-02 WebUI 引擎档案联动
+
+- 目标：用户切换提炼或 Review 引擎时，模型、账号目录、账号、endpoint、API key 环境变量跟随切换，避免把 Gemini / Claude / Kimi / Codex / 本地模型混填。
+- 修改范围：
+  - `scripts/webui.py`
+  - `tests/test_webui.py`
+- 结果：
+  - 提炼引擎选择 `local-qwen` 时，只显示 Qwen 模型、Qwen endpoint 和 Qwen timeout。
+  - 提炼引擎选择 `local-openai-compatible` / `openai-compatible` / `gemini` / `claude` / `kimi` / `codex-cli-extract` 时，显示对应提炼模型、endpoint 和 API key 环境变量。
+  - Review 引擎选择 `codex-cli`，或提炼引擎选择 `codex-cli-extract` 时，显示 Codex 模型、账号目录和账号。
+  - Review 引擎选择 `gemini` / `claude` / `kimi` / `openai-compatible` 时，显示对应 review 模型、endpoint 和 API key 环境变量。
+  - `gpt-5.5` 仍是 WebUI / CLI 的 Codex 默认模型。
+  - WebUI 仍只接收环境变量名字，不接收、不保存明文 token。
+- 验证：
+  - `python3 -m py_compile scripts/webui.py`：PASS。
+  - `python3 -m unittest discover -s tests -p 'test_webui.py'`：21 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_*.py'`：401 tests OK，skipped=3。
+  - `python3 scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - Hermes 运行副本 `check_watchbrief_skill.py --strict-install`：PASS。
+  - Codex 运行副本 `check_watchbrief_skill.py --strict-install`：PASS。
+  - WebUI `/api/preview` 轻量验证：Gemini 提炼 + Claude Review 会带模型、endpoint 和 API key 环境变量；Codex 提炼会带 `gpt-5.5`、`~/.watchbrief_codex` 和 `account2`。
+- 边界：
+  - 未跑真实视频链路。
+  - 未触发真实 Qwen。
+  - 未触发真实 Codex review。
+  - 未触发 MLX-Audio。
+  - 未保存、打印、展示 cookies 或 token。
