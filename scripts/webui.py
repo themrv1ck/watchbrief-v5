@@ -10,8 +10,8 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import shutil
-import socket
 import subprocess
 import sys
 import threading
@@ -22,6 +22,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+import urllib.error
+import urllib.request
+
+try:
+    from .transcriber import has_whisper_cli, mlx_audio_python_statuses
+except ImportError:  # pragma: no cover
+    from transcriber import has_whisper_cli, mlx_audio_python_statuses
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = PROJECT_ROOT / "scripts" / "cli.py"
@@ -36,11 +43,17 @@ DEFAULT_CODEX_ACCOUNT = "account2"
 DEFAULT_CODEX_HOME_ROOT = "~/.watchbrief_codex"
 
 SUPPORTED_REVIEW_PROVIDERS = {"codex-cli", "mock"}
-UNSUPPORTED_REVIEW_PROVIDERS = {"claude", "kimi", "manual"}
+UNSUPPORTED_REVIEW_PROVIDERS = {"claude", "gemini", "kimi", "manual"}
+SUPPORTED_EXTRACT_PROVIDERS = {"local-qwen"}
+UNSUPPORTED_EXTRACT_PROVIDERS = {"codex-extract", "gemini-extract", "claude-extract"}
 SUPPORTED_REPORT_FORMATS = {"html"}
 SUPPORTED_RENDERERS = {"local-html"}
 SUPPORTED_BROWSER_AUTH = {"auto", "chrome", "safari", "edge", "none"}
-SUPPORTED_TRANSCRIBERS = {"auto", "mlx_audio", "whisper"}
+SUPPORTED_TRANSCRIBERS = {"recommended", "auto", "mlx_audio", "whisper"}
+SUPPORTED_OUTPUT_MODES = {"default", "custom", "diagnostic"}
+CAPABILITY_CACHE_SECONDS = 8
+
+_CAPABILITY_CACHE: tuple[float, dict[str, Any]] | None = None
 
 
 def python_executable() -> str:
@@ -74,10 +87,126 @@ def _validate_qwen_model(model: str) -> None:
 def _review_provider(payload: dict[str, Any]) -> str:
     provider = _clean_text(payload.get("review_provider") or payload.get("account_provider")) or "codex-cli"
     if provider in UNSUPPORTED_REVIEW_PROVIDERS:
-        raise ValueError(f"{provider} 评审适配器尚未接入；当前 WebUI 可运行 codex-cli 或 mock")
+        raise ValueError(f"{provider} 适配器尚未接入；当前 WebUI 可运行 codex-cli 或 mock")
     if provider not in SUPPORTED_REVIEW_PROVIDERS:
         raise ValueError("review_provider 只支持 codex-cli 或 mock")
     return provider
+
+
+def _extract_provider(payload: dict[str, Any]) -> str:
+    provider = _clean_text(payload.get("extract_provider")) or "local-qwen"
+    if provider in UNSUPPORTED_EXTRACT_PROVIDERS:
+        raise ValueError(f"{provider} 提炼适配器尚未接入；当前 WebUI 可运行 local-qwen")
+    if provider not in SUPPORTED_EXTRACT_PROVIDERS:
+        raise ValueError("extract_provider 只支持 local-qwen")
+    return provider
+
+
+def _configured_qwen_api_base(api_base: str | None = None) -> str:
+    return str(
+        os.environ.get("WATCHBRIEF_QWEN_BASE_URL")
+        or api_base
+        or os.environ.get("WATCHBRIEF_QWEN_API_BASE")
+        or DEFAULT_QWEN_BASE_URL
+    ).rstrip("/")
+
+
+def _json_get(url: str, *, timeout: float = 0.6) -> dict[str, Any]:
+    request = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def local_model_status(api_base: str | None = None) -> dict[str, Any]:
+    base_url = _configured_qwen_api_base(api_base)
+    try:
+        data = _json_get(f"{base_url}/models")
+    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        return {
+            "ok": False,
+            "qwen_ok": False,
+            "base_url": base_url,
+            "models": [],
+            "qwen_models": [],
+            "error": str(exc),
+        }
+    rows = data.get("data")
+    models = [
+        str(item.get("id"))
+        for item in rows
+        if isinstance(item, dict) and item.get("id")
+    ] if isinstance(rows, list) else []
+    qwen_models = [model for model in models if "qwen" in model.lower()]
+    return {
+        "ok": True,
+        "qwen_ok": bool(qwen_models),
+        "base_url": base_url,
+        "models": models[:50],
+        "qwen_models": qwen_models[:50],
+        "error": "",
+    }
+
+
+def transcriber_status() -> dict[str, Any]:
+    try:
+        mlx_statuses = mlx_audio_python_statuses(timeout=2)
+    except Exception as exc:  # pragma: no cover - defensive for partial installs
+        mlx_statuses = [{"python": "", "status": f"check_failed: {exc}", "available": "false"}]
+    mlx_available = [row for row in mlx_statuses if str(row.get("available")) == "true"]
+    whisper_path = shutil.which("whisper")
+    recommended = "auto" if mlx_available else ("whisper" if whisper_path else "auto")
+    if mlx_available:
+        reason = "检测到 MLX-Audio，使用 CLI 默认 auto"
+    elif whisper_path:
+        reason = "未检测到 MLX-Audio，WebUI 默认改用 Whisper"
+    else:
+        reason = "未检测到 MLX-Audio 或 Whisper；需要先安装转写工具"
+    return {
+        "mlx_audio": {
+            "ok": bool(mlx_available),
+            "selected_python": str(mlx_available[0].get("python") or "") if mlx_available else "",
+            "candidates": mlx_statuses,
+        },
+        "whisper": {"ok": has_whisper_cli(), "path": whisper_path or ""},
+        "recommended": recommended,
+        "recommendation_reason": reason,
+    }
+
+
+def local_capabilities(*, force: bool = False) -> dict[str, Any]:
+    global _CAPABILITY_CACHE
+    now = time.time()
+    if not force and _CAPABILITY_CACHE and now - _CAPABILITY_CACHE[0] < CAPABILITY_CACHE_SECONDS:
+        return _CAPABILITY_CACHE[1]
+    codex_path = shutil.which("codex")
+    capabilities = {
+        "local_model": local_model_status(),
+        "transcriber": transcriber_status(),
+        "review": {
+            "codex_cli_ok": bool(codex_path),
+            "codex_cli_path": codex_path or "",
+            "supported": ["codex-cli", "mock"],
+            "placeholders": ["claude", "gemini", "kimi"],
+        },
+        "report": {
+            "formats": [{"id": "html", "available": True}, {"id": "pdf", "available": False}],
+            "renderers": [{"id": "local-html", "available": True}, {"id": "pdf-export", "available": False}],
+        },
+        "paths": {
+            "desktop": str(Path.home() / "Desktop"),
+            "downloads": str(Path.home() / "Downloads"),
+            "documents": str(Path.home() / "Documents"),
+            "webui_state": str(STATE_DIR),
+            "project_root": str(PROJECT_ROOT),
+        },
+    }
+    _CAPABILITY_CACHE = (now, capabilities)
+    return capabilities
+
+
+def _recommended_transcriber() -> str:
+    return str(local_capabilities().get("transcriber", {}).get("recommended") or "auto")
 
 
 def build_cli_command(payload: dict[str, Any]) -> list[str]:
@@ -100,7 +229,12 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
     else:
         command.extend(["--source-url", source_url])
 
+    output_mode = _clean_text(payload.get("output_mode")) or "default"
+    if output_mode not in SUPPORTED_OUTPUT_MODES:
+        raise ValueError("输出方式只支持 default/custom/diagnostic")
     output_dir = _clean_text(payload.get("output_dir"))
+    if output_mode == "custom" and not output_dir:
+        raise ValueError("选择自定义输出目录时必须填写 output_dir")
     if output_dir:
         command.extend(["--output-dir", output_dir])
 
@@ -122,6 +256,9 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
             raise ValueError("mock review 需要填写 mock_review_response JSON 文件路径")
         command.extend(["--mock-review-response", mock_response])
 
+    extract_provider = _extract_provider(payload)
+    if extract_provider != "local-qwen":
+        raise ValueError("当前只支持 local-qwen 提炼后端")
     qwen_model = _clean_text(payload.get("qwen_model")) or DEFAULT_QWEN_MODEL
     _validate_qwen_model(qwen_model)
     command.extend(["--qwen-model", qwen_model])
@@ -149,9 +286,11 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
     if cookies_file:
         command.extend(["--cookies-file", cookies_file])
 
-    transcriber = _clean_text(payload.get("transcriber")) or "auto"
+    transcriber = _clean_text(payload.get("transcriber")) or "recommended"
     if transcriber not in SUPPORTED_TRANSCRIBERS:
-        raise ValueError("转写器只支持 auto/mlx_audio/whisper")
+        raise ValueError("转写器只支持 recommended/auto/mlx_audio/whisper")
+    if transcriber == "recommended":
+        transcriber = _recommended_transcriber()
     if transcriber != "auto":
         command.extend(["--transcriber", transcriber])
     mlx_model = _clean_text(payload.get("mlx_model"))
@@ -167,7 +306,7 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
         command.append("--force-reanalysis")
     if _truthy(payload.get("keep_debug_artifacts")):
         command.append("--keep-debug-artifacts")
-    if _truthy(payload.get("diagnostic_run")):
+    if _truthy(payload.get("diagnostic_run")) or output_mode == "diagnostic":
         command.append("--diagnostic-run")
     if _truthy(payload.get("open_output")):
         command.append("--open-output")
@@ -205,14 +344,18 @@ def _update_task(task_id: str, **updates: Any) -> None:
 
 
 def service_status() -> dict[str, Any]:
-    qwen_ok = False
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(0.2)
-        qwen_ok = sock.connect_ex(("127.0.0.1", 1234)) == 0
+    capabilities = local_capabilities()
+    local_model = capabilities["local_model"]
+    review = capabilities["review"]
     return {
         "ok": True,
-        "qwen": {"ok": qwen_ok, "label": "OpenAI-compatible endpoint 127.0.0.1:1234"},
-        "codex": {"ok": shutil.which("codex") is not None, "label": "Codex CLI"},
+        "qwen": {"ok": bool(local_model.get("qwen_ok")), "label": f"OpenAI-compatible endpoint {local_model.get('base_url')}"},
+        "codex": {"ok": bool(review.get("codex_cli_ok")), "label": "Codex CLI"},
+        "local_model": local_model,
+        "transcriber": capabilities["transcriber"],
+        "review": review,
+        "report": capabilities["report"],
+        "paths": capabilities["paths"],
         "project_root": str(PROJECT_ROOT),
         "time": int(time.time()),
     }
@@ -277,11 +420,22 @@ def render_index_html() -> str:
 
         <section class="view-panel hidden" data-panel="models">
           <header class="page-head"><h1>模型与账号</h1><button class="primary" type="submit">开始运行</button></header>
+          <div class="capability-grid">
+            <div class="cap-card"><strong>本地模型</strong><span id="modelHint">检测中</span></div>
+            <div class="cap-card"><strong>转写工具</strong><span id="transcriberHint">检测中</span></div>
+            <div class="cap-card"><strong>Review</strong><span id="reviewHint">检测中</span></div>
+          </div>
           <div class="grid two">
+            <label class="field">提炼模型后端<select name="extract_provider">
+              {_option("local-qwen", "本地 Qwen / OpenAI-compatible", selected=True)}
+              {_option("codex-extract", "Codex 提炼：未接入", disabled=True)}
+              {_option("gemini-extract", "Gemini 提炼：未接入", disabled=True)}
+              {_option("claude-extract", "Claude 提炼：未接入", disabled=True)}
+            </select></label>
             <label class="field">本地 Qwen 模型<input name="qwen_model" value="{DEFAULT_QWEN_MODEL}" /></label>
             <label class="field">Qwen endpoint<input name="qwen_api_base" placeholder="{DEFAULT_QWEN_BASE_URL}" /></label>
             <label class="field">Qwen timeout<input name="qwen_timeout" placeholder="默认跟随任务超时" /></label>
-            <label class="field">转写器<select name="transcriber">{_option("auto", "auto：MLX-Audio", selected=True)}{_option("mlx_audio", "MLX-Audio")}{_option("whisper", "Whisper")}</select></label>
+            <label class="field">转写器<select name="transcriber">{_option("recommended", "推荐：读取本机后自动选择", selected=True)}{_option("auto", "auto：MLX-Audio")}{_option("mlx_audio", "MLX-Audio")}{_option("whisper", "Whisper")}</select></label>
             <label class="field">MLX-Audio 模型<input name="mlx_model" placeholder="默认 mlx-community/whisper-large-v3-turbo" /></label>
             <label class="field">Whisper 模型<input name="whisper_model" placeholder="base" /></label>
           </div>
@@ -291,6 +445,7 @@ def render_index_html() -> str:
               {_option("codex-cli", "Codex CLI", selected=True)}
               {_option("mock", "Mock JSON")}
               {_option("claude", "Claude：未接入", disabled=True)}
+              {_option("gemini", "Gemini：未接入", disabled=True)}
               {_option("kimi", "Kimi：未接入", disabled=True)}
             </select></label>
             <label class="field">Codex 模型<input name="codex_model" value="{DEFAULT_CODEX_MODEL}" /></label>
@@ -304,12 +459,14 @@ def render_index_html() -> str:
         <section class="view-panel hidden" data-panel="output">
           <header class="page-head"><h1>输出与登录态</h1><button class="primary" type="submit">开始运行</button></header>
           <div class="grid two">
-            <label class="field">输出目录<input name="output_dir" placeholder="留空：使用正式默认输出路径" /></label>
+            <label class="field">输出方式<select name="output_mode">{_option("default", "正式默认：单视频桌面 HTML / 列表桌面文件夹", selected=True)}{_option("custom", "自定义最终目录")}{_option("diagnostic", "诊断临时目录")}</select></label>
+            <label class="field">输出目录<input name="output_dir" placeholder="自定义时填写最终目录；正式默认可留空" /></label>
             <label class="field">报告格式<select name="report_format">{_option("html", "HTML", selected=True)}{_option("pdf", "PDF：未接入", disabled=True)}</select></label>
             <label class="field">渲染方式<select name="renderer">{_option("local-html", "本地 HTML renderer", selected=True)}{_option("pdf-export", "PDF export：未接入", disabled=True)}</select></label>
             <label class="field">登录态<select name="browser_auth">{_option("auto", "自动：Chrome → Safari", selected=True)}{_option("chrome", "Chrome")}{_option("safari", "Safari")}{_option("edge", "Edge")}{_option("none", "不使用登录态")}</select></label>
             <label class="field span-two">cookies.txt 路径<input name="cookies_file" placeholder="可选；只传路径，不读取或展示内容" /></label>
           </div>
+          <div class="notice" id="outputHints">读取本机输出路径中</div>
           <div class="rule-strip">
             <span>单视频默认输出桌面 HTML</span>
             <span>列表默认输出桌面任务文件夹</span>
@@ -328,8 +485,9 @@ def render_index_html() -> str:
       <dl id="summary">
         <dt>源项目</dt><dd>{html.escape(str(PROJECT_ROOT))}</dd>
         <dt>默认 Qwen</dt><dd>{DEFAULT_QWEN_MODEL}</dd>
-        <dt>默认 review</dt><dd>Codex CLI / {DEFAULT_CODEX_MODEL}</dd>
-        <dt>输出格式</dt><dd>HTML</dd>
+        <dt>默认 review</dt><dd id="summaryReview">Codex CLI / {DEFAULT_CODEX_MODEL}</dd>
+        <dt>推荐转写器</dt><dd id="summaryTranscriber">读取本机后决定</dd>
+        <dt>输出格式</dt><dd>HTML；PDF 未接入</dd>
       </dl>
       <pre id="toast"></pre>
     </aside>
@@ -340,7 +498,7 @@ def render_index_html() -> str:
 
 
 STYLES_CSS = r"""
-:root{--bg:#f5f6f8;--panel:#ffffff;--ink:#20242c;--muted:#626a78;--line:#dfe3ea;--blue:#2563eb;--green:#11845b;--red:#c2413f;--soft:#eef2f7}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;color:var(--ink)}.app-shell{min-height:100vh;display:grid;grid-template-columns:220px minmax(0,1fr)300px}.sidebar{border-right:1px solid var(--line);background:#fff;padding:18px;display:flex;flex-direction:column;gap:20px}.brand{height:40px;display:flex;align-items:center;gap:10px}.brand-mark{width:34px;height:34px;border-radius:8px;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:800}.nav-item{width:100%;height:38px;border:0;background:transparent;border-radius:8px;text-align:left;padding:0 10px;font:inherit;color:var(--muted);cursor:pointer}.nav-item.active{background:var(--soft);color:var(--ink);font-weight:700}.status-box{margin-top:auto;border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;gap:8px;align-items:center}.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}.workspace{padding:22px;overflow:auto}.inspector{border-left:1px solid var(--line);background:#fff;padding:20px;overflow:auto}.page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}.page-head h1{margin:0;font-size:24px;letter-spacing:0}.grid{display:grid;gap:14px}.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.input-row{display:grid;grid-template-columns:minmax(0,1.4fr)42px minmax(0,1fr);gap:12px;align-items:end}.or-label{height:40px;display:grid;place-items:center;color:var(--muted)}.field{display:grid;gap:7px;font-size:13px;color:var(--muted);font-weight:700}.field input,.field select{width:100%;height:40px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px;color:var(--ink);font:inherit;font-weight:500}.field.wide{min-width:0}.span-two{grid-column:span 2}.primary,#refreshTasks,#previewCommand{height:38px;border:0;border-radius:8px;background:var(--blue);color:#fff;font-weight:700;padding:0 14px;cursor:pointer}#refreshTasks,#previewCommand{background:#1f2937}.view-panel{max-width:980px}.hidden{display:none}.switch-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.switch-grid label,.inline-check{height:38px;border:1px solid var(--line);border-radius:8px;background:#fff;display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--ink);font-size:13px}.preview-block,.task-list{margin-top:18px;border:1px solid var(--line);border-radius:8px;background:#fff}.section-title{height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 12px}.section-title h2{font-size:15px;margin:0}pre{white-space:pre-wrap;overflow:auto}#commandPreview{min-height:92px;margin:0;padding:12px;color:#263244;background:#fbfcfe}.notice{margin-top:14px;border:1px solid #f0d8a8;background:#fff8eb;color:#76520e;border-radius:8px;padding:12px}.rule-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}.rule-strip span{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff;color:var(--muted);font-size:13px}.task-item{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px;border-bottom:1px solid var(--line)}.task-item:last-child{border-bottom:0}.pill{border-radius:999px;padding:4px 8px;font-size:12px;background:#e8f7ef;color:var(--green);font-weight:700}.pill.failed{background:#ffeceb;color:var(--red)}.pill.running{background:#eaf0ff;color:var(--blue)}.empty{padding:18px;color:var(--muted);text-align:center}dl{margin:0;display:grid;gap:12px}dt{font-size:12px;color:var(--muted);font-weight:700}dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}#toast{min-height:96px;margin-top:18px;border-radius:8px;background:#111827;color:#e5e7eb;padding:12px;font-size:12px}@media(max-width:1050px){.app-shell{grid-template-columns:1fr}.sidebar,.inspector{border:0}.grid.two,.input-row,.switch-grid,.rule-strip{grid-template-columns:1fr}.span-two{grid-column:auto}}
+:root{--bg:#f5f6f8;--panel:#ffffff;--ink:#20242c;--muted:#626a78;--line:#dfe3ea;--blue:#2563eb;--green:#11845b;--red:#c2413f;--soft:#eef2f7}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;color:var(--ink)}.app-shell{min-height:100vh;display:grid;grid-template-columns:220px minmax(0,1fr)300px}.sidebar{border-right:1px solid var(--line);background:#fff;padding:18px;display:flex;flex-direction:column;gap:20px}.brand{height:40px;display:flex;align-items:center;gap:10px}.brand-mark{width:34px;height:34px;border-radius:8px;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:800}.nav-item{width:100%;height:38px;border:0;background:transparent;border-radius:8px;text-align:left;padding:0 10px;font:inherit;color:var(--muted);cursor:pointer}.nav-item.active{background:var(--soft);color:var(--ink);font-weight:700}.status-box{margin-top:auto;border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;gap:8px;align-items:center}.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}.workspace{padding:22px;overflow:auto}.inspector{border-left:1px solid var(--line);background:#fff;padding:20px;overflow:auto}.page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}.page-head h1{margin:0;font-size:24px;letter-spacing:0}.grid{display:grid;gap:14px}.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.capability-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}.cap-card{border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px;display:grid;gap:6px;min-height:78px}.cap-card strong{font-size:13px}.cap-card span{font-size:12px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere}.input-row{display:grid;grid-template-columns:minmax(0,1.4fr)42px minmax(0,1fr);gap:12px;align-items:end}.or-label{height:40px;display:grid;place-items:center;color:var(--muted)}.field{display:grid;gap:7px;font-size:13px;color:var(--muted);font-weight:700}.field input,.field select{width:100%;height:40px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px;color:var(--ink);font:inherit;font-weight:500}.field.wide{min-width:0}.span-two{grid-column:span 2}.primary,#refreshTasks,#previewCommand{height:38px;border:0;border-radius:8px;background:var(--blue);color:#fff;font-weight:700;padding:0 14px;cursor:pointer}#refreshTasks,#previewCommand{background:#1f2937}.view-panel{max-width:980px}.hidden{display:none}.switch-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.switch-grid label,.inline-check{height:38px;border:1px solid var(--line);border-radius:8px;background:#fff;display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--ink);font-size:13px}.preview-block,.task-list{margin-top:18px;border:1px solid var(--line);border-radius:8px;background:#fff}.section-title{height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 12px}.section-title h2{font-size:15px;margin:0}pre{white-space:pre-wrap;overflow:auto}#commandPreview{min-height:92px;margin:0;padding:12px;color:#263244;background:#fbfcfe}.notice{margin-top:14px;border:1px solid #f0d8a8;background:#fff8eb;color:#76520e;border-radius:8px;padding:12px}.rule-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}.rule-strip span{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff;color:var(--muted);font-size:13px}.task-item{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px;border-bottom:1px solid var(--line)}.task-item:last-child{border-bottom:0}.pill{border-radius:999px;padding:4px 8px;font-size:12px;background:#e8f7ef;color:var(--green);font-weight:700}.pill.failed{background:#ffeceb;color:var(--red)}.pill.running{background:#eaf0ff;color:var(--blue)}.empty{padding:18px;color:var(--muted);text-align:center}dl{margin:0;display:grid;gap:12px}dt{font-size:12px;color:var(--muted);font-weight:700}dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}#toast{min-height:96px;margin-top:18px;border-radius:8px;background:#111827;color:#e5e7eb;padding:12px;font-size:12px}@media(max-width:1050px){.app-shell{grid-template-columns:1fr}.sidebar,.inspector{border:0}.grid.two,.input-row,.switch-grid,.rule-strip,.capability-grid{grid-template-columns:1fr}.span-two{grid-column:auto}}
 """
 
 
@@ -406,7 +564,22 @@ async function loadTasks() {
 async function loadStatus() {
   try {
     const status = await api('/api/status');
-    $('#systemStatus').textContent = `Qwen ${status.qwen.ok ? '在线' : '未检测到'} · Codex ${status.codex.ok ? '可用' : '未检测到'}`;
+    const localModel = status.local_model || {};
+    const transcriber = status.transcriber || {};
+    const review = status.review || {};
+    const paths = status.paths || {};
+    const modelText = localModel.qwen_ok
+      ? `检测到 Qwen：${(localModel.qwen_models || []).slice(0, 2).join(', ')}`
+      : (localModel.ok ? 'endpoint 在线，但没有 Qwen-family 模型' : '未检测到本地 OpenAI-compatible endpoint');
+    const transcriberText = transcriber.recommendation_reason || '未完成转写工具检测';
+    const reviewText = review.codex_cli_ok ? `Codex CLI 可用：${review.codex_cli_path}` : '未检测到 Codex CLI；Mock 可用于开发自测';
+    $('#systemStatus').textContent = `模型 ${localModel.qwen_ok ? '可用' : '未就绪'} · 转写 ${transcriber.recommended || 'auto'} · Codex ${review.codex_cli_ok ? '可用' : '未检测到'}`;
+    $('#modelHint').textContent = modelText;
+    $('#transcriberHint').textContent = transcriberText;
+    $('#reviewHint').textContent = reviewText;
+    $('#summaryReview').textContent = review.codex_cli_ok ? 'Codex CLI / gpt-5.4' : 'Codex CLI 未检测到；Mock 仅用于测试';
+    $('#summaryTranscriber').textContent = transcriber.recommended || 'auto';
+    $('#outputHints').textContent = `本机 Desktop：${paths.desktop || '未检测'}；WebUI 状态目录：${paths.webui_state || '未检测'}。正式默认输出不需要填写 output_dir。`;
   } catch {
     $('#systemStatus').textContent = '状态检测失败';
   }

@@ -15,11 +15,17 @@ class WebUITest(unittest.TestCase):
         self.assertIn("模型与账号", html)
         self.assertIn("输出与登录态", html)
         self.assertIn("任务记录", html)
+        self.assertIn("提炼模型后端", html)
+        self.assertIn("Codex 提炼：未接入", html)
+        self.assertIn("Gemini 提炼：未接入", html)
         self.assertIn("本地 Qwen 模型", html)
         self.assertIn("Review 引擎", html)
         self.assertIn("Codex CLI", html)
         self.assertIn("Claude：未接入", html)
+        self.assertIn("Gemini：未接入", html)
         self.assertIn("Kimi：未接入", html)
+        self.assertIn("推荐：读取本机后自动选择", html)
+        self.assertIn("输出方式", html)
         self.assertIn("报告格式", html)
         self.assertIn("PDF：未接入", html)
         self.assertIn("cookies.txt 路径", html)
@@ -94,6 +100,69 @@ class WebUITest(unittest.TestCase):
         self.assertIn("--open-output", command)
         self.assertNotIn("--source-url", command)
 
+    def test_recommended_transcriber_uses_whisper_when_mlx_audio_is_missing(self) -> None:
+        original = webui.local_capabilities
+        try:
+            webui.local_capabilities = lambda force=False: {
+                "transcriber": {"recommended": "whisper"}
+            }
+            command = webui.build_cli_command(
+                {
+                    "source_url": "https://example.com/v",
+                    "transcriber": "recommended",
+                }
+            )
+        finally:
+            webui.local_capabilities = original
+
+        self.assertIn("--transcriber", command)
+        self.assertIn("whisper", command)
+
+    def test_recommended_transcriber_keeps_cli_auto_when_mlx_audio_exists(self) -> None:
+        original = webui.local_capabilities
+        try:
+            webui.local_capabilities = lambda force=False: {
+                "transcriber": {"recommended": "auto"}
+            }
+            command = webui.build_cli_command(
+                {
+                    "source_url": "https://example.com/v",
+                    "transcriber": "recommended",
+                }
+            )
+        finally:
+            webui.local_capabilities = original
+
+        self.assertNotIn("--transcriber", command)
+
+    def test_output_mode_supports_custom_and_diagnostic_defaults(self) -> None:
+        custom = webui.build_cli_command(
+            {
+                "source_url": "https://example.com/v",
+                "output_mode": "custom",
+                "output_dir": "/tmp/watchbrief-final",
+            }
+        )
+        diagnostic = webui.build_cli_command(
+            {
+                "source_url": "https://example.com/v",
+                "output_mode": "diagnostic",
+            }
+        )
+
+        self.assertIn("--output-dir", custom)
+        self.assertIn("/tmp/watchbrief-final", custom)
+        self.assertIn("--diagnostic-run", diagnostic)
+        self.assertNotIn("--output-dir", diagnostic)
+
+        with self.assertRaisesRegex(ValueError, "output_dir"):
+            webui.build_cli_command(
+                {
+                    "source_url": "https://example.com/v",
+                    "output_mode": "custom",
+                }
+            )
+
     def test_mock_review_requires_json_path_and_does_not_enable_codex(self) -> None:
         command = webui.build_cli_command(
             {
@@ -112,6 +181,10 @@ class WebUITest(unittest.TestCase):
     def test_unsupported_provider_and_pdf_fail_clearly(self) -> None:
         with self.assertRaisesRegex(ValueError, "Claude|claude"):
             webui.build_cli_command({"source_url": "https://example.com/v", "review_provider": "claude"})
+        with self.assertRaisesRegex(ValueError, "Gemini|gemini"):
+            webui.build_cli_command({"source_url": "https://example.com/v", "review_provider": "gemini"})
+        with self.assertRaisesRegex(ValueError, "gemini-extract|提炼"):
+            webui.build_cli_command({"source_url": "https://example.com/v", "extract_provider": "gemini-extract"})
         with self.assertRaisesRegex(ValueError, "PDF"):
             webui.build_cli_command({"source_url": "https://example.com/v", "report_format": "pdf"})
         with self.assertRaisesRegex(ValueError, "renderer"):
@@ -145,6 +218,50 @@ class WebUITest(unittest.TestCase):
         self.assertNotIn("SECRET_CLAUDE", joined)
         self.assertNotIn("SECRET_KIMI", joined)
         self.assertNotIn("SECRET_CODEX", joined)
+
+    def test_status_exposes_local_capabilities_without_tokens(self) -> None:
+        original = webui.local_capabilities
+        try:
+            webui.local_capabilities = lambda force=False: {
+                "local_model": {
+                    "ok": False,
+                    "qwen_ok": False,
+                    "base_url": "http://127.0.0.1:1234/v1",
+                    "models": [],
+                    "qwen_models": [],
+                    "error": "connection refused",
+                },
+                "transcriber": {
+                    "recommended": "whisper",
+                    "mlx_audio": {"ok": False, "selected_python": "", "candidates": []},
+                    "whisper": {"ok": True, "path": "/usr/local/bin/whisper"},
+                    "recommendation_reason": "未检测到 MLX-Audio，WebUI 默认改用 Whisper",
+                },
+                "review": {
+                    "codex_cli_ok": True,
+                    "codex_cli_path": "/usr/local/bin/codex",
+                    "supported": ["codex-cli", "mock"],
+                    "placeholders": ["claude", "gemini", "kimi"],
+                },
+                "report": {"formats": [], "renderers": []},
+                "paths": {
+                    "desktop": "/Users/example/Desktop",
+                    "downloads": "/Users/example/Downloads",
+                    "documents": "/Users/example/Documents",
+                    "webui_state": "/Users/example/.watchbrief/webui",
+                    "project_root": "/repo/watchbrief_v5",
+                },
+            }
+            status = webui.service_status()
+        finally:
+            webui.local_capabilities = original
+
+        self.assertFalse(status["local_model"]["qwen_ok"])
+        self.assertEqual(status["transcriber"]["recommended"], "whisper")
+        self.assertEqual(status["paths"]["desktop"], "/Users/example/Desktop")
+        joined = str(status)
+        self.assertNotIn("SECRET", joined)
+        self.assertNotIn("token", joined.lower())
 
 
 if __name__ == "__main__":

@@ -122,12 +122,16 @@ http://127.0.0.1:8765
 规则：
 
 - WebUI 只负责本地任务提交和任务状态展示，底层仍调用 `scripts/cli.py`。
-- 支持自定义 Qwen 模型、Qwen endpoint、Qwen timeout、Codex 模型、Codex 账号目录、输出目录、登录态浏览器、转写器、缓存和诊断选项。
+- 面向 GitHub 独立用户，不要求 Hermes / OpenClaw。
+- 会读取本机能力：本地 Qwen endpoint / 模型列表、MLX-Audio、Whisper、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。
+- 支持自定义 Qwen 模型、Qwen endpoint、Qwen timeout、Codex 模型、Codex 账号目录、输出方式、输出目录、登录态浏览器、转写器、缓存和诊断选项。
+- 当前真实可用的提炼模型后端是本地 Qwen / OpenAI-compatible endpoint；Codex / Gemini / Claude 作为提炼后端尚未接入。
+- 转写器默认是“推荐”：检测到 MLX-Audio 时使用 CLI 默认 `auto`；没有 MLX-Audio 但有 Whisper 时生成 `--transcriber whisper`。
 - 默认不传 `--output-dir`，沿用 WatchBrief 正式默认输出路径。
 - 默认不传 `--open-output`，不会自动打开最终 HTML；用户显式勾选时才会传入。
 - 默认登录态为 `auto`，即 CLI 的 Chrome -> Safari 策略；显式选择 Chrome/Safari/Edge 时才传 `--cookies-from-browser`。
 - WebUI 默认 Codex 模型显示并传入 `gpt-5.4`；Codex 模型用于 Qwen 提炼后的 review / 评分一致性检查，不是 HTML renderer。
-- 当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Kimi adapter 未接入。
+- 当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Gemini / Kimi adapter 未接入。
 - 当前正式报告格式是 HTML；PDF 导出和非 HTML renderer 未接入，界面不会伪装可用。
 - WebUI 状态文件和日志写在 `~/.watchbrief/webui/`。
 - WebUI 不接收、不保存、不转发明文 token。

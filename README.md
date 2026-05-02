@@ -34,7 +34,7 @@ python3 scripts/webui.py --host 127.0.0.1 --port 8765
 http://127.0.0.1:8765
 ```
 
-WebUI 支持自定义 Qwen 模型、Qwen endpoint、Codex 模型、Codex 账号目录、输出目录、登录态浏览器、转写器、缓存和诊断选项。当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Kimi、PDF 导出和非 HTML renderer 只在界面标注为未接入，不会伪装成功。WebUI 不接收、不保存、不转发明文 token。
+WebUI 面向从 GitHub 下载后独立使用的用户，不要求 Hermes / OpenClaw。它会读取本机能力并给出默认建议：本地 OpenAI-compatible Qwen endpoint、可用 Qwen 模型、MLX-Audio / Whisper 转写器、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。没有 MLX-Audio 但检测到 Whisper 时，WebUI 的“推荐转写器”会生成 `--transcriber whisper`。当前真实可用的提炼后端是本地 Qwen；Codex / Gemini / Claude 提炼适配器尚未接入。当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Gemini / Kimi review、PDF 导出和非 HTML renderer 只在界面标注为未接入，不会伪装成功。WebUI 不接收、不保存、不转发明文 token。
 
 安全提交规则：
 
@@ -164,6 +164,8 @@ Whisper 只有两种情况会用：
 ```bash
 --allow-whisper-fallback
 ```
+
+WebUI 的“推荐转写器”会先检测本机工具：有 MLX-Audio 时保持 CLI 默认 `auto`；没有 MLX-Audio 但有 Whisper CLI 时，自动生成 `--transcriber whisper`。这只改变 WebUI 生成的命令，不改变 CLI 的严格默认规则。
 
 本地提取层会调用 LM Studio 里的 Qwen-family 模型。默认 endpoint：
 

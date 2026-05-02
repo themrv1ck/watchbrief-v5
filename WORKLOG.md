@@ -4131,3 +4131,95 @@ python3 watchbrief_v5/scripts/cli.py \
 - 验证：
   - 未跑真实视频链路。
   - 未触发 Qwen / Codex review / MLX-Audio。
+
+## 2026-05-02 上下文压缩：WatchBrief V5 当前稳定状态
+
+- 唯一源项目：`/Users/apple/Documents/New project/watchbrief_v5`。
+- Hermes 运行副本：`/Users/apple/.hermes/skills/openclaw-imports/watchbrief_v5`。
+- Codex 运行副本：`/Users/apple/.codex/skills/watchbrief_v5`。
+- 旧项目状态：
+  - 旧本地项目 `v1deodownload` 已不再作为 WatchBrief V5 源头。
+  - 旧 Hermes / Codex `v1deodownload` skill 副本已删除。
+  - 后续同步源统一从新项目 `watchbrief_v5` 出发。
+- Git 状态：
+  - 当前分支：`watchbrief-v5-stable-20260430`。
+  - 当前远端：`origin https://github.com/themrv1ck/watchbrief-v5.git`。
+  - 最新提交：`efc51dc Harden WebUI local config safeguards`。
+  - release tag：`watchbrief-v5-stable-20260430` 保持为原稳定归档 tag。
+- GitHub 仓库状态：
+  - `https://github.com/themrv1ck/watchbrief-v5`：Public。
+  - `https://github.com/themrv1ck/v1deodownload-skill`：Private，仅作旧项目历史仓库。
+- MLX-Audio 状态：
+  - 新项目环境：`/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx`。
+  - `.venv-mlx/` 已被 `.gitignore` 排除，不提交。
+  - `scripts/transcriber.py` 默认第一候选为新项目 `.venv-mlx/bin/python`。
+  - 运行逻辑不再依赖旧 `v1deodownload/.venv-mlx`。
+- WebUI 状态：
+  - 入口：`scripts/webui.py`。
+  - 启动命令：`python3 scripts/webui.py --host 127.0.0.1 --port 8765`。
+  - WebUI 只构建并启动 CLI 命令，不绕过 pipeline / validator / renderer。
+  - 支持配置 Qwen model、Qwen endpoint、Qwen timeout、Codex model、Codex home root、Codex account、output dir、登录态浏览器、transcriber、diagnostic mode、debug artifacts、open output 和 mock review。
+  - Claude / Kimi review、PDF export、非 HTML renderer 仍是占位能力，选择后会明确报错，不伪装成功。
+  - WebUI 不接收、不保存、不转发明文 token。
+  - WebUI 状态目录：`~/.watchbrief/webui/`。
+- 安全规则：
+  - 不提交 `.venv-mlx/`、`node_modules/`、`dist/`、`target/`、本地配置、token、cookies、xsec_token、signed media URL、运行产物。
+  - 不保存、不打印、不展示 cookies/token。
+  - 本地配置文件只允许留在用户机器，不进入 Git。
+- 最近验证：
+  - WebUI 单测：`8 tests OK`。
+  - 全量测试：`383 tests OK, skipped=3`。
+  - 源项目 strict install：PASS。
+  - Hermes 运行副本 strict install：PASS。
+  - Codex 运行副本 strict install：PASS。
+- 本次上下文压缩未执行事项：
+  - 未跑真实视频链路。
+  - 未触发 Qwen。
+  - 未触发 Codex review。
+  - 未触发 MLX-Audio。
+  - 未下载音频。
+  - 未改 renderer / schema / validator / HTML 模板。
+- 后续接手建议：
+  - 新功能优先在 `/Users/apple/Documents/New project/watchbrief_v5` 修改。
+  - 改完后同步 Hermes / Codex 运行副本。
+  - WebUI 继续保持“真实可用能力”和“占位能力”分开，不把未接线能力伪装成已支持。
+
+## 2026-05-02 WebUI 开源用户独立使用能力发现
+
+- 目标：让从 GitHub 下载 WatchBrief V5、但不使用 Hermes / OpenClaw 的用户，也能通过 WebUI 自行配置并看到本机可用能力。
+- 修改范围：
+  - `scripts/webui.py`
+  - `tests/test_webui.py`
+  - `README.md`
+  - `USAGE_V5.md`
+  - `SKILL.md`
+- WebUI 新增本机能力发现：
+  - 检测 OpenAI-compatible Qwen endpoint `/v1/models`。
+  - 显示可用本地模型和 Qwen-family 模型。
+  - 检测 MLX-Audio Python 候选和 Whisper CLI。
+  - 检测 Codex CLI。
+  - 显示 Desktop / Downloads / Documents / WebUI state 目录。
+- 提炼模型后端：
+  - WebUI 增加“提炼模型后端”选择。
+  - 当前真实可用后端为 `local-qwen`。
+  - Codex / Gemini / Claude 提炼适配器尚未接入，界面禁用或提交时报错。
+- 转写器默认策略：
+  - WebUI 默认选择“推荐：读取本机后自动选择”。
+  - 检测到 MLX-Audio 时保持 CLI 默认 `auto`。
+  - 没有 MLX-Audio 但检测到 Whisper CLI 时，WebUI 生成 `--transcriber whisper`。
+  - 如果两者都没有，WebUI 明确提示需要安装转写工具，不伪装成功。
+- 输出配置：
+  - 增加输出方式：正式默认 / 自定义最终目录 / 诊断临时目录。
+  - 正式默认仍不传 `--output-dir`。
+  - 自定义输出必须填写最终目录。
+  - 诊断模式生成 `--diagnostic-run`。
+- 模型 / review 边界：
+  - 当前真实可用 review 仍是 `codex-cli` 和 `mock`。
+  - Claude / Gemini / Kimi、PDF export、非 HTML renderer 仍为未接入能力，界面禁用或提交时报错。
+  - 没有把客户 token 写入 WebUI，也没有新增明文 token 输入框。
+- 禁止事项执行情况：
+  - 未跑真实视频链路。
+  - 未触发 Qwen。
+  - 未触发 Codex review。
+  - 未触发 MLX-Audio 转写。
+  - 未改 renderer / schema / validator / HTML 模板。
