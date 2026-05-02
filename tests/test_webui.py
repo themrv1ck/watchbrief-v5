@@ -51,6 +51,9 @@ class WebUITest(unittest.TestCase):
         self.assertIn("Review API key 环境变量", html)
         self.assertIn("推荐：读取本机后自动选择", html)
         self.assertIn("输出方式", html)
+        self.assertIn("选择文件夹", html)
+        self.assertIn("chooseOutputDirectory", webui.APP_JS)
+        self.assertIn("/api/select-directory", webui.APP_JS)
         self.assertIn("报告格式", html)
         self.assertIn("PDF（同时保留 HTML）", html)
         self.assertIn("cookies.txt 路径", html)
@@ -202,6 +205,33 @@ class WebUITest(unittest.TestCase):
                     "output_mode": "custom",
                 }
             )
+
+    def test_choose_output_directory_uses_macos_folder_picker(self) -> None:
+        calls = []
+
+        def fake_runner(command, capture_output, text, timeout):
+            calls.append(command)
+
+            class Result:
+                returncode = 0
+                stdout = "/tmp/watchbrief-output\n"
+                stderr = ""
+
+            return Result()
+
+        selected = webui.choose_output_directory(
+            runner=fake_runner,
+            osascript_path="/usr/bin/osascript",
+            platform="darwin",
+        )
+
+        self.assertEqual(selected, "/tmp/watchbrief-output")
+        self.assertEqual(calls[0][0], "/usr/bin/osascript")
+        self.assertIn("choose folder", calls[0][2])
+
+    def test_choose_output_directory_reports_unsupported_platform(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "手动输入"):
+            webui.choose_output_directory(platform="linux", osascript_path="/usr/bin/osascript")
 
     def test_mock_review_requires_json_path_and_does_not_enable_codex(self) -> None:
         command = webui.build_cli_command(
@@ -439,6 +469,7 @@ class WebUITest(unittest.TestCase):
                     "webui_state": "/Users/example/.watchbrief/webui",
                     "project_root": "/repo/watchbrief_v5",
                 },
+                "directory_picker": {"available": True, "method": "macos_osascript"},
             }
             status = webui.service_status()
         finally:
@@ -447,6 +478,7 @@ class WebUITest(unittest.TestCase):
         self.assertFalse(status["local_model"]["qwen_ok"])
         self.assertEqual(status["transcriber"]["recommended"], "whisper")
         self.assertEqual(status["paths"]["desktop"], "/Users/example/Desktop")
+        self.assertEqual(status["directory_picker"]["method"], "macos_osascript")
         joined = str(status)
         self.assertNotIn("SECRET", joined)
         self.assertNotIn("token", joined.lower())

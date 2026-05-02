@@ -81,6 +81,7 @@ DEFAULT_API_BASES = {
 }
 CAPABILITY_CACHE_SECONDS = 8
 PDF_BROWSER_ENV = "WATCHBRIEF_PDF_BROWSER"
+DIRECTORY_PICKER_PROMPT = "选择 WatchBrief 输出目录"
 
 _CAPABILITY_CACHE: tuple[float, dict[str, Any]] | None = None
 
@@ -270,6 +271,38 @@ def pdf_export_status() -> dict[str, Any]:
     }
 
 
+def directory_picker_status() -> dict[str, Any]:
+    available = sys.platform == "darwin" and bool(shutil.which("osascript"))
+    return {
+        "available": available,
+        "method": "macos_osascript" if available else "",
+    }
+
+
+def choose_output_directory(
+    *,
+    runner: Any = subprocess.run,
+    osascript_path: str | None = None,
+    platform: str | None = None,
+) -> str:
+    current_platform = platform or sys.platform
+    if current_platform != "darwin":
+        raise RuntimeError("当前系统不支持本地文件夹选择按钮，请手动输入输出目录绝对路径")
+    executable = osascript_path or shutil.which("osascript")
+    if not executable:
+        raise RuntimeError("未找到 osascript，无法打开系统文件夹选择框，请手动输入输出目录绝对路径")
+    script = f'POSIX path of (choose folder with prompt "{DIRECTORY_PICKER_PROMPT}")'
+    result = runner([executable, "-e", script], capture_output=True, text=True, timeout=120)
+    stdout = str(getattr(result, "stdout", "") or "").strip()
+    stderr = str(getattr(result, "stderr", "") or "").strip()
+    if getattr(result, "returncode", 1) != 0:
+        detail = " ".join((stderr or stdout or "user canceled").split())
+        if "-128" in detail or "User canceled" in detail or "用户已取消" in detail:
+            return ""
+        raise RuntimeError(f"选择输出目录失败：{detail}")
+    return str(Path(stdout).expanduser()) if stdout else ""
+
+
 def should_export_pdf(payload: dict[str, Any]) -> bool:
     return (
         _clean_text(payload.get("report_format")) == "pdf"
@@ -395,6 +428,7 @@ def local_capabilities(*, force: bool = False) -> dict[str, Any]:
             "webui_state": str(STATE_DIR),
             "project_root": str(PROJECT_ROOT),
         },
+        "directory_picker": directory_picker_status(),
     }
     _CAPABILITY_CACHE = (now, capabilities)
     return capabilities
@@ -593,6 +627,7 @@ def service_status() -> dict[str, Any]:
         "review": review,
         "report": capabilities["report"],
         "paths": capabilities["paths"],
+        "directory_picker": capabilities.get("directory_picker", directory_picker_status()),
         "project_root": str(PROJECT_ROOT),
         "time": int(time.time()),
     }
@@ -770,7 +805,12 @@ def render_index_html() -> str:
           </div>
           <div class="grid two">
             <label class="field">输出方式<select name="output_mode">{_option("default", "正式默认：单视频桌面 HTML / 列表桌面文件夹", selected=True)}{_option("custom", "自定义最终目录")}{_option("diagnostic", "诊断临时目录")}</select></label>
-            <label class="field">输出目录<input name="output_dir" placeholder="自定义时填写最终目录；正式默认可留空" /></label>
+            <label class="field">输出目录
+              <span class="path-picker">
+                <input name="output_dir" placeholder="自定义时填写最终目录；正式默认可留空" />
+                <button type="button" id="chooseOutputDir">选择文件夹</button>
+              </span>
+            </label>
             <label class="field">报告格式<select name="report_format">{_option("html", "HTML", selected=True)}{_option("pdf", "PDF（同时保留 HTML）")}</select></label>
             <label class="field">渲染方式<select name="renderer">{_option("local-html", "本地 HTML renderer", selected=True)}{_option("pdf-export", "PDF export")}</select></label>
             <label class="field">登录态<select name="browser_auth">{_option("auto", "自动：Chrome → Safari", selected=True)}{_option("chrome", "Chrome")}{_option("safari", "Safari")}{_option("edge", "Edge")}{_option("none", "不使用登录态")}</select></label>
@@ -1165,6 +1205,22 @@ nav{display:grid;gap:8px}
   border-color:var(--cyan);
   box-shadow:0 0 0 3px rgba(14,116,144,.12);
 }
+.path-picker{
+  display:grid;
+  grid-template-columns:minmax(0,1fr)112px;
+  gap:8px;
+}
+.path-picker button{
+  height:42px;
+  border:1px solid var(--line-strong);
+  border-radius:8px;
+  background:#101820;
+  color:#fff;
+  font:inherit;
+  font-size:13px;
+  font-weight:900;
+  cursor:pointer;
+}
 .field.wide{min-width:0}
 .span-two{grid-column:span 2}
 .primary,#refreshTasks,#previewCommand{
@@ -1288,7 +1344,7 @@ dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
 @media(max-width:1050px){
   .app-shell{grid-template-columns:1fr}
   .sidebar,.inspector{border:0}
-  .grid.two,.subgrid,.input-row,.switch-grid,.rule-strip,.capability-grid,.quick-status-grid,.welcome-grid,.guide-grid,.kid-checklist{grid-template-columns:1fr}
+  .grid.two,.subgrid,.input-row,.path-picker,.switch-grid,.rule-strip,.capability-grid,.quick-status-grid,.welcome-grid,.guide-grid,.kid-checklist{grid-template-columns:1fr}
   .span-two{grid-column:auto}
 }
 """
@@ -1404,6 +1460,25 @@ async function previewCommand() {
   }
 }
 
+async function chooseOutputDirectory() {
+  try {
+    toast('正在打开系统文件夹选择框...');
+    const data = await api('/api/select-directory', {method:'POST', body:JSON.stringify({})});
+    if (!data.selected || !data.path) {
+      toast('未选择输出目录。需要自定义时，可以继续手动输入路径。');
+      return;
+    }
+    const outputInput = document.querySelector('[name="output_dir"]');
+    const outputMode = document.querySelector('[name="output_mode"]');
+    outputInput.value = data.path;
+    outputMode.value = 'custom';
+    toast('已选择输出目录：' + data.path);
+    previewCommand();
+  } catch (error) {
+    toast('选择目录失败：' + error.message + '\n可以继续手动输入绝对路径。');
+  }
+}
+
 function taskRow(task) {
   const status = task.status || 'unknown';
   const cls = status === 'failed' ? 'failed' : (status === 'running' ? 'running' : '');
@@ -1501,6 +1576,7 @@ document.querySelectorAll('.settings-tab').forEach((button) => {
 $('#toggleInspector').addEventListener('click', toggleInspector);
 $('#previewCommand').addEventListener('click', previewCommand);
 $('#refreshTasks').addEventListener('click', loadTasks);
+$('#chooseOutputDir').addEventListener('click', chooseOutputDirectory);
 $('#taskForm').addEventListener('input', () => {
   applyEngineProfiles();
   previewCommand();
@@ -1572,10 +1648,14 @@ class WatchBriefWebHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
-        if path not in {"/api/tasks", "/api/preview"}:
+        if path not in {"/api/tasks", "/api/preview", "/api/select-directory"}:
             self._json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
             return
         try:
+            if path == "/api/select-directory":
+                selected_path = choose_output_directory()
+                self._json({"selected": bool(selected_path), "path": selected_path})
+                return
             payload = self._read_json_body()
             command = build_cli_command(payload)
             if path == "/api/preview":

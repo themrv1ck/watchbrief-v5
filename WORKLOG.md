@@ -4400,3 +4400,30 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未触发真实 Codex review。
   - 未触发 MLX-Audio。
   - 未保存、打印、展示 cookies 或 token。
+
+## 2026-05-02 WebUI 输出目录选择按钮
+
+- 目标：输出目录不再只能手动输入，降低普通用户配置门槛。
+- 修改范围：
+  - `scripts/webui.py`
+  - `tests/test_webui.py`
+- 结果：
+  - 输出目录字段保留手动输入能力。
+  - 新增“选择文件夹”按钮。
+  - WebUI 新增 `/api/select-directory` 本地接口。
+  - macOS 上通过系统文件夹选择框返回输出目录绝对路径。
+  - 用户选中目录后，WebUI 自动把输出方式切换为“自定义最终目录”，并刷新命令预览。
+  - 非 macOS 或缺少 `osascript` 时明确提示继续手动输入路径。
+- 验证：
+  - `python3 -m py_compile scripts/webui.py`：PASS。
+  - `python3 -m unittest discover -s tests -p 'test_webui.py'`：23 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_*.py'`：403 tests OK，skipped=3。
+  - `python3 scripts/check_watchbrief_skill.py --strict-install`：PASS。
+  - Hermes 运行副本 `check_watchbrief_skill.py --strict-install`：PASS。
+  - Codex 运行副本 `check_watchbrief_skill.py --strict-install`：PASS。
+- 边界：
+  - 未跑真实视频链路。
+  - 未触发真实 Qwen。
+  - 未触发真实 Codex review。
+  - 未触发 MLX-Audio。
+  - 未保存、打印、展示 cookies 或 token。
