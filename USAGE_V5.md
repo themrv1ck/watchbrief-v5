@@ -123,6 +123,8 @@ http://127.0.0.1:8765
 
 - WebUI 只负责本地任务提交和任务状态展示，底层仍调用 `scripts/cli.py`。
 - 面向 GitHub 独立用户，不要求 Hermes / OpenClaw。
+- WebUI 首页是欢迎说明书，说明在哪里贴链接、在哪里配置模型/账号/输出/登录态、在哪里查看任务记录。
+- “设置”是二级菜单，包含“模型与账号”和“输出与登录态”。
 - 会读取本机能力：本地 Qwen endpoint / 模型列表、MLX-Audio、Whisper、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。
 - 支持自定义 Qwen 模型、Qwen endpoint、Qwen timeout、Codex 模型、Codex 账号目录、输出方式、输出目录、登录态浏览器、转写器、缓存和诊断选项。
 - 当前真实可用的提炼模型后端是本地 Qwen / OpenAI-compatible endpoint；Codex / Gemini / Claude 作为提炼后端尚未接入。
@@ -132,7 +134,10 @@ http://127.0.0.1:8765
 - 默认登录态为 `auto`，即 CLI 的 Chrome -> Safari 策略；显式选择 Chrome/Safari/Edge 时才传 `--cookies-from-browser`。
 - WebUI 默认 Codex 模型显示并传入 `gpt-5.4`；Codex 模型用于 Qwen 提炼后的 review / 评分一致性检查，不是 HTML renderer。
 - 当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Gemini / Kimi adapter 未接入。
-- 当前正式报告格式是 HTML；PDF 导出和非 HTML renderer 未接入，界面不会伪装可用。
+- 当前正式报告基础格式是 HTML。
+- PDF 导出已接入 WebUI：先生成 HTML，再用本机 Chrome / Edge / Chromium / Brave 的 headless print 生成同名 PDF。
+- 如果本机没有可用浏览器，可设置 `WATCHBRIEF_PDF_BROWSER=/path/to/chrome-like-browser`。
+- 非 HTML renderer 未接入，界面不会伪装可用。
 - WebUI 状态文件和日志写在 `~/.watchbrief/webui/`。
 - WebUI 不接收、不保存、不转发明文 token。
 - WebUI 不保存、不打印、不展示 cookies。

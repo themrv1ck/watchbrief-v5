@@ -11,6 +11,7 @@ import argparse
 import html
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -46,12 +47,13 @@ SUPPORTED_REVIEW_PROVIDERS = {"codex-cli", "mock"}
 UNSUPPORTED_REVIEW_PROVIDERS = {"claude", "gemini", "kimi", "manual"}
 SUPPORTED_EXTRACT_PROVIDERS = {"local-qwen"}
 UNSUPPORTED_EXTRACT_PROVIDERS = {"codex-extract", "gemini-extract", "claude-extract"}
-SUPPORTED_REPORT_FORMATS = {"html"}
-SUPPORTED_RENDERERS = {"local-html"}
+SUPPORTED_REPORT_FORMATS = {"html", "pdf"}
+SUPPORTED_RENDERERS = {"local-html", "pdf-export"}
 SUPPORTED_BROWSER_AUTH = {"auto", "chrome", "safari", "edge", "none"}
 SUPPORTED_TRANSCRIBERS = {"recommended", "auto", "mlx_audio", "whisper"}
 SUPPORTED_OUTPUT_MODES = {"default", "custom", "diagnostic"}
 CAPABILITY_CACHE_SECONDS = 8
+PDF_BROWSER_ENV = "WATCHBRIEF_PDF_BROWSER"
 
 _CAPABILITY_CACHE: tuple[float, dict[str, Any]] | None = None
 
@@ -174,12 +176,149 @@ def transcriber_status() -> dict[str, Any]:
     }
 
 
+def pdf_browser_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    env_path = _clean_text(os.environ.get(PDF_BROWSER_ENV))
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+    for path in (
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    ):
+        candidates.append(Path(path))
+    for name in ("google-chrome", "chromium", "chromium-browser", "microsoft-edge", "brave-browser"):
+        found = shutil.which(name)
+        if found:
+            candidates.append(Path(found))
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def resolve_pdf_browser() -> Path | None:
+    for candidate in pdf_browser_candidates():
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def pdf_export_status() -> dict[str, Any]:
+    browser = resolve_pdf_browser()
+    return {
+        "ok": browser is not None,
+        "browser_path": str(browser or ""),
+        "engine": "Chromium headless print" if browser else "",
+        "candidates": [str(path) for path in pdf_browser_candidates()],
+    }
+
+
+def should_export_pdf(payload: dict[str, Any]) -> bool:
+    return (
+        _clean_text(payload.get("report_format")) == "pdf"
+        or _clean_text(payload.get("renderer")) == "pdf-export"
+        or _truthy(payload.get("export_pdf"))
+    )
+
+
+def html_paths_from_log(log_text: str) -> list[Path]:
+    paths: list[Path] = []
+    patterns = [
+        r"^(?:Diagnostic HTML|Diagnostic Watch Order|HTML|Watch Order):\s+(.+?\.html)\s*$",
+        r"^\[[^\]]+\]\s+.+?\s+->\s+(.+?\.html)\s*$",
+    ]
+    for line in str(log_text or "").splitlines():
+        for pattern in patterns:
+            match = re.match(pattern, line.strip())
+            if match:
+                paths.append(Path(match.group(1)).expanduser())
+                break
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        if path.exists() and path.is_file():
+            unique.append(path)
+    return unique
+
+
+def pdf_path_for_html(html_path: Path) -> Path:
+    return html_path.with_suffix(".pdf")
+
+
+def build_pdf_command(html_path: Path, pdf_path: Path, *, browser: Path | None = None) -> list[str]:
+    selected_browser = browser or resolve_pdf_browser()
+    if not selected_browser:
+        raise ValueError("PDF 导出需要安装 Chrome / Edge / Chromium / Brave，或设置 WATCHBRIEF_PDF_BROWSER")
+    return [
+        str(selected_browser),
+        "--headless",
+        "--disable-gpu",
+        "--no-first-run",
+        "--no-default-browser-check",
+        f"--print-to-pdf={pdf_path}",
+        html_path.resolve().as_uri(),
+    ]
+
+
+def export_html_to_pdf(
+    html_path: Path,
+    *,
+    browser: Path | None = None,
+    runner: Any = subprocess.run,
+    timeout: int = 90,
+) -> Path:
+    pdf_path = pdf_path_for_html(html_path)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    command = build_pdf_command(html_path, pdf_path, browser=browser)
+    result = runner(command, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0:
+        detail = " ".join(str(result.stderr or result.stdout or "").split())[:400]
+        raise RuntimeError(f"PDF 导出失败：{detail or 'headless browser exited with non-zero status'}")
+    if not pdf_path.exists() or pdf_path.stat().st_size == 0:
+        raise RuntimeError("PDF 导出失败：浏览器未生成 PDF 文件")
+    return pdf_path
+
+
+def export_log_htmls_to_pdf(log_path: Path) -> list[Path]:
+    log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
+    html_paths = html_paths_from_log(log_text)
+    if not html_paths:
+        raise RuntimeError("PDF 导出失败：未在任务日志中找到 HTML 输出")
+    return [export_html_to_pdf(path) for path in html_paths]
+
+
+def open_local_paths(paths: list[Path]) -> None:
+    if sys.platform == "darwin":
+        opener = "open"
+    elif os.name == "nt":
+        opener = "start"
+    else:
+        opener = "xdg-open"
+    for path in paths:
+        if os.name == "nt":
+            subprocess.Popen(["cmd", "/c", "start", "", str(path)])
+        else:
+            subprocess.Popen([opener, str(path)])
+
+
 def local_capabilities(*, force: bool = False) -> dict[str, Any]:
     global _CAPABILITY_CACHE
     now = time.time()
     if not force and _CAPABILITY_CACHE and now - _CAPABILITY_CACHE[0] < CAPABILITY_CACHE_SECONDS:
         return _CAPABILITY_CACHE[1]
     codex_path = shutil.which("codex")
+    pdf_status = pdf_export_status()
     capabilities = {
         "local_model": local_model_status(),
         "transcriber": transcriber_status(),
@@ -190,8 +329,9 @@ def local_capabilities(*, force: bool = False) -> dict[str, Any]:
             "placeholders": ["claude", "gemini", "kimi"],
         },
         "report": {
-            "formats": [{"id": "html", "available": True}, {"id": "pdf", "available": False}],
-            "renderers": [{"id": "local-html", "available": True}, {"id": "pdf-export", "available": False}],
+            "formats": [{"id": "html", "available": True}, {"id": "pdf", "available": pdf_status["ok"]}],
+            "renderers": [{"id": "local-html", "available": True}, {"id": "pdf-export", "available": pdf_status["ok"]}],
+            "pdf": pdf_status,
         },
         "paths": {
             "desktop": str(Path.home() / "Desktop"),
@@ -308,7 +448,7 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
         command.append("--keep-debug-artifacts")
     if _truthy(payload.get("diagnostic_run")) or output_mode == "diagnostic":
         command.append("--diagnostic-run")
-    if _truthy(payload.get("open_output")):
+    if _truthy(payload.get("open_output")) and not should_export_pdf(payload):
         command.append("--open-output")
 
     return command
@@ -316,7 +456,12 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
 
 def command_preview(payload: dict[str, Any]) -> dict[str, Any]:
     command = build_cli_command(payload)
-    return {"command": command, "cwd": str(PROJECT_ROOT)}
+    return {
+        "command": command,
+        "cwd": str(PROJECT_ROOT),
+        "pdf_export": should_export_pdf(payload),
+        "pdf_engine": pdf_export_status().get("browser_path") or "",
+    }
 
 
 def _read_tasks() -> list[dict[str, Any]]:
@@ -384,16 +529,40 @@ def render_index_html() -> str:
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">WB</span><div><strong>WatchBrief</strong><small>local report UI</small></div></div>
       <nav>
-        <button class="nav-item active" data-view="run"><span>01</span>新建任务</button>
-        <button class="nav-item" data-view="models"><span>02</span>模型与账号</button>
-        <button class="nav-item" data-view="output"><span>03</span>输出与登录态</button>
+        <button class="nav-item active" data-view="welcome"><span>01</span>欢迎说明</button>
+        <button class="nav-item" data-view="run"><span>02</span>新建任务</button>
+        <button class="nav-item" data-view="models" data-root="settings"><span>03</span>设置</button>
         <button class="nav-item" data-view="history"><span>04</span>任务记录</button>
       </nav>
       <div class="status-box"><span class="status-dot"></span><small id="systemStatus">检测本机服务中</small></div>
     </aside>
     <main class="workspace">
+      <section class="view-panel" data-panel="welcome">
+        <header class="page-head hero-head">
+          <div>
+            <p class="eyebrow">WELCOME</p>
+            <h1>三步生成观看决策报告</h1>
+            <p class="subtitle">先贴链接，再确认配置，最后生成 HTML 或 PDF。</p>
+          </div>
+          <button class="primary" type="button" data-jump="run">开始新任务</button>
+        </header>
+        <div class="welcome-grid">
+          <div class="welcome-card"><span>1</span><strong>新建任务</strong><p>在“新建任务”里粘贴 YouTube、Bilibili、小红书单视频、列表或 board 链接。也可以选择本地 URL 文件。</p></div>
+          <div class="welcome-card"><span>2</span><strong>设置能力</strong><p>在“设置”里配置本地 Qwen endpoint、转写工具、Codex CLI、登录态、输出目录和报告格式。</p></div>
+          <div class="welcome-card"><span>3</span><strong>查看结果</strong><p>正式单视频默认输出桌面 HTML；列表输出桌面任务文件夹。选择 PDF 时会在 HTML 旁生成同名 PDF。</p></div>
+        </div>
+        <div class="starter-panel">
+          <div class="step-title"><span>配置</span><strong>你通常需要先确认这些数据</strong></div>
+          <div class="guide-grid">
+            <div><strong>模型</strong><p>本地 Qwen 模型和 endpoint 在“设置 → 模型与账号”。没有本地模型时先启动 LM Studio 或 OpenAI-compatible 服务。</p></div>
+            <div><strong>转写</strong><p>MLX-Audio 会优先使用；没有 MLX-Audio 但有 Whisper 时，WebUI 会推荐 Whisper。</p></div>
+            <div><strong>账号</strong><p>Codex CLI 使用本机登录态；WebUI 不接收、不保存 API token。</p></div>
+            <div><strong>输出</strong><p>输出目录、HTML/PDF、浏览器登录态在“设置 → 输出与登录态”。</p></div>
+          </div>
+        </div>
+      </section>
       <form id="taskForm">
-        <section class="view-panel" data-panel="run">
+        <section class="view-panel hidden" data-panel="run">
           <header class="page-head hero-head">
             <div>
               <p class="eyebrow">LOCAL-FIRST VIDEO REPORT</p>
@@ -435,6 +604,10 @@ def render_index_html() -> str:
 
         <section class="view-panel hidden" data-panel="models">
           <header class="page-head hero-head"><div><p class="eyebrow">RUNTIME</p><h1>模型与账号</h1><p class="subtitle">保持推荐即可，按需切换。</p></div><button class="primary" type="submit">开始运行</button></header>
+          <div class="settings-tabs">
+            <button class="settings-tab active" type="button" data-settings-view="models">模型与账号</button>
+            <button class="settings-tab" type="button" data-settings-view="output">输出与登录态</button>
+          </div>
           <div class="capability-grid">
             <div class="cap-card"><strong>本地模型</strong><span id="modelHint">检测中</span></div>
             <div class="cap-card"><strong>转写工具</strong><span id="transcriberHint">检测中</span></div>
@@ -473,11 +646,15 @@ def render_index_html() -> str:
 
         <section class="view-panel hidden" data-panel="output">
           <header class="page-head hero-head"><div><p class="eyebrow">DELIVERY</p><h1>输出与登录态</h1><p class="subtitle">正式输出默认放到桌面。</p></div><button class="primary" type="submit">开始运行</button></header>
+          <div class="settings-tabs">
+            <button class="settings-tab" type="button" data-settings-view="models">模型与账号</button>
+            <button class="settings-tab active" type="button" data-settings-view="output">输出与登录态</button>
+          </div>
           <div class="grid two">
             <label class="field">输出方式<select name="output_mode">{_option("default", "正式默认：单视频桌面 HTML / 列表桌面文件夹", selected=True)}{_option("custom", "自定义最终目录")}{_option("diagnostic", "诊断临时目录")}</select></label>
             <label class="field">输出目录<input name="output_dir" placeholder="自定义时填写最终目录；正式默认可留空" /></label>
-            <label class="field">报告格式<select name="report_format">{_option("html", "HTML", selected=True)}{_option("pdf", "PDF：未接入", disabled=True)}</select></label>
-            <label class="field">渲染方式<select name="renderer">{_option("local-html", "本地 HTML renderer", selected=True)}{_option("pdf-export", "PDF export：未接入", disabled=True)}</select></label>
+            <label class="field">报告格式<select name="report_format">{_option("html", "HTML", selected=True)}{_option("pdf", "PDF（同时保留 HTML）")}</select></label>
+            <label class="field">渲染方式<select name="renderer">{_option("local-html", "本地 HTML renderer", selected=True)}{_option("pdf-export", "PDF export")}</select></label>
             <label class="field">登录态<select name="browser_auth">{_option("auto", "自动：Chrome → Safari", selected=True)}{_option("chrome", "Chrome")}{_option("safari", "Safari")}{_option("edge", "Edge")}{_option("none", "不使用登录态")}</select></label>
             <label class="field span-two">cookies.txt 路径<input name="cookies_file" placeholder="可选；只传路径，不读取或展示内容" /></label>
           </div>
@@ -502,7 +679,7 @@ def render_index_html() -> str:
         <dt>默认 Qwen</dt><dd>{DEFAULT_QWEN_MODEL}</dd>
         <dt>默认 review</dt><dd id="summaryReview">Codex CLI / {DEFAULT_CODEX_MODEL}</dd>
         <dt>推荐转写器</dt><dd id="summaryTranscriber">读取本机后决定</dd>
-        <dt>输出格式</dt><dd>HTML；PDF 未接入</dd>
+        <dt>输出格式</dt><dd id="summaryReport">HTML；PDF 需本机浏览器导出</dd>
       </dl>
       <pre id="toast"></pre>
     </aside>
@@ -660,7 +837,64 @@ nav{display:grid;gap:8px}
   gap:10px;
   margin-bottom:14px;
 }
-.signal,.cap-card,.starter-panel,.preview-block,.task-list,.rule-strip span{
+.welcome-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin-bottom:14px;
+}
+.welcome-card{
+  min-height:160px;
+  padding:16px;
+  display:grid;
+  gap:10px;
+  align-content:start;
+}
+.welcome-card span{
+  width:34px;
+  height:30px;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  background:#e7f8fb;
+  color:#0e7490;
+  font-weight:900;
+}
+.welcome-card strong{font-size:17px}
+.welcome-card p,.guide-grid p{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+.guide-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.guide-grid div{
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+  background:#fff;
+}
+.settings-tabs{
+  display:flex;
+  gap:8px;
+  margin-bottom:14px;
+}
+.settings-tab{
+  min-height:38px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#fff;
+  color:var(--muted);
+  font:inherit;
+  font-weight:800;
+  padding:0 12px;
+  cursor:pointer;
+}
+.settings-tab.active{
+  border-color:#0e7490;
+  background:#e7f8fb;
+  color:#0e7490;
+}
+.signal,.cap-card,.starter-panel,.preview-block,.task-list,.rule-strip span,.welcome-card{
   border:1px solid var(--line);
   border-radius:8px;
   background:rgba(255,255,255,.94);
@@ -860,7 +1094,7 @@ dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
 @media(max-width:1050px){
   .app-shell{grid-template-columns:1fr}
   .sidebar,.inspector{border:0}
-  .grid.two,.input-row,.switch-grid,.rule-strip,.capability-grid,.quick-status-grid{grid-template-columns:1fr}
+  .grid.two,.input-row,.switch-grid,.rule-strip,.capability-grid,.quick-status-grid,.welcome-grid,.guide-grid{grid-template-columns:1fr}
   .span-two{grid-column:auto}
 }
 """
@@ -894,7 +1128,10 @@ function shellQuote(value) {
 async function previewCommand() {
   try {
     const data = await api('/api/preview', {method:'POST', body:JSON.stringify(formPayload())});
-    $('#commandPreview').textContent = 'cd ' + shellQuote(data.cwd) + '\n' + data.command.map(shellQuote).join(' ');
+    const pdfNote = data.pdf_export
+      ? `\nPDF 导出：${data.pdf_engine ? data.pdf_engine : '需要 Chrome / Edge / Chromium / Brave'}`
+      : '';
+    $('#commandPreview').textContent = 'cd ' + shellQuote(data.cwd) + '\n' + data.command.map(shellQuote).join(' ') + pdfNote;
   } catch (error) {
     $('#commandPreview').textContent = error.message;
   }
@@ -905,7 +1142,11 @@ function taskRow(task) {
   const cls = status === 'failed' ? 'failed' : (status === 'running' ? 'running' : '');
   const source = escapeHtml(task.source || task.title || 'WatchBrief task');
   const time = new Date((task.created_at || Date.now() / 1000) * 1000).toLocaleString();
-  return `<div class="task-item"><div><strong>${source}</strong><br><small>${time}</small></div><span class="pill ${cls}">${label(status)}</span></div>`;
+  const pdfs = Array.isArray(task.pdf_paths) && task.pdf_paths.length
+    ? `<br><small>PDF：${task.pdf_paths.map(escapeHtml).join('；')}</small>`
+    : '';
+  const error = task.error ? `<br><small>${escapeHtml(task.error)}</small>` : '';
+  return `<div class="task-item"><div><strong>${source}</strong><br><small>${time}</small>${pdfs}${error}</div><span class="pill ${cls}">${label(status)}</span></div>`;
 }
 
 function label(status) {
@@ -946,20 +1187,36 @@ async function loadStatus() {
     $('#reviewHint').textContent = reviewText;
     $('#summaryReview').textContent = review.codex_cli_ok ? 'Codex CLI / gpt-5.4' : 'Codex CLI 未检测到；Mock 仅用于测试';
     $('#summaryTranscriber').textContent = transcriber.recommended || 'auto';
+    $('#summaryReport').textContent = status.report?.pdf?.ok ? 'HTML / PDF 可用' : 'HTML；PDF 需要 Chrome / Edge / Chromium';
     $('#outputHints').textContent = `本机 Desktop：${paths.desktop || '未检测'}；WebUI 状态目录：${paths.webui_state || '未检测'}。正式默认输出不需要填写 output_dir。`;
   } catch {
     $('#systemStatus').textContent = '状态检测失败';
   }
 }
 
-document.querySelectorAll('.nav-item').forEach((button) => {
-  button.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach((item) => item.classList.remove('active'));
-    document.querySelectorAll('.view-panel').forEach((panel) => panel.classList.add('hidden'));
-    button.classList.add('active');
-    document.querySelector(`[data-panel="${button.dataset.view}"]`)?.classList.remove('hidden');
-    if (button.dataset.view === 'history') loadTasks();
+function showPanel(view) {
+  document.querySelectorAll('.view-panel').forEach((panel) => panel.classList.add('hidden'));
+  document.querySelector(`[data-panel="${view}"]`)?.classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach((item) => {
+    const isSettings = item.dataset.root === 'settings' && ['models', 'output'].includes(view);
+    item.classList.toggle('active', item.dataset.view === view || isSettings);
   });
+  document.querySelectorAll('.settings-tab').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.settingsView === view);
+  });
+  if (view === 'history') loadTasks();
+}
+
+document.querySelectorAll('.nav-item').forEach((button) => {
+  button.addEventListener('click', () => showPanel(button.dataset.view));
+});
+
+document.querySelectorAll('[data-jump]').forEach((button) => {
+  button.addEventListener('click', () => showPanel(button.dataset.jump));
+});
+
+document.querySelectorAll('.settings-tab').forEach((button) => {
+  button.addEventListener('click', () => showPanel(button.dataset.settingsView));
 });
 
 $('#previewCommand').addEventListener('click', previewCommand);
@@ -1032,7 +1289,7 @@ class WatchBriefWebHandler(BaseHTTPRequestHandler):
             payload = self._read_json_body()
             command = build_cli_command(payload)
             if path == "/api/preview":
-                self._json({"command": command, "cwd": str(PROJECT_ROOT)})
+                self._json(command_preview(payload))
                 return
             task = start_task(payload, command)
         except Exception as exc:
@@ -1055,6 +1312,7 @@ def start_task(payload: dict[str, Any], command: list[str]) -> dict[str, Any]:
         "created_at": time.time(),
         "updated_at": time.time(),
         "log_path": str(log_path),
+        "report_format": _clean_text(payload.get("report_format")) or "html",
     }
     _write_tasks([task, *_read_tasks()])
 
@@ -1062,6 +1320,27 @@ def start_task(payload: dict[str, Any], command: list[str]) -> dict[str, Any]:
         with log_path.open("wb") as log:
             process = subprocess.Popen(command, cwd=str(PROJECT_ROOT), stdout=log, stderr=subprocess.STDOUT)
             code = process.wait()
+        if code == 0 and should_export_pdf(payload):
+            try:
+                pdf_paths = export_log_htmls_to_pdf(log_path)
+            except Exception as exc:
+                with log_path.open("ab") as log:
+                    log.write(f"\npdf_export_failed: {exc}\n".encode("utf-8"))
+                _update_task(task_id, status="failed", exit_code=3, error=str(exc), updated_at=time.time())
+                return
+            with log_path.open("ab") as log:
+                for pdf_path in pdf_paths:
+                    log.write(f"PDF: {pdf_path}\n".encode("utf-8"))
+            if _truthy(payload.get("open_output")):
+                open_local_paths(pdf_paths)
+            _update_task(
+                task_id,
+                status="completed",
+                exit_code=0,
+                pdf_paths=[str(path) for path in pdf_paths],
+                updated_at=time.time(),
+            )
+            return
         _update_task(task_id, status="completed" if code == 0 else "failed", exit_code=code, updated_at=time.time())
 
     threading.Thread(target=runner, daemon=True).start()

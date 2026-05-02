@@ -34,7 +34,7 @@ python3 scripts/webui.py --host 127.0.0.1 --port 8765
 http://127.0.0.1:8765
 ```
 
-WebUI 面向从 GitHub 下载后独立使用的用户，不要求 Hermes / OpenClaw。它会读取本机能力并给出默认建议：本地 OpenAI-compatible Qwen endpoint、可用 Qwen 模型、MLX-Audio / Whisper 转写器、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。没有 MLX-Audio 但检测到 Whisper 时，WebUI 的“推荐转写器”会生成 `--transcriber whisper`。当前真实可用的提炼后端是本地 Qwen；Codex / Gemini / Claude 提炼适配器尚未接入。当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Gemini / Kimi review、PDF 导出和非 HTML renderer 只在界面标注为未接入，不会伪装成功。WebUI 不接收、不保存、不转发明文 token。
+WebUI 面向从 GitHub 下载后独立使用的用户，不要求 Hermes / OpenClaw。首页是欢迎说明书，告诉用户先贴链接、再到“设置”二级菜单配置模型/账号/输出/登录态，最后生成 HTML 或 PDF。它会读取本机能力并给出默认建议：本地 OpenAI-compatible Qwen endpoint、可用 Qwen 模型、MLX-Audio / Whisper 转写器、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。没有 MLX-Audio 但检测到 Whisper 时，WebUI 的“推荐转写器”会生成 `--transcriber whisper`。当前真实可用的提炼后端是本地 Qwen；Codex / Gemini / Claude 提炼适配器尚未接入。当前可运行的 review 引擎是 `codex-cli` 和 `mock`；Claude / Gemini / Kimi review 未接入时不会伪装成功。PDF 导出已接入：CLI 仍先生成 HTML，WebUI 再用本机 Chrome / Edge / Chromium / Brave 的 headless print 生成同名 PDF。WebUI 不接收、不保存、不转发明文 token。
 
 安全提交规则：
 

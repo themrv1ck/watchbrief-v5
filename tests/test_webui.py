@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 import unittest
 
 import helpers  # noqa: F401 - ensures watchbrief_v5 is on sys.path before scripts imports
@@ -31,7 +33,7 @@ class WebUITest(unittest.TestCase):
         self.assertIn("推荐：读取本机后自动选择", html)
         self.assertIn("输出方式", html)
         self.assertIn("报告格式", html)
-        self.assertIn("PDF：未接入", html)
+        self.assertIn("PDF（同时保留 HTML）", html)
         self.assertIn("cookies.txt 路径", html)
         self.assertIn("Claude / Gemini / Kimi", html)
 
@@ -190,10 +192,23 @@ class WebUITest(unittest.TestCase):
             webui.build_cli_command({"source_url": "https://example.com/v", "review_provider": "gemini"})
         with self.assertRaisesRegex(ValueError, "gemini-extract|提炼"):
             webui.build_cli_command({"source_url": "https://example.com/v", "extract_provider": "gemini-extract"})
-        with self.assertRaisesRegex(ValueError, "PDF"):
-            webui.build_cli_command({"source_url": "https://example.com/v", "report_format": "pdf"})
         with self.assertRaisesRegex(ValueError, "renderer"):
-            webui.build_cli_command({"source_url": "https://example.com/v", "renderer": "pdf-export"})
+            webui.build_cli_command({"source_url": "https://example.com/v", "renderer": "unknown-renderer"})
+
+    def test_pdf_report_format_is_post_process_not_cli_flag(self) -> None:
+        preview = webui.command_preview(
+            {
+                "source_url": "https://example.com/v",
+                "report_format": "pdf",
+                "renderer": "pdf-export",
+                "open_output": True,
+            }
+        )
+
+        self.assertTrue(preview["pdf_export"])
+        self.assertNotIn("--report-format", preview["command"])
+        self.assertNotIn("pdf", preview["command"])
+        self.assertNotIn("--open-output", preview["command"])
 
     def test_non_qwen_model_is_rejected_before_cli_launch(self) -> None:
         with self.assertRaisesRegex(ValueError, "Qwen"):
@@ -204,6 +219,35 @@ class WebUITest(unittest.TestCase):
 
         self.assertEqual(preview["cwd"], str(webui.PROJECT_ROOT))
         self.assertIn(str(webui.CLI_PATH), preview["command"])
+        self.assertFalse(preview["pdf_export"])
+
+    def test_html_log_paths_and_pdf_export_use_headless_browser(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "01-video.html"
+            second = root / "00-watch-order.html"
+            first.write_text("<html><body>one</body></html>", encoding="utf-8")
+            second.write_text("<html><body>order</body></html>", encoding="utf-8")
+            log_text = f"[completed] video -> {first}\nWatch Order: {second}\n"
+            paths = webui.html_paths_from_log(log_text)
+
+            def fake_runner(command, capture_output, text, timeout):
+                self.assertIn("--headless", command)
+                pdf_arg = next(item for item in command if str(item).startswith("--print-to-pdf="))
+                Path(str(pdf_arg).split("=", 1)[1]).write_bytes(b"%PDF-1.4\n")
+
+                class Result:
+                    returncode = 0
+                    stdout = ""
+                    stderr = ""
+
+                return Result()
+
+            pdf_path = webui.export_html_to_pdf(paths[0], browser=Path("/tmp/fake-browser"), runner=fake_runner)
+
+            self.assertEqual(paths, [first, second])
+            self.assertEqual(pdf_path, first.with_suffix(".pdf"))
+            self.assertTrue(pdf_path.exists())
 
     def test_token_like_fields_are_not_forwarded_to_cli_command(self) -> None:
         command = webui.build_cli_command(

@@ -4244,3 +4244,36 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未新增 token 输入框。
   - 未跑真实视频链路。
   - 未触发 Qwen / Codex review / MLX-Audio。
+
+## 2026-05-02 WebUI 欢迎页、设置二级菜单与 PDF 导出
+
+- 目标：让 GitHub 用户进入 WebUI 后先看到说明书式欢迎页，再按需进入设置；同时把 PDF 从占位能力接成真实导出能力。
+- 修改范围：
+  - `scripts/webui.py`
+  - `tests/test_webui.py`
+  - `README.md`
+  - `USAGE_V5.md`
+  - `SKILL.md`
+- 首页：
+  - 默认进入“欢迎说明”。
+  - 说明三步流程：新建任务、设置能力、查看结果。
+  - 告诉用户在哪里配置模型、转写、账号、输出和登录态。
+- 设置收口：
+  - 主导航只保留欢迎说明 / 新建任务 / 设置 / 任务记录。
+  - “模型与账号”和“输出与登录态”放进设置二级菜单。
+- PDF 导出：
+  - `report_format=pdf` 和 `renderer=pdf-export` 已允许选择。
+  - CLI 仍先生成 HTML，WebUI 任务完成后解析日志里的 HTML 输出路径。
+  - 对每个 HTML 使用 Chrome / Edge / Chromium / Brave 的 headless print 生成同名 PDF。
+  - 支持 `WATCHBRIEF_PDF_BROWSER` 指定浏览器路径。
+  - 如果没有可用浏览器或没有找到 HTML，任务明确失败，不伪装成功。
+  - 本机轻量验证：使用 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 将临时 HTML 导出为 PDF，生成文件非空。
+- 任务记录补充：
+  - PDF 导出成功后，任务记录保存 `pdf_paths`。
+  - WebUI 历史页显示 PDF 输出路径。
+- 边界：
+  - 未改 CLI 分析链路。
+  - 未改 renderer / schema / validator / HTML 模板。
+  - 未新增 token 输入框。
+  - 未跑真实视频链路。
+  - 未触发 Qwen / Codex review / MLX-Audio。

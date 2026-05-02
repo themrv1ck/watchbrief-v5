@@ -25,10 +25,12 @@ description: WatchBrief V5 是视频观看决策报告生成器。它不是下�
 - WebUI 入口是 `python3 scripts/webui.py --host 127.0.0.1 --port 8765`。
 - WebUI 只构建并启动 `scripts/cli.py` 命令，不绕过 CLI、pipeline、validator 或 renderer。
 - WebUI 面向 GitHub 独立用户，不要求 Hermes / OpenClaw；它会读取本机 Qwen endpoint / 模型列表、MLX-Audio、Whisper、Codex CLI、Desktop / Downloads / Documents 路径和 WebUI 状态目录。
+- WebUI 首页必须是欢迎说明页；模型、账号、输出、登录态等配置放在“设置”二级菜单。
 - 可配置项包括提炼模型后端、Qwen 模型、Qwen endpoint、Codex 模型、Codex 账号目录、输出方式、输出目录、登录态浏览器、转写器、缓存和诊断选项。
 - 当前真实可用的提炼后端是本地 Qwen；Codex / Gemini / Claude 提炼适配器未接入时必须禁用或明确报错。
 - WebUI 的推荐转写器规则：检测到 MLX-Audio 时保持 CLI 默认 `auto`；没有 MLX-Audio 但有 Whisper CLI 时生成 `--transcriber whisper`。
-- 当前可运行 review 引擎是 `codex-cli` 和 `mock`；Claude / Gemini / Kimi、PDF 导出和非 HTML renderer 未接入时必须明确报错，不允许伪装成功。
+- 当前可运行 review 引擎是 `codex-cli` 和 `mock`；Claude / Gemini / Kimi 和非 HTML renderer 未接入时必须明确报错，不允许伪装成功。
+- PDF 导出由 WebUI 后处理完成：CLI 先生成 HTML，WebUI 再用本机 Chrome / Edge / Chromium / Brave headless print 生成同名 PDF；没有可用浏览器时必须明确报错。
 - WebUI 不接收、不保存、不转发明文 token；本地配置、密钥和构建产物不得提交。
 
 ## 真实 Codex Review
