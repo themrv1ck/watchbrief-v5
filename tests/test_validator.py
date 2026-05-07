@@ -4,13 +4,40 @@ import copy
 import unittest
 
 from helpers import assert_invalid, load_golden
+from scripts.scoring import apply_deterministic_scoring
 from scripts.validator import validate_normalized_report_payload
 
 
 class ValidatorTest(unittest.TestCase):
+    def target_payload(self, target: str = "knowledge_notes") -> dict:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["report_target"] = target
+        payload["target_summary"] = "这是一份面向目标模式的中文分析摘要。"
+        payload["target_sections"] = {
+            "core_concepts": ["心流来自目标、反馈和挑战之间的配合。"],
+            "key_facts": ["视频把心流解释为任务结构问题，而不是单纯意志力问题。"],
+            "methods": ["把任务拆小，并让反馈更及时。"],
+            "caveats": ["转写内容只支持对视频内部观点做整理。"],
+        }
+        return payload
+
     def test_golden_payloads_are_valid(self) -> None:
         validate_normalized_report_payload(load_golden("sample_payload_heartflow.json"))
         validate_normalized_report_payload(load_golden("sample_payload_charm.json"))
+
+    def test_non_watch_report_target_payload_passes(self) -> None:
+        validated = validate_normalized_report_payload(self.target_payload())
+
+        self.assertEqual(validated["report_target"], "knowledge_notes")
+        self.assertIn("core_concepts", validated["target_sections"])
+
+    def test_watch_decision_rejects_target_sections(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["report_target"] = "watch_decision"
+        payload["target_summary"] = "默认观看决策不应该携带目标 sections。"
+        payload["target_sections"] = {"core_concepts": ["多余字段"]}
+
+        assert_invalid(self, payload, "target_unexpected")
 
     def test_final_conclusion_valid_thematic_sentence_passes(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
@@ -28,6 +55,11 @@ class ValidatorTest(unittest.TestCase):
         assert_invalid(self, payload, "final_sentence")
         payload["final_conclusion"] = "心流的关键不是。"
         assert_invalid(self, payload, "final_incomplete")
+
+    def test_final_conclusion_ending_with_important_passes(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["final_conclusion"] = "长期安宁、诚实相待、彼此独立又共同变好的人，比任何短期吸引条件都更重要。"
+        validate_normalized_report_payload(payload)
 
     def test_tag_must_be_fixed_enum(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
@@ -62,6 +94,18 @@ class ValidatorTest(unittest.TestCase):
     def test_watch_verdict_no_watch_decision_passes(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
         payload["watch_verdict"] = "看报告足够，原视频不必看。"
+        validate_normalized_report_payload(payload)
+
+    def test_high_score_verdict_can_say_full_video_not_needed_when_precise_segments_are_given(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["structured_assessment"] = {
+            "信息密度": 8.5,
+            "论据质量": 8.0,
+            "独创性": 7.5,
+            "观看性价比": 8.2,
+        }
+        payload = apply_deterministic_scoring(payload)
+        payload["watch_verdict"] = "看报告基本够；如果想直接抄关键动作，先看 01:52 | 05:35。只想知道核心原则的话，原视频不必完整看。"
         validate_normalized_report_payload(payload)
 
     def test_highest_compression_must_not_be_over_abstract(self) -> None:

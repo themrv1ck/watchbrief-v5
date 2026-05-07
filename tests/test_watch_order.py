@@ -176,6 +176,28 @@ class WatchOrderTest(unittest.TestCase):
         self.assertIn('"label": "只建议跳看"', html)
         self.assertNotIn('"filterKey": "skip"', html)
 
+    def test_worth_supplementing_score_uses_medium_band(self) -> None:
+        video = load_golden("sample_payload_heartflow.json")
+        video["page_file"] = "sample_heartflow.html"
+        video["replacement_score"] = 7.9
+        video["tag"] = "值得补看"
+        payload = {
+            "job_name": "mock-watch-order",
+            "generated_at": "2026-04-26 10:00",
+            "requested_count": 1,
+            "completed_count": 1,
+            "failed_count": 0,
+            "failures": [],
+            "videos": [video],
+        }
+
+        html = render_watch_order_html(payload)
+        html_lower = html.lower()
+
+        self.assertIn('"filterkey": "medium"', html_lower)
+        self.assertIn('"label": "值得补看"', html)
+        self.assertIn(band_config("medium").accent.lower(), html_lower)
+
     def test_filter_banner_color_mapping_for_skip_and_failed(self) -> None:
         html = render_watch_order_html(
             {

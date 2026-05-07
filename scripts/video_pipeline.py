@@ -23,10 +23,12 @@ try:
     from .acquisition_errors import (
         AcquisitionError,
         AudioDownloadBlockedError,
+        BilibiliSubtitleError,
         SubtitleUnavailableError,
     )
     from .analyzer.codex_review import CODEX_REVIEW_PROMPT_VERSION, build_review_request, parse_review_response
     from .analyzer.local_extract import build_local_extract_payload, configured_qwen_api_base, configured_qwen_model
+    from .analyzer.local_review import LOCAL_REVIEW_MODEL_ID, LOCAL_REVIEW_PROMPT_FINGERPRINT
     from .analyzer.prompts import WATCHBRIEF_VERSION
     from .audio_downloader import download_standard_audio
     from .providers.youtube_connect_provider import (
@@ -34,6 +36,7 @@ try:
         fetch_youtube_connect_transcript,
         material_from_youtube_connect,
     )
+    from .report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from .renderer import render_single_video_html
     from .report_cache import build_report_cache_identity, read_cached_report, report_cache_dir, write_cached_report
     from .resolver import refresh_xiaohongshu_media_url_from_browser, resolve_url
@@ -44,9 +47,10 @@ try:
     from .watch_order import write_watch_order
     from .scoring import SCORING_FORMULA_VERSION
 except ImportError:  # pragma: no cover - direct script execution
-    from acquisition_errors import AcquisitionError, AudioDownloadBlockedError, SubtitleUnavailableError
+    from acquisition_errors import AcquisitionError, AudioDownloadBlockedError, BilibiliSubtitleError, SubtitleUnavailableError
     from analyzer.codex_review import CODEX_REVIEW_PROMPT_VERSION, build_review_request, parse_review_response
     from analyzer.local_extract import build_local_extract_payload, configured_qwen_api_base, configured_qwen_model
+    from analyzer.local_review import LOCAL_REVIEW_MODEL_ID, LOCAL_REVIEW_PROMPT_FINGERPRINT
     from analyzer.prompts import WATCHBRIEF_VERSION
     from audio_downloader import download_standard_audio
     from providers.youtube_connect_provider import (
@@ -54,6 +58,7 @@ except ImportError:  # pragma: no cover - direct script execution
         fetch_youtube_connect_transcript,
         material_from_youtube_connect,
     )
+    from report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from renderer import render_single_video_html
     from report_cache import build_report_cache_identity, read_cached_report, report_cache_dir, write_cached_report
     from resolver import refresh_xiaohongshu_media_url_from_browser, resolve_url
@@ -76,6 +81,7 @@ SUBTITLE_QUALITY_AUDIO_FALLBACK_REASONS = {
     "coverage_below_threshold",
     "segment_count_too_low",
     "plain_text_char_count_too_low",
+    "video_duration_missing_for_quality_gate",
 }
 
 
@@ -172,7 +178,7 @@ class PipelineDependencies:
     transcribe_func: Callable[..., Any] = transcribe_audio_to_material
     youtube_connect_fallback_func: Optional[Callable[[str], Any]] = fetch_youtube_connect_transcript
     build_local_extract_func: Callable[..., dict[str, Any]] = build_local_extract_payload
-    build_review_request_func: Callable[[dict[str, Any]], dict[str, Any]] = build_review_request
+    build_review_request_func: Callable[..., dict[str, Any]] = build_review_request
     parse_review_response_func: Callable[[Any], dict[str, Any]] = parse_review_response
     render_func: Callable[[dict[str, Any]], str] = render_single_video_html
     cleanup_func: Callable[[Path], None] = lambda path: shutil.rmtree(path, ignore_errors=True)
@@ -458,18 +464,33 @@ def local_extract_start_debug(options: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def report_target_from_options(options: dict[str, Any]) -> str:
+    return normalize_report_target(options.get("report_target") or DEFAULT_REPORT_TARGET)
+
+
 def transcript_hash_from_segments(segments: list[dict[str, Any]]) -> str:
     normalized = json.dumps(segments, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def parse_review_response_with_metadata(parse_func: Callable[..., dict[str, Any]], raw_response: Any, stability_metadata: dict[str, Any]) -> dict[str, Any]:
+def parse_review_response_with_metadata(
+    parse_func: Callable[..., dict[str, Any]],
+    raw_response: Any,
+    stability_metadata: dict[str, Any],
+    *,
+    report_target: str,
+) -> dict[str, Any]:
     try:
-        return parse_func(raw_response, stability_metadata=stability_metadata)
+        return parse_func(raw_response, stability_metadata=stability_metadata, report_target=report_target)
     except TypeError as exc:
-        if "stability_metadata" not in str(exc):
+        if "stability_metadata" not in str(exc) and "report_target" not in str(exc):
             raise
-        return parse_func(raw_response)
+        try:
+            return parse_func(raw_response, stability_metadata=stability_metadata)
+        except TypeError as second_exc:
+            if "stability_metadata" not in str(second_exc):
+                raise
+            return parse_func(raw_response)
 
 
 def error_record(item: dict[str, Any], exc: BaseException) -> dict[str, Any]:
@@ -642,6 +663,7 @@ def process_skipped_item(
     index: int,
     deps: PipelineDependencies,
 ) -> dict[str, Any]:
+    report_target = report_target_from_options(deps.review_options)
     title = str(item.get("title") or "Untitled Video")
     slug = f"{index:02d}-{safe_slug(title, 'note')}"
     artifact_dir = (artifact_root or Path.cwd() / "payloads") / slug
@@ -652,6 +674,8 @@ def process_skipped_item(
     item_manifest = {
         "item_manifest_version": "watchbrief_v5.pipeline_item.v1",
         "status": "skipped",
+        "analysis_mode": str(deps.review_options.get("analysis_mode") or "standard"),
+        "report_target": report_target,
         "index": index,
         "title": title,
         "url": str(item.get("url") or ""),
@@ -681,6 +705,7 @@ def process_skipped_item(
     return {
         "status": "skipped",
         "index": index,
+        "report_target": report_target,
         "title": title,
         "url": str(item.get("url") or ""),
         "reason_code": reason_code,
@@ -704,6 +729,7 @@ def process_source(
     debug_dir: Optional[Path] = None,
 ) -> dict[str, Any]:
     dependencies = deps or PipelineDependencies()
+    report_target = report_target_from_options(dependencies.review_options)
     output_dir.mkdir(parents=True, exist_ok=True)
     debug_root = debug_dir or output_dir
     debug_root.mkdir(parents=True, exist_ok=True)
@@ -725,6 +751,7 @@ def process_source(
             resolved = fallback_resolution
         else:
             manifest = initial_manifest(source_url, "unknown", 1)
+            manifest["report_target"] = report_target
             if hasattr(exc, "debug"):
                 manifest["resolver_debug"] = getattr(exc, "debug")
             if fallback_error is not None and is_youtube_resolver_fallback_trigger(source_url, exc):
@@ -739,6 +766,7 @@ def process_source(
             failed_item = {
                 "status": "failed",
                 "index": 1,
+                "report_target": report_target,
                 "title": "Untitled Video",
                 "url": source_url,
                 "error": record,
@@ -756,6 +784,9 @@ def process_source(
         videos = [resolved]
 
     manifest = initial_manifest(source_url, source_kind, len(videos))
+    analysis_mode = str(dependencies.review_options.get("analysis_mode") or "standard")
+    manifest["analysis_mode"] = analysis_mode
+    manifest["report_target"] = report_target
     if resolved.get("resolver_debug"):
         manifest["resolver_debug"] = resolved["resolver_debug"]
     if source_kind == "list" and resolved.get("title"):
@@ -811,6 +842,7 @@ def process_video_item(
     review_response_provider: Optional[ReviewResponseProvider],
     deps: PipelineDependencies,
 ) -> dict[str, Any]:
+    report_target = report_target_from_options(deps.review_options)
     slug = f"{index:02d}-{safe_slug(item.get('title'), 'video')}"
     work_dir = (work_root or (output_dir / "_work")) / slug
     subtitle_dir = work_dir / "subtitles"
@@ -826,6 +858,8 @@ def process_video_item(
     item_manifest: dict[str, Any] = {
         "item_manifest_version": "watchbrief_v5.pipeline_item.v1",
         "status": "running",
+        "analysis_mode": str(deps.review_options.get("analysis_mode") or "standard"),
+        "report_target": report_target,
         "index": index,
         "title": str(item.get("title") or "Untitled Video"),
         "url": str(item.get("url") or ""),
@@ -1056,6 +1090,14 @@ def process_video_item(
                 subtitle_error_step.update(subtitle_debug_from_error(exc))
                 step("subtitle_fetcher", "unavailable", subtitle_error_step)
                 material = download_and_transcribe_audio(subtitle_available=False)
+            except BilibiliSubtitleError as exc:
+                subtitle_error_step = {"reason_code": exc.reason_code, "error": exc.message}
+                subtitle_error_step.update(subtitle_debug_from_error(exc))
+                fallback_allowed = bool(subtitle_error_step.get("audio_fallback_allowed", True))
+                step("subtitle_fetcher", "unavailable" if fallback_allowed else "failed", subtitle_error_step)
+                if not fallback_allowed:
+                    raise
+                material = download_and_transcribe_audio(subtitle_available=False)
 
         if local_input is None or transcript_quality_debug is None:
             local_input = transcript_material_to_local_extract_input(metadata, material)
@@ -1144,7 +1186,12 @@ def process_video_item(
             completed_local_extract_debug,
         )
 
-        review_request = deps.build_review_request_func(local_extract_payload)
+        review_request = deps.build_review_request_func(local_extract_payload, report_target=report_target)
+        scoring_formula_version = str(deps.review_options.get("scoring_formula_version") or SCORING_FORMULA_VERSION)
+        stability = review_request.setdefault("stability_metadata", {})
+        if isinstance(stability, dict):
+            stability["scoring_formula_version"] = scoring_formula_version
+            stability["report_target"] = report_target
         deps.write_json_func(review_request_path, review_request)
         codex_model_id = str(deps.review_options.get("codex_model") or "")
         step(
@@ -1152,12 +1199,13 @@ def process_video_item(
             "completed",
             {
                 "model_call_allowed": review_request.get("model_call_allowed"),
+                "report_target": report_target,
                 "transcript_hash": local_extract_debug["transcript_hash"],
                 "qwen_model_id": local_extract_payload.get("qwen_extract", {}).get("_qwen_model", local_extract_debug["qwen_model"]),
                 "qwen_prompt_version": local_extract_payload.get("analysis_boundary", {}).get("qwen_prompt_version", ""),
                 "codex_model": codex_model_id,
                 "codex_prompt_version": str(review_request.get("codex_prompt_version") or CODEX_REVIEW_PROMPT_VERSION),
-                "scoring_formula_version": SCORING_FORMULA_VERSION,
+                "scoring_formula_version": scoring_formula_version,
                 "watchbrief_version": WATCHBRIEF_VERSION,
             },
         )
@@ -1169,6 +1217,12 @@ def process_video_item(
         cache_identity: Optional[dict[str, Any]] = None
         cached_payload: Optional[dict[str, Any]] = None
         stability_metadata = copy.deepcopy(review_request.get("stability_metadata") or {})
+        if codex_model_id == LOCAL_REVIEW_MODEL_ID:
+            review_request["codex_prompt_fingerprint"] = LOCAL_REVIEW_PROMPT_FINGERPRINT
+            review_metadata = review_request.get("stability_metadata")
+            if isinstance(review_metadata, dict):
+                review_metadata["codex_prompt_fingerprint"] = LOCAL_REVIEW_PROMPT_FINGERPRINT
+            stability_metadata["codex_prompt_fingerprint"] = LOCAL_REVIEW_PROMPT_FINGERPRINT
         if codex_model_id:
             stability_metadata["codex_model"] = codex_model_id
         if cache_enabled:
@@ -1220,7 +1274,12 @@ def process_video_item(
             provider_review_request["_watchbrief_debug_dir"] = str(artifact_dir)
             raw_review_response = review_response_provider(copy.deepcopy(item), provider_review_request, copy.deepcopy(local_extract_payload))
             normalized_payload = apply_metadata_display_fields(
-                parse_review_response_with_metadata(deps.parse_review_response_func, raw_review_response, stability_metadata),
+                parse_review_response_with_metadata(
+                    deps.parse_review_response_func,
+                    raw_review_response,
+                    stability_metadata,
+                    report_target=report_target,
+                ),
                 metadata,
             )
             deps.write_json_func(payload_path, normalized_payload)
@@ -1252,6 +1311,7 @@ def process_video_item(
         return {
             "status": "completed",
             "index": index,
+            "report_target": report_target,
             "title": item_manifest["title"],
             "url": item_manifest["url"],
             "html_path": str(html_path),
@@ -1286,6 +1346,7 @@ def process_video_item(
         return {
             "status": "failed",
             "index": index,
+            "report_target": report_target,
             "title": item_manifest["title"],
             "url": item_manifest["url"],
             "error": record,

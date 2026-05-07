@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 try:
+    from .report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from .stability import stable_sha256
     from .validator import validate_normalized_report_payload
 except ImportError:  # pragma: no cover
+    from report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from stability import stable_sha256
     from validator import validate_normalized_report_payload
 
@@ -21,6 +23,7 @@ REPORT_CACHE_VERSION = "watchbrief_v5.report_cache.v1"
 REPORT_CACHE_ENV = "WATCHBRIEF_REPORT_CACHE_DIR"
 DEFAULT_REPORT_CACHE_DIR = Path.home() / ".watchbrief" / "cache" / "reports"
 REPORT_CACHE_KEY_FIELDS = (
+    "report_target",
     "transcript_hash",
     "qwen_model_id",
     "qwen_prompt_fingerprint",
@@ -45,6 +48,7 @@ def build_report_cache_identity(review_request: dict[str, Any], *, codex_model: 
     if not isinstance(metadata, dict):
         metadata = {}
     identity = {
+        "report_target": normalize_report_target(review_request.get("report_target") or metadata.get("report_target") or DEFAULT_REPORT_TARGET),
         "transcript_hash": str(metadata.get("transcript_hash") or ""),
         "qwen_model_id": str(metadata.get("qwen_model_id") or ""),
         "qwen_prompt_fingerprint": str(metadata.get("qwen_prompt_fingerprint") or ""),

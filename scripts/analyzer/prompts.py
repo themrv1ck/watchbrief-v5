@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from ..report_targets import DEFAULT_REPORT_TARGET, normalize_report_target, report_target_contract
     from ..validator import REQUIRED_REPORT_FIELDS, VALID_TAGS
 except ImportError:  # pragma: no cover - direct script execution
     SCRIPTS_DIR = Path(__file__).resolve().parents[1]
     if str(SCRIPTS_DIR) not in sys.path:
         sys.path.insert(0, str(SCRIPTS_DIR))
+    from report_targets import DEFAULT_REPORT_TARGET, normalize_report_target, report_target_contract
     from validator import REQUIRED_REPORT_FIELDS, VALID_TAGS
 
 
@@ -38,8 +40,8 @@ ANALYZER_SYSTEM_PROMPT = """你是 WatchBrief V5 的视频观看决策分析器�
 硬规则：
 1. 最终报告必须是中文。
 2. 不要整篇翻译后再分析；先理解原始语言内容，再输出中文判断。
-3. replacement_score 只表示：看完报告后，原视频还剩多少继续观看价值。
-4. topic 不能影响 replacement_score。
+3. replacement_score 只表示：这个视频本身的整体价值评分，不是“看完报告后原视频还剩多少观看价值”。
+4. topic 不能直接影响 replacement_score；只能根据视频内容证据、表达、论证和实际价值评分。
 5. tag 只能从固定推荐/替代标签里选，不能写主题词。
 6. one_line_brief 只讲视频主要讲了什么，必须以“这期视频主要讲：”开头。
 7. watch_verdict 只讲报告够不够、原视频要不要看、如果看，看哪段。
@@ -55,12 +57,33 @@ ANALYZER_SYSTEM_PROMPT = """你是 WatchBrief V5 的视频观看决策分析器�
 """ + "\n" + TERM_LOCALIZATION_RULES
 
 
+SCORING_RUBRIC = """replacement_score / structured_assessment 评分标尺：
+- 这个分数是“视频整体价值评分”，不是“读完报告后原视频还剩多少观看价值”。
+- 最终 replacement_score 会由 structured_assessment 四项确定性加权计算；你必须认真校准四项，不要把所有普通视频都压到 0-3。
+- 四项含义：
+  1. 信息密度：原视频单位时间内提供的有效观点、方法、例子、机制和可迁移判断的密度。
+  2. 论据质量：原视频是否给出清楚证据、例子、推理链、反例、边界或可验证依据。
+  3. 独创性：原视频是否有非模板化的新角度、新组合、少见经验、具体框架或独特表达；不是“世界首创”才给高分。
+  4. 观看性价比：原视频作为音视频作品本身的表达/观看/聆听价值；包括表达感染力、叙事节奏、演示、案例细节、上下文、情绪张力、视觉/操作过程、声音质感和原作者口吻。
+- 0-10 锚点：
+  - 0-2：视频整体价值很低；内容空泛、证据不足、重复严重，或转写/内容不足以支持判断。
+  - 3-4：整体价值偏低；有少量信息，但多数是常识、铺垫、重复或表达价值弱。
+  - 5-6：中等价值；有明确信息和部分例子/表达亮点，但独创性、证据或观看体验有限。
+  - 7-8：高价值；观点、论证、案例密度或表达体验较强，值得认真看/听关键段。
+  - 9-10：极高价值；内容、证据、独创性和表达体验都很强，值得完整看/听。
+- 校准规则：
+  - 不要因为主题普通就自动低分；只看视频证据。
+  - 不要因为报告写得清楚就压低分数；报告可替代性只能影响观看建议，不能决定视频整体价值分。
+  - 如果 transcript 很短、只有导言、寒暄或纯导航，低分合理；如果有具体方法、案例、演示、访谈张力或强表达，不能给 0-2。
+"""
+
 NORMALIZED_PAYLOAD_CONTRACT = {
     "required_fields": list(REQUIRED_REPORT_FIELDS),
     "tag_enum": list(VALID_TAGS),
     "path_table_keys": ["problem", "mechanism", "turning_point", "landing"],
     "score_basis_keys": ["information_density", "evidence_quality", "originality", "watch_value"],
     "watch_segment_priorities": ["primary", "optional", "backup"],
+    "structured_assessment_rubric": SCORING_RUBRIC,
 }
 
 
@@ -144,9 +167,24 @@ def build_qwen_local_extract_user_prompt(local_extract_seed: dict[str, Any]) -> 
     )
 
 
-def build_review_user_prompt(local_extract_payload: dict[str, Any]) -> str:
-    """Build the user prompt for a future model call without executing it."""
+def build_target_report_prompt(report_target: str) -> str:
+    target = normalize_report_target(report_target)
+    if target == DEFAULT_REPORT_TARGET:
+        return ""
+    contract = report_target_contract(target)
     return (
+        "\n\nreport_target 目标模式补充契约：\n"
+        f"{json.dumps(contract, ensure_ascii=False, indent=2)}\n"
+        "你仍然必须输出 baseline normalized_report_payload 的全部 required_fields，用于稳定校验、评分和兼容旧报告链路。\n"
+        f"同时必须输出 report_target = {target}、target_summary 和 target_sections。\n"
+        "target_sections 只能使用上面列出的固定 key；每个 key 的值必须是中文字符串数组，1 到 6 条，不得编造原文没有的信息。\n"
+        "非观看决策目标的最终页面会优先展示 target_summary 与 target_sections；watch_verdict/watch_segments 只作为兼容字段保留。\n"
+    )
+
+
+def build_review_user_prompt(local_extract_payload: dict[str, Any], *, report_target: str = DEFAULT_REPORT_TARGET) -> str:
+    """Build the user prompt for a future model call without executing it."""
+    prompt = (
         "请根据下面的 local_extract_payload 生成一个 normalized_report_payload。\n"
         "输入里可能包含 qwen_extract，这是本地 Qwen 对转写内容的中间提炼；你可以参考其中 core_claims、methods、caveats、quotes、important_terms、corrected_terms，但最终字段仍必须遵守 V5 schema 和 validator。\n"
         "专名、人名、书名和工具名必须优先使用 qwen_extract.important_terms 与 qwen_extract.corrected_terms；不要自己重新猜人名。不确定就写“疑似某某”。\n"
@@ -159,3 +197,4 @@ def build_review_user_prompt(local_extract_payload: dict[str, Any]) -> str:
         "local_extract_payload：\n"
         f"{json.dumps(local_extract_payload, ensure_ascii=False, indent=2)}"
     )
+    return prompt + build_target_report_prompt(report_target)

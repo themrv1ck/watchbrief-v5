@@ -82,6 +82,33 @@ class CliTest(unittest.TestCase):
                     self.assertEqual(cli.main(), 0)
             return process.call_args.kwargs["deps"]
 
+    def test_analysis_mode_defaults_to_standard_timeout(self) -> None:
+        deps = self.run_cli_and_capture_deps([])
+
+        self.assertEqual(deps.review_options["analysis_mode"], "standard")
+        self.assertEqual(deps.review_options["report_target"], "watch_decision")
+        self.assertEqual(deps.local_extract_options["qwen_timeout"], 900)
+        self.assertFalse(deps.review_options["force_reanalysis"])
+
+    def test_report_target_passes_to_pipeline_review_options(self) -> None:
+        deps = self.run_cli_and_capture_deps(["--report-target", "knowledge_notes"])
+
+        self.assertEqual(deps.review_options["analysis_mode"], "standard")
+        self.assertEqual(deps.review_options["report_target"], "knowledge_notes")
+
+    def test_deep_analysis_mode_sets_pipeline_defaults(self) -> None:
+        deps = self.run_cli_and_capture_deps(["--analysis-mode", "deep"])
+
+        self.assertEqual(deps.review_options["analysis_mode"], "deep")
+        self.assertEqual(deps.local_extract_options["qwen_timeout"], 1200)
+        self.assertTrue(deps.review_options["force_reanalysis"])
+
+    def test_explicit_timeout_overrides_analysis_mode_timeout(self) -> None:
+        deps = self.run_cli_and_capture_deps(["--analysis-mode", "fast", "--timeout", "321"])
+
+        self.assertEqual(deps.review_options["analysis_mode"], "fast")
+        self.assertEqual(deps.local_extract_options["qwen_timeout"], 321)
+
     def test_default_cookies_from_browser_attempts_chrome_then_safari(self) -> None:
         deps = self.run_cli_and_capture_deps([])
 

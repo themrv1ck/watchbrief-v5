@@ -20,13 +20,15 @@ if __package__ in (None, ""):
     root = Path(__file__).resolve().parents[1]
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
-    from scripts.analyzer.codex_review import run_codex_review
+    from scripts.analyzer.codex_review import parse_review_response, run_codex_review
     from scripts.analyzer.cloud_review import run_cloud_review
     from scripts.analyzer.external_extract import build_external_extract_payload
     from scripts.analyzer.local_extract import DEFAULT_QWEN_MODEL, build_local_extract_payload
     from scripts.analyzer.local_review import LOCAL_REVIEW_MODEL_ID, build_local_review_response
     from scripts.cookie_strategy import DEFAULT_COOKIE_BROWSER_ATTEMPTS
+    from scripts.report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, normalize_report_target
     from scripts.resolver import resolve_url
+    from scripts.scoring import SCORING_PROFILES, formula_version_for_weights, parse_scoring_weights, weights_for_profile
     from scripts.video_pipeline import PipelineDependencies, PipelineError, process_source
     from scripts.youtube_manual_verification import (
         chrome_verification_command,
@@ -35,13 +37,15 @@ if __package__ in (None, ""):
         ytdlp_subtitle_probe_command,
     )
 else:
-    from .analyzer.codex_review import run_codex_review
+    from .analyzer.codex_review import parse_review_response, run_codex_review
     from .analyzer.cloud_review import run_cloud_review
     from .analyzer.external_extract import build_external_extract_payload
     from .analyzer.local_extract import DEFAULT_QWEN_MODEL, build_local_extract_payload
     from .analyzer.local_review import LOCAL_REVIEW_MODEL_ID, build_local_review_response
     from .cookie_strategy import DEFAULT_COOKIE_BROWSER_ATTEMPTS
+    from .report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, normalize_report_target
     from .resolver import resolve_url
+    from .scoring import SCORING_PROFILES, formula_version_for_weights, parse_scoring_weights, weights_for_profile
     from .video_pipeline import PipelineDependencies, PipelineError, process_source
     from .youtube_manual_verification import (
         chrome_verification_command,
@@ -60,6 +64,11 @@ DEFAULT_EXTRACT_API_BASES = {
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
     "claude": "https://api.anthropic.com/v1",
     "kimi": "https://api.moonshot.ai/v1",
+}
+ANALYSIS_MODE_DEFAULTS = {
+    "fast": {"timeout": 600, "force_reanalysis": False, "keep_debug_artifacts": False},
+    "standard": {"timeout": 900, "force_reanalysis": False, "keep_debug_artifacts": False},
+    "deep": {"timeout": 1200, "force_reanalysis": True, "keep_debug_artifacts": True},
 }
 
 
@@ -248,8 +257,8 @@ def make_review_response_provider(
         return provider
 
     if review_provider in {"local", "local-rules"}:
-        def provider(_item: dict[str, Any], _request: dict[str, Any], extract: dict[str, Any]) -> dict[str, Any]:
-            return build_local_review_response(extract)
+        def provider(_item: dict[str, Any], request: dict[str, Any], extract: dict[str, Any]) -> dict[str, Any]:
+            return build_local_review_response(extract, report_target=normalize_report_target(request.get("report_target") or DEFAULT_REPORT_TARGET))
 
         return provider
 
@@ -263,6 +272,7 @@ def make_review_response_provider(
                 api_base=review_api_base or "",
                 api_key_env=review_api_key_env or "",
                 timeout=timeout,
+                report_target=normalize_report_target(request.get("report_target") or DEFAULT_REPORT_TARGET),
                 debug_dir=debug_dir,
             )
 
@@ -285,6 +295,7 @@ def make_review_response_provider(
             codex_home_root=codex_home_root,
             codex_account=codex_account,
             timeout=timeout,
+            report_target=normalize_report_target(request.get("report_target") or DEFAULT_REPORT_TARGET),
             debug_dir=debug_dir,
         )
 
@@ -355,7 +366,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--extract-api-base", help="API base for non-Qwen extraction providers")
     parser.add_argument("--extract-api-key-env", help="environment variable name that contains the extraction provider API key")
     parser.add_argument("--force-reanalysis", action="store_true", help="ignore validated report cache and run Codex review again")
-    parser.add_argument("--timeout", type=int, default=120, help="codex review timeout seconds")
+    parser.add_argument(
+        "--analysis-mode",
+        choices=tuple(ANALYSIS_MODE_DEFAULTS.keys()),
+        default="standard",
+        help="analysis strength preset: fast uses 600s/cache reuse; standard uses 900s; deep uses 1200s plus reanalysis/debug defaults",
+    )
+    parser.add_argument(
+        "--report-target",
+        choices=REPORT_TARGETS,
+        default=DEFAULT_REPORT_TARGET,
+        help="report target mode: watch_decision, text_structure, knowledge_notes, viewpoint_breakdown, or creation_review",
+    )
+    parser.add_argument("--timeout", type=int, help="model/review timeout seconds. Defaults to the selected --analysis-mode preset")
     parser.add_argument("--transcriber", choices=("auto", "mlx_audio", "whisper"), default="auto", help="transcriber provider. auto means MLX-Audio only.")
     parser.add_argument("--mlx-model", help="MLX-Audio transcription model id")
     parser.add_argument("--whisper-model", default="base", help="Whisper model when --transcriber whisper or explicit fallback is used")
@@ -363,6 +386,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--qwen-model", help=f"Qwen-family local extraction model id; defaults to WATCHBRIEF_QWEN_MODEL or {DEFAULT_QWEN_MODEL}")
     parser.add_argument("--qwen-api-base", help="LM Studio API base for Qwen local extraction; defaults to WATCHBRIEF_QWEN_API_BASE or localhost:1234/v1")
     parser.add_argument("--qwen-timeout", type=int, help="Qwen local_extract timeout seconds. Defaults to --timeout.")
+    parser.add_argument(
+        "--scoring-profile",
+        choices=tuple(SCORING_PROFILES.keys()) + ("custom",),
+        default="standard",
+        help="deterministic scoring preference: standard, information-first, evidence-first, originality-first, watch-value-first, or custom",
+    )
+    parser.add_argument(
+        "--scoring-weights",
+        help="custom scoring weights, e.g. information_density=0.2,evidence_quality=0.3,originality=0.2,watch_value=0.3",
+    )
     parser.add_argument(
         "--bilibili-cookies-from-browser",
         "--cookies-from-browser",
@@ -384,6 +417,19 @@ def main() -> int:
     args = parse_args()
 
     source_path: Path | None = None
+    mode_defaults = ANALYSIS_MODE_DEFAULTS[args.analysis_mode]
+    if args.timeout is None:
+        args.timeout = int(mode_defaults["timeout"])
+    if not args.force_reanalysis and bool(mode_defaults["force_reanalysis"]):
+        args.force_reanalysis = True
+    if not args.keep_debug_artifacts and bool(mode_defaults["keep_debug_artifacts"]):
+        args.keep_debug_artifacts = True
+    try:
+        scoring_weights = parse_scoring_weights(args.scoring_weights) if args.scoring_weights else weights_for_profile(args.scoring_profile)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
+    scoring_formula_version = formula_version_for_weights(scoring_weights)
+
     if args.source_file and args.source_file != "-":
         source_path = Path(args.source_file).expanduser()
         if not source_path.exists():
@@ -508,18 +554,26 @@ def main() -> int:
         review_model_id = args.review_model or args.review_provider
     else:
         review_model_id = args.codex_model or args.model
+    def parse_review_response_with_scoring(raw_response: Any, **kwargs: Any) -> dict[str, Any]:
+        return parse_review_response(raw_response, scoring_weights=scoring_weights, **kwargs)
+
     deps = PipelineDependencies(
         resolve_url_func=source_resolver,
         build_local_extract_func=build_local_extract_func or build_local_extract_payload,
+        parse_review_response_func=parse_review_response_with_scoring,
         resolver_options=resolver_options if source_path is not None or source_resolver is resolve_url else {},
         subtitle_options=subtitle_options,
         audio_download_options=audio_download_options,
         transcriber_options=transcriber_options,
         local_extract_options=local_extract_options,
         review_options={
+            "analysis_mode": args.analysis_mode,
+            "report_target": args.report_target,
             "codex_model": review_model_id,
             "report_cache_enabled": True,
             "force_reanalysis": args.force_reanalysis,
+            "scoring_weights": scoring_weights,
+            "scoring_formula_version": scoring_formula_version,
         },
     )
     explicit_output_dir = args.output_dir is not None

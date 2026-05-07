@@ -1,5 +1,205 @@
 # 工作日志
 
+## 2026-05-07
+
+### 12:35 CST · WebUI report target multi-select / GitHub release update
+
+- 修复 WebUI “报告目标”只能单选的问题：报告目标卡片从 radio 改为 checkbox，默认仍勾选 `watch_decision`，但现在可同时选择 `watch_decision`、`text_structure`、`knowledge_notes`、`viewpoint_breakdown`、`creation_review`。
+- 后端同步支持多目标 payload：新增 `parse_report_targets()`，`/api/preview` 会展开为多条 CLI 命令；`/api/tasks` 会按每个报告目标分别启动任务，并在任务记录中写入 `report_target` / `report_target_label`，避免把多个目标挤进同一个 CLI 调用。
+- 兼容旧单目标链路：`build_cli_command()` 继续支持旧 `report_target` 字段；单选/旧 payload 仍生成一条 `--report-target <target>` 命令。
+- 验证结果：
+  - `python3 -m py_compile scripts/webui.py` 通过。
+  - `python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 40 tests，OK。
+  - `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 447 tests，OK，skipped=3。
+  - 浏览器打开 `http://127.0.0.1:8765` 实测报告目标为 5 个 checkbox；同时勾选 `watch_decision`、`knowledge_notes`、`creation_review` 后，命令预览展开为 3 条命令，分别带 `--report-target watch_decision`、`--report-target knowledge_notes`、`--report-target creation_review`。
+- 当前 WebUI 已重启到新代码：`python3 scripts/webui.py --host 127.0.0.1 --port 8765`，后台 session `proc_52032717d027`，PID `8155`。
+- 回退提示：若只回退本轮多选，优先回退 `scripts/webui.py` 中 `report_targets` checkbox、`parse_report_targets()`、preview/tasks 展开逻辑，以及 `tests/test_webui.py::test_multi_report_targets_expand_to_multiple_preview_commands`。
+
+### 11:04 CST · Report target modes in WebUI / Codex contract / renderer validation
+
+- 按用户要求把 4 个新增报告目标落实为一等模式，并保持现有观看决策模式不改语义、不接收 `target_summary` / `target_sections`：
+  - `text_structure`：文本结构分析
+  - `knowledge_notes`：知识笔记
+  - `viewpoint_breakdown`：观点拆解
+  - `creation_review`：创作复盘
+- Codex 执行：已通过 Codex CLI 发起实现任务，随后人工复核并补齐落地链路；核心边界是新增 `scripts/report_targets.py` 作为目标模式注册表，不修改 `watch_decision` 的报告字段、评分语义和原观看决策 HTML 骨架。
+- 代码链路已打通：
+  - `scripts/report_targets.py`：集中定义 label、description、section keys 与 prompt contract。
+  - `scripts/analyzer/prompts.py` / `scripts/analyzer/codex_review.py` / `scripts/analyzer/cloud_review.py` / `scripts/analyzer/local_review.py`：Codex/云端/本地 review 均能接收 `report_target`，非观看决策目标要求输出 `target_summary` 与固定 key 的 `target_sections`。
+  - `schemas/single_video_report.schema.json` / `scripts/validator.py`：schema 允许新增目标字段；validator 明确禁止 `watch_decision` 携带目标扩展字段，避免污染现有观看决策模式。
+  - `scripts/video_pipeline.py` / `scripts/report_cache.py`：manifest、item_manifest、review_request、payload 和 report cache identity 均写入 `report_target`，不同目标不会复用旧缓存。
+  - `scripts/renderer.py`：非观看决策目标走目标报告页面，优先展示模式标签、`target_summary` 与目标分区；`watch_decision` 继续走原观看决策模板。
+  - `scripts/cli.py` / `scripts/webui.py`：CLI 支持 `--report-target`；WebUI “新建任务”里展示“报告目标”卡片，包含观看决策、文本结构分析、知识笔记、观点拆解、创作复盘。
+- 验证结果：
+  - `python3 -m py_compile scripts/report_targets.py scripts/analyzer/prompts.py scripts/analyzer/codex_review.py scripts/analyzer/cloud_review.py scripts/analyzer/local_review.py scripts/report_cache.py scripts/cli.py scripts/video_pipeline.py scripts/validator.py scripts/renderer.py scripts/webui.py` 通过。
+  - 定向回归：`test_analyzer_prompts.py`、`test_analyzer_codex_review.py`、`test_validator.py`、`test_renderer.py`、`test_video_pipeline.py`、`test_cli.py`、`test_webui.py` 全部通过。
+  - 全量回归：`python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 448 tests，OK，skipped=3。
+  - WebUI 已重启到新代码，`http://127.0.0.1:8765/` 返回 `HTTP/1.0 200 OK`，页面 HTML 已实测包含 `报告目标`、`观看决策`、`文本结构分析`、`知识笔记`、`观点拆解`、`创作复盘` 以及 5 个 `report_target` radio value。
+- 当前 WebUI 进程：`python3 scripts/webui.py --host 127.0.0.1 --port 8765`，后台 session `proc_db85f5f48947`，PID `73494`。
+- 回退提示：若只回退本轮目标模式，优先回退 `scripts/report_targets.py`、`schemas/single_video_report.schema.json`、`scripts/analyzer/*review*.py`、`scripts/analyzer/prompts.py`、`scripts/validator.py`、`scripts/renderer.py`、`scripts/video_pipeline.py`、`scripts/report_cache.py`、`scripts/cli.py`、`scripts/webui.py` 及对应测试中 `report_target` 相关改动；不要回退此前已经稳定的 Fast/Standard/Deep、评分口径、WebUI 任务记录和真实视频矩阵修复。
+
+## 2026-05-06
+
+### 22:52 CST · WatchBrief overnight self-check / WebUI state reconciliation / real video smoke matrix
+
+- 夜间自检结果：主流程已跑完，Hermes 监督任务 `proc_4ab7caf312d9` 正常退出；日志在 `/tmp/watchbrief_overnight/hermes_overnight_20260506_222055.log`。本轮未读取、打印或保存 cookies/token/xsec/signed URL，只记录非敏感状态。
+- 代码修复/增强集中在 `scripts/webui.py` 与 `tests/test_webui.py`：
+  - 新增 `_reconcile_stale_active_tasks()`：任务记录/API/验收矩阵读取前会把“记录为 running 但 pid 已不存在”的僵尸任务自动标记为 failed，避免历史任务永久显示运行中。
+  - `tasks_for_api()`、`clear_tasks()`、`smoke_matrix_status()` 统一走陈旧任务调和；清空任务记录继续只清理 completed / failed / cancelled，保留 running / queued。
+  - B 站列表识别补充 `favlist` / `fid=` / `ftype=create` 信号，真实视频验收矩阵能把 B 站收藏夹/列表归到 `bilibili-list`，而不是误当单视频。
+  - 新增回归测试 `test_stale_running_task_is_marked_failed_before_history_and_matrix`，覆盖任务记录和真实视频验收矩阵对僵尸任务的状态修正。
+- 环境与 WebUI 自检：
+  - WebUI `http://127.0.0.1:8765` 可用，`/api/status`、环境诊断和真实视频验收矩阵 API 可用。
+  - Qwen/LM Studio `127.0.0.1:1234` 可用；Codex CLI 可用，版本 `codex-cli 0.128.0`；MLX-Audio 和 Whisper 均检测可用。
+  - WebUI 页面/接口覆盖了欢迎页、新建任务页、任务记录页、Fast/Standard/Deep 文案、任务记录进度、停止/清空逻辑和矩阵状态。
+- 真实视频验收产物根目录：`/tmp/watchbrief_overnight_20260506_222746`。
+  - B 站单视频 `https://www.bilibili.com/video/BV18YiRYiEEC` 成功：resolver 成功；平台字幕不可用后进入 audio downloader；转写成功；coverage gate 通过；renderer 成功。manifest：`/tmp/watchbrief_overnight_20260506_222746/bilibili_single/_debug/manifest.json`；HTML：`/tmp/watchbrief_overnight_20260506_222746/bilibili_single/01-从正常压到虚弱元凶是皮质醇-自己吓自己后高敏感压力吸引着-坏.html`。
+  - B 站列表 `https://www.bilibili.com/list/ml3620170810?oid=113599402017137&bvid=BV18YiRYiEEC` 成功：`playlist_title=装潢`，`total_count=5`，`completed_count=5`，`failed_count=0`。Watch Order：`/tmp/watchbrief_overnight_20260506_222746/bilibili_list/00-watch-order.html`。第 5 条旧失败视频 `掌握灯光基本技巧，老破小也能装出高级效果` 已恢复成功；item manifest：`/tmp/watchbrief_overnight_20260506_222746/bilibili_list/_debug/payloads/05-掌握灯光基本技巧，老破小也能装出高级效果/item_manifest.json`，验证到 `metadata_provider=bilibili-fav-list-api`、字幕可用、`audio_downloader_skipped_due_to_subtitle=true`、coverage ratio 约 `0.9766`。
+  - YouTube：旧基准 `BaW_jenozKc` 返回 Video unavailable / resolver_failed，记录为源不可用，不绕过；替代 TED-Ed `dqONk48l5vY` 成功，manual English VTT 字幕成功，segment_count `80`，char_count `3525`，跳过 audio_downloader，HTML 成功。manifest：`/tmp/watchbrief_overnight_20260506_222746/youtube_teded/_debug/manifest.json`；HTML：`/tmp/watchbrief_overnight_20260506_222746/youtube_teded/01-What-would-happen-if-you-didn’t-sleep-Claudia-Aguirre.html`。
+  - 无字幕/转写路径由 B 站单视频覆盖：`字幕不可用 → audio_downloader → transcriber → transcript_quality → renderer` 成功；没有伪造字幕成功，也没有绕过 coverage gate。
+- 回归验证：
+  - `python3 -m py_compile scripts/*.py scripts/analyzer/*.py scripts/providers/*.py` 通过。
+  - `python3 -m unittest discover -s tests -p 'test_webui.py'` 通过，40 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，439 tests OK，3 skipped。
+- 已知后续清理项：全量测试存在非致命 `ResourceWarning`，主要来自测试里构造的 `urllib.error.HTTPError(..., fp=None)` / fake HTTPError 未关闭，集中在 `tests/test_acquisition_resolver.py`、`tests/test_acquisition_audio_downloader.py`。这是测试清洁度问题，不影响主链路通过；后续可用最小补丁让 fake HTTPError 可关闭或在异常处理处显式 close。
+- 回退提示：本轮主要新增 WebUI 陈旧任务调和与矩阵分类逻辑；若需要回退，优先回退 `scripts/webui.py` 的 `_pid_is_running()` / `_reconcile_stale_active_tasks()` 调用链及 `tests/test_webui.py` 新增用例，不影响 22:05 已修的 resolver/validator 修复。
+
+
+### 22:05 CST · WatchBrief WebUI input reset / list naming / progress strip / validator false-positive fix
+
+- 直接修了 4 个点：
+  - `scripts/webui.py`：开始运行成功后会清空输入来源 textarea、隐藏的 `source_file` 和已选文件标签，不再残留上一次文本；同时顺手修掉“清空任务记录”前端调用了不存在的 `renderTasks()` 的旧 bug，改成重新拉取列表。
+  - `scripts/webui.py`：任务记录里的 `解析完成 / 转写完成 / 理解完成 / 判断完成 / 报告完成` 文案不再作为一串 banner；改成基于任务状态/manifest 的单行进度条文案（如 `解析完成20%`、`报告完成100%`），浏览器实测任务记录页已显示进度百分比。
+  - `scripts/resolver.py`：B 站列表标题选择增加“避开当前视频标题”的判定，优先保留真正的列表标题；对 `https://www.bilibili.com/list/ml3620170810?oid=113599402017137&bvid=BV18YiRYiEEC` 复验后，`playlist_title` 已恢复为列表标题 `装潢`。旧任务已经落盘在误用单视频标题的目录 `/Users/apple/Desktop/掌握灯光基本技巧，老破小也能装出高级效果`，新任务应按列表标题输出到 `/Users/apple/Desktop/装潢`（或同名递增后缀）。
+  - `scripts/validator.py`：放宽高分视频 `watch_verdict` 的误杀条件——当 verdict 已明确给出精确时间段（`MM:SS | MM:SS`）时，即使文案里出现“原视频不必完整看”，也不再把它误判成“高价值视频却不该不看”的冲突。
+- 真实失败点已确认，不是 resolver 解析挂掉：
+  - 复查旧 WebUI 调试清单 `/var/folders/.../watchbrief_v5_debug_odlc_b7i/manifest.json`，第 5 条失败原因为：
+    - `stage=pipeline`
+    - `reason_code=pipeline_failed`
+    - `error=validator_failed: watch_verdict: must not conflict with high video value`
+  - 也就是说：视频已经成功解析、拿到条目、跑到 pipeline 后段；真正炸的是 validator 的假阳性，不是“视频解析错误”。
+- WebUI 复验：
+  - 重新启动 8765 WebUI；浏览器打开 `http://127.0.0.1:8765`，新建任务页仍是大输入框；任务记录页已看到进度条式文案（例如 `报告完成100%`、`处理中0%`）。
+  - `/api/tasks` 现能读到旧任务；列表任务 `ab26147a18d7` 已显示 `5/5 个视频已处理；成功 4，失败 1，跳过 0`，与 debug manifest 一致。
+- 回归测试：
+  - `python3 -m py_compile scripts/webui.py scripts/resolver.py scripts/validator.py` 通过
+  - `python3 -m unittest discover -s tests -p 'test_webui.py'` 通过，Ran 39 tests
+  - `python3 -m unittest discover -s tests -p 'test_validator.py'` 通过，Ran 17 tests
+  - `python3 -m unittest discover -s tests -p 'test_acquisition_resolver.py'` 通过，Ran 38 tests
+  - `python3 -m unittest discover -s tests -p 'test_scoring.py'` 通过，Ran 14 tests
+  - `python3 -m unittest discover -s tests -p 'test_cli.py'` 通过，Ran 29 tests
+
+### 08:40 CST · WatchBrief score-band threshold alignment
+
+- User-visible color palette is unchanged; only numeric ranges were aligned:
+  - `0.1-4.9` → red / 不推荐观看
+  - `5.0-6.5` → yellow / 只建议跳看（少量片段可取）
+  - `6.6-8.5` → purple / 值得补看（中等片段可取）
+  - `8.6-10.0` → green / 建议完整看
+- Updated `scripts/score_bands.py`, `scripts/scoring.py`, `scripts/analyzer/codex_review.py`, and validator conflict thresholds so renderer, Watch Order, Codex prompt contract, deterministic tag validation, and color bands use the same boundaries.
+- Added regression coverage for boundary tags and the 7.9 purple medium band in renderer / Watch Order tests.
+- Verified targeted suites:
+  - `test_scoring.py`: 14 passed
+  - `test_renderer.py`: 18 passed
+  - `test_watch_order.py`: 19 passed
+  - `test_validator.py`: 16 passed
+- Full regression: `python3 -m unittest discover -s tests -p 'test_*.py'` passed, Ran 435 tests, OK (skipped=3).
+
+## 2026-05-05
+
+
+- 评分口径迁移闭环：将 WatchBrief 评分产品定义从旧“读完报告后原视频剩余观看价值”迁移为“视频整体价值评分”，同步更新 scoring/prompt/Codex review/schema/golden/WebUI 文案与 `watchbrief_v5` skill；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 432 tests，OK (skipped=3)。
+- 新评分口径真实 B 站收藏夹重跑：`https://space.bilibili.com/163343210/favlist?fid=3958254310&ftype=create` 使用 `gpt-5.5` + Standard + force reanalysis 完成 7/7，输出目录 `/Users/apple/Desktop/如果你志向远大却总犯懒…这个视频就是为你准备的-2`，生成 7 个单视频 HTML + `00-watch-order.html`；浏览器视觉核验显示总视频数 7、解析成功 7、解析失败 0，扫描未发现 `Video N` / `<title>Video` / `<h1>Video`。新分数为 5.0、3.9、5.2、6.0、5.1、6.3、6.6。
+- 网易云播客试跑闭环：新增 NetEase Music podcast resolver，支持 `163cn.tv` 短链展开、节目详情 API、真实音频 URL 获取，并保证 signed media URL 不进入公开 resolver 输出；新增回归测试 `test_netease_short_program_resolves_to_audio_item_without_exposing_media_url`，resolver 测试通过 Ran 37 tests，OK。用户给的《无人知晓》`E35 知识的缝隙` 已真实跑通到 `/Users/apple/Desktop/01-E35-知识的缝隙.html`，manifest completed=1、failed=0，MLX-Audio 转写覆盖率 1.0，最终 video value score 7.9/10，HTML 浏览器视觉核验正常。
+- 评分语义产品定义更新：用户明确纠正 WatchBrief 分数应表示“视频整体价值评分”，不是“读完报告后原视频还剩多少观看价值”。已同步更新长期记忆和 `watchbrief_v5/references/scoring-rubric.md`：后续评分应以视频本身的信息密度、论据质量、独创性、表达/观看体验和实际认知/实用价值为依据；“报告是否可替代原视频”只能作为观看建议/跳看判断的辅助字段，不能继续作为最终分数语义。代码层面仍需后续把 prompt、字段命名/说明、renderer 文案、cache fingerprint / scoring formula version 和旧报告解释一起迁移，避免新旧评分混用。
+- 真实 B 站收藏夹重跑闭环：`https://space.bilibili.com/163343210/favlist?fid=3958254310&ftype=create` 用 `gpt-5.5` + `Standard` 重跑后，输出目录 `/Users/apple/Desktop/如果你志向远大却总犯懒…这个视频就是为你准备的` 生成 7 个单视频 HTML + `00-watch-order.html`；文件名、Watch Order 标题、HTML 标题均未再出现 `Video N`。首轮第 1 条因 validator 把“重要。”误判为未完成连接词而失败，已修复 `final_conclusion` 校验中对单字“要”的过宽匹配，并用既有 `codex_adapted.json` 验证、补渲染第 1 条和重写 Watch Order，最终 manifest 为 completed=7、failed=0。
+- 本轮真实回归校验：浏览器打开 `00-watch-order.html` 视觉核验显示总视频数 7、解析成功 7、解析失败 0；脚本扫描输出目录未发现 `Video N` / `<title>Video` / `<h1>Video`。7 条 payload 均为 `codex_model=gpt-5.5`，分数分别为 4.3、2.6、4.7、5.1、3.7、5.3、5.7，说明不再是旧 `local-rules` 固定 4.5。全量 `python3 -m unittest discover -s tests -p test_*.py` 通过，Ran 431 tests，OK (skipped=3)。
+- 分析模式下沉修复：把 `Fast / Standard / Deep` 从仅 WebUI 安全预设推进为 CLI 一等参数 `--analysis-mode fast|standard|deep`，并将选择写入 pipeline manifest / item_manifest；WebUI 现在显式传递 `--analysis-mode`，同时保留原有 timeout、cache、force reanalysis、debug 预设和 Deep 手动取消逻辑。
+- Codex CLI 版本诊断：WebUI 环境诊断现在读取 `codex --version` 的非敏感版本信息，遇到当前已知会拒绝 `gpt-5.5` 的旧 Codex CLI 时显示“需升级”警告；不读取、不展示 token / cookie / signed URL。
+- 回归验证：复查此前真实跑通的 `Udemy - Codex - The Practical Guide` 课程产物，确认桌面 49 个 HTML、debug manifest 为 48/48 completed、0 failed、48 个 normalized payload 均通过 schema 检查，且至少 2 集保留 `fallback_to_audio` 轨迹。
+- 校验：`python3 -m py_compile scripts/cli.py scripts/webui.py scripts/video_pipeline.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 34 tests；`python3 -m unittest discover -s tests -p test_cli.py -v` 通过，Ran 29 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 420 tests，OK (skipped=3)。
+- Codex CLI 升级闭环：经用户明确允许后执行 `brew upgrade --cask codex`，已从 `codex-cli 0.118.0` 升级到 `codex-cli 0.128.0`；`/opt/homebrew/bin/codex` 指向 `/opt/homebrew/Caskroom/codex/0.128.0/codex-aarch64-apple-darwin`。
+- Codex gpt-5.5 实测：执行 `codex exec --model gpt-5.5 --sandbox read-only --ephemeral --skip-git-repo-check "只输出 OK，不要调用工具。"` 成功返回 `OK`，此前 “gpt-5.5 requires a newer version of Codex” 阻塞已解除。
+- 升级后诊断与回归：WebUI `/api/diagnostics?force=1` 显示 Codex CLI 为 ok、版本 `codex-cli 0.128.0`、`codex_cli_gpt55_ready=true`；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 420 tests，OK (skipped=3)。旧课程交付目录仍为 49 个 HTML、48 个单视频 HTML、`00-watch-order.html` 显示总视频数 48、解析成功 48、解析失败 0，单集 HTML 未扫到明显 pipeline/traceback/coverage 错误。
+- 环境诊断独立页：按反馈把“一键环境诊断”从新建任务主表单中拆出，左侧新增/保留独立“环境诊断”视图；新建任务页只保留运行前 5 项自检摘要，诊断页集中展示模型来源、转写、Codex、云模型变量、登录态、输出、PDF 和文件选择能力，避免新建任务窗口继续拥挤。
+- 任务记录停止按钮：运行中/排队任务行新增红色“停止任务”按钮，前端调用 `/api/tasks/<task_id>/stop`；后端记录子进程 pid 并使用独立 session 终止任务进程组，任务状态写为 `cancelled`，日志追加 `webui_task_stopped_by_user`，runner 不再把用户停止覆盖成 failed。
+- 本轮 UI/停止按钮校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 35 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 421 tests，OK (skipped=3)。已重启 8765 WebUI，HTTP 检查确认 `/app.js` 包含“停止任务”，浏览器视觉核验确认独立环境诊断页可运行诊断、新建任务页更简洁、任务记录页运行中任务显示“停止任务”。
+- 4.5 固定分严肃排查：扫描 `~/.watchbrief/cache/reports` 与桌面近日报告，确认 53 个 `codex_model=local-rules` 缓存报告全部是 4.5；最早一批集中出现在 2026-05-05 00:25 后的 Udemy/Codex 课程列表，后续 15:19–16:28 的列表和单视频也继续命中同一问题。此前 `gpt-5.4` 真实 Codex review 报告分数分布正常，不是 deterministic scoring 公式整体坏掉。
+- 根因确认：2026-05-02 引入 WebUI 本地规则判断 `local-rules`，并在 2026-05-03 起将 WebUI 观看判断默认暴露为“本地规则判断，无需账号”；当时 Codex CLI 0.118.0 又无法调用 `gpt-5.5`，导致最近 WebUI 任务走了 local-rules 降级。local-rules 的 `structured_assessment` 是硬编码四项 `4.8 / 4.2 / 4.2 / 4.9`，deterministic formula 正确算出 4.5，所以表现为“列表和单视频全是 4.5”。
+- 修复：WebUI 在 Codex CLI 已可用时默认改回 `codex-cli + gpt-5.5` 真实观看判断，本地规则只作为 Codex 不可用时的降级；local-rules 不再硬编码四项评分，改为根据 claims/methods/examples/caveats/quotes/terms/time_windows/duration 生成保守但会变化的结构化维度；同时把 local-rules cache identity 改用新的 local review fingerprint，避免继续复用旧 4.5 缓存。
+- 评分回归校验：新增 `test_local_review_scores_vary_with_extract_evidence`、`test_local_review_cache_identity_uses_local_review_fingerprint`、WebUI 默认 Codex provider 测试。实测本地规则样本从 `base=3.9` 到 `rich=5.4`，默认 WebUI 命令已生成 `--review-provider codex-cli --enable-codex-review --codex-model gpt-5.5`。全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 424 tests，OK (skipped=3)。
+- WebUI 继续收敛：任务记录页新增“清空任务记录”入口和 `/api/tasks/clear`，可直接清空真实 `tasks.json`；任务记录失败处理 banner 与验收矩阵说明 banner 均支持关闭；新建任务页把“分析模式”和“我的评分规则”像高级选项一样默认折叠，只保留输入来源、输出位置和开始运行的主路径。
+- 本轮 UI 校验：`python3 -m py_compile scripts/webui.py tests/test_webui.py` 通过；`python3 -m unittest discover -s tests -p 'test_webui.py' -v` 通过，Ran 37 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 425 tests，OK (skipped=3)。已重启 8765 WebUI 并浏览器核验：新建任务页分析模式/评分规则为收起状态，任务记录显示“清空任务记录”，验收矩阵 banner 可点击关闭。
+- 4.5 旧结果重跑：从旧 4.5 缓存提取 52 条受影响 URL 到 `/Users/apple/Desktop/watchbrief-4.5-rerun-urls.txt`，输出目录为 `/Users/apple/Desktop/WatchBrief-4.5-Rerun`。首轮批量命令只生成 6 个 HTML 后退出；6 个新 HTML 扫描到的分数均为 3.0，不再是 4.5。为避免单条失败中断整批，已改用逐条 driver 续跑剩余 46 条，日志写入 `/Users/apple/Desktop/WatchBrief-4.5-Rerun/rerun_driver.log`。
+- 新建任务入口改成 Google 式大输入框：移除顶部“开始运行”按钮，把输入来源改为居中的大 textarea，支持粘贴单条链接、拖入 txt 文件和“选择 txt 文件”；拖入 txt 会落盘到 `~/.watchbrief/webui/source_files/` 并把任务来源切换为该文件路径，“开始运行”改为输入框下方居中按钮。
+- 本轮大输入框校验：`python3 -m py_compile scripts/webui.py tests/test_webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 37 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 425 tests，OK (skipped=3)。已重启 8765 WebUI 并浏览器视觉核验：新建任务页中间是大输入框，“开始运行”位于输入框下方，不在顶部。
+
+- B 站多 P 课程 fallback 修复：定位到 `BV1KZo5BFEAn` 多 P 条目 metadata/duration 透传不稳定，导致平台字幕 quality gate 出现 `video_duration_missing_for_quality_gate` 或时间轴错配后没有稳定进入音频转写；修复 `scripts/resolver.py` 为多 P entry 补齐 page metadata，并修复 `scripts/video_pipeline.py` 将可恢复的字幕质量失败统一回退到 audio downloader + transcriber。
+- 修复 CLI 直跑回归：课程重跑时发现 `scripts/cli.py` 的 scoring wrapper 引用 `parse_review_response` 但直执行入口未导入，导致已完成转写后在 review parse 阶段报 `name 'parse_review_response' is not defined`；已补齐 package/direct script 两种导入路径。
+- 真实课程验收：重新运行 `Udemy - Codex - The Practical Guide` 到 `/Users/apple/Desktop/Udemy-Codex-The-Practical-Guide`，平台实际分 P 为 48；本轮完成 48/48 个单集 HTML，加 `00-watch-order.html` 共 49 个 HTML。debug artifacts 保留在 `/var/folders/gl/lclzd2wx0312kb4xllx6nc340000gp/T/watchbrief_v5_debug_lsgtyh9e`，其中至少 2 集触发并成功走 `fallback_to_audio`。
+- 校验：`python3 -m py_compile scripts/cli.py scripts/video_pipeline.py scripts/resolver.py` 通过；`python3 -m unittest discover -s tests -p 'test_video_pipeline.py' -v` 通过，Ran 48 tests；`python3 -m unittest discover -s tests -p 'test_acquisition_resolver.py' -v` 通过，Ran 33 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 416 tests，OK (skipped=3)。
+
+- 任务记录清空语义修正：`清空任务记录` 现在只删除 completed / failed / cancelled 等已结束记录，保留 running / queued，避免用户清历史时误删仍在跑的任务；接口返回 removed / kept_running，前端提示会明确说明保留数量。
+- 本轮任务记录校验：修复“查看日志 / 打开报告”直接使用 file:// 在浏览器里可能打不开的问题，改为 WebUI 调用 `/api/open-path` 让后端使用 macOS `open` 打开本机文件；`python3 -m py_compile scripts/webui.py tests/test_webui.py` 通过，`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 38 tests；全量 `python3 -m unittest discover -s tests -p test_*.py` 通过，Ran 426 tests，OK (skipped=3)。
+
+## 2026-05-04
+
+- WebUI 分析模式升级：`Fast / Standard / Deep` 不再只是页面文案；Fast/Standard/Deep 仍不向 CLI 注入未知 `--analysis-mode`，但 WebUI 现在会映射为安全的现有策略预设：Fast=600s 且复用缓存；Standard=900s；Deep=1200s、默认 `--force-reanalysis`、默认 `--keep-debug-artifacts`。
+- Deep 模式允许用户手动取消“强制重新分析 / 保留 debug”；WebUI 表单会显式传递 checkbox 的 true/false，避免用户取消后后端又自动加回参数。
+- WebUI 失败提示人话化：任务失败后从日志识别常见问题，包括转写工具不可用、本地 Qwen 超时、LM Studio endpoint 连接失败、平台登录态不可用、transcript 覆盖率过低，并在任务记录里显示可执行的原因提示。
+- 测试更新：分析模式测试从“只映射 timeout”升级为“策略预设但不新增 CLI flag”；新增失败摘要测试。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 25 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 405 tests，OK (skipped=3)。
+- 后续提升路线已记录：下一步优先把 WebUI 做成“普通用户模式 / 高级模式”，普通用户首页只保留链接、分析模式、开始、输出位置；模型、endpoint、API key 环境变量、Codex 账号、transcriber、debug 等放入高级设置，避免工程概念挡住使用。
+- 中期路线：把 `Fast / Standard / Deep` 从 WebUI 安全预设进一步下沉为 CLI / pipeline 一等参数 `--analysis-mode fast|standard|deep`；Fast 偏缓存/低重试快速初筛，Standard 走默认完整链路，Deep 走强制重分析、更多诊断保留、更严格复核。
+- 稳定性路线：建立真实视频验收矩阵，覆盖 YouTube 单视频、B 站单视频、B 站列表、小红书单 note、小红书 board/专辑、有字幕、无字幕、长视频、图文 skipped；每类记录成功/失败、人话错误提示、输出路径、原顺序、是否误生成不完整报告。
+- 产品化路线：任务运行页增加阶段状态（resolver / subtitle / transcribe / extract / review / render）、日志尾部、一键打开输出、一键打开日志、失败后一键 Deep 重试；错误类型继续收束为登录态、字幕、转写、本地模型、云 key、平台限制、渲染/PDF 等固定分类。
+- 质量路线：选 10–20 个代表性视频做人工校准，检查“报告是否能替代原视频”、分数是否合理、推荐观看片段是否准确，再调 scoring rubric、validator 和 Codex/Qwen prompt。
+- 发布路线：补 `USAGE_V5.md`、WebUI 截图、安装/启动说明，整理 WORKLOG，提交 git commit，并标记一个可回滚版本。
+- 针对“页面感觉没什么变化”的反馈，继续做了一次更明显的 WebUI 产品化改造：新建任务页标题改为“普通用户模式：贴链接就能开始”，新增“普通用户只看这里”提示条，左侧“设置”改为“高级设置”，并明确普通用户只需链接 + Fast/Standard/Deep + 开始运行。
+- 高级内容进一步收口：运行方式、timeout、强制重新分析、保留 debug、打开输出和命令预览都放进默认收起的“高级选项”；普通用户默认看不到 CLI 命令预览，避免工程参数干扰。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 25 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 405 tests，OK (skipped=3)。已重启 WebUI 并用浏览器截图核验，新建任务页能看到普通用户模式、提示条和收起的高级选项。
+- 针对“URL 文件路径是什么 / 输出路径能不能用 banner 选择”的反馈继续改造：`URL 文件路径` 改为更直白的“批量链接文件”，补充说明它是本机 txt 文件路径，文件里一行一个视频/列表链接，并新增“选择文件”按钮通过系统文件选择框选择 txt。
+- 输出位置从高级设置里前移成普通用户可见 banner：默认提示“单视频放桌面 HTML，列表放桌面文件夹”，提供“选择输出文件夹”和“使用默认”两个按钮；选择后自动写入隐藏的 `output_dir/output_mode` 表单状态，不再主推手动输入路径。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 27 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 407 tests，OK (skipped=3)。已清掉旧 8765 监听进程并重启 WebUI，HTTP 标记和浏览器截图均确认新建任务页显示批量链接文件说明、选择文件按钮、输出位置 banner、选择输出文件夹按钮。
+- 新增用户自定义评分规则：WebUI 新建任务页加入“我的评分规则”，普通用户可直接选择标准、信息量优先、证据优先、新鲜感优先、原片体验优先；高级选项支持填写自定义四项权重 `information_density/evidence_quality/originality/watch_value`。
+- 评分机制从固定公式升级为可配置公式，但仍保持确定性：最终分依旧由四个结构化维度按权重计算，不让模型自由打最终分；自定义权重会归一化，公式版本会随权重变化，避免缓存把不同评分规则混用。
+- CLI / pipeline 同步支持 `--scoring-profile` 和 `--scoring-weights`；WebUI 会把评分规则转成 CLI 参数；validator 和 schema 已改为接受动态 deterministic formula/version，同时继续校验 `score_trace` 与最终分一致。
+- 校验：`python3 -m py_compile scripts/scoring.py scripts/validator.py scripts/analyzer/codex_review.py scripts/video_pipeline.py scripts/cli.py scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_scoring.py -v` 通过，Ran 13 tests；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 28 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 410 tests，OK (skipped=3)。
+- 针对“显示当前配置 / 隐藏当前配置 banner 太丑”的反馈，右侧当前配置切换控件已改为侧边箭头拉手：视觉上只显示贴边箭头，文本改由 `aria-label/title` 表达；展开时语义为“隐藏当前配置”，收起后语义为“显示当前配置”。
+- 任务记录页继续产品化：任务行增加阶段条，完成后可从日志抽取 HTML / Watch Order / PDF / debug 路径并显示“打开报告 / 打开 PDF / 查看日志 / 打开调试目录”等操作；失败任务增加“切到 Deep 后重试”入口。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 29 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 411 tests，OK (skipped=3)。已清理旧 8765 监听并重启 WebUI，HTTP 检查确认 `/` 与 `/app.js` 包含新版箭头和任务操作逻辑，浏览器视觉核验确认右侧 banner 已变为侧边箭头拉手，点击后可收起并显示“显示当前配置”语义。
+- 默认模式校准：按用户要求明确 Hermes 启动 WatchBrief 默认分析模式为 `Standard`，不是 `Deep`；Deep 只用于重要视频复核、用户明确选择或失败后重试。WebUI 普通用户提示、`watchbrief_v5` skill 和长期记忆已同步，保留 Fast/Standard/Deep 的原有回退机制：WebUI 仍只映射现有安全参数，不注入未知 `--analysis-mode`。
+- 新增“无本地模型模式”小白入口：新建任务页加入“电脑里没有本地大模型也能用”提示和“一键切到无本地模型模式”按钮；检测到 Codex CLI 时自动切到 `codex-cli-extract + codex-cli`，检测到云模型环境变量时切到 Gemini / Claude / Kimi / OpenAI-compatible，否则跳到高级设置并提示先配置 Codex 或云模型环境变量。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 29 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 411 tests，OK (skipped=3)。已重启 8765 WebUI，HTTP 检查确认新版标记加载，浏览器视觉核验确认新建任务页显示默认 Standard、无本地模型模式、一键切换入口，且 Standard 默认选中。
+- 回退机制：已保存当前工作树 patch 快照到 `rollback/rollback_patch_20260504_184707.diff`；如需回退，可在项目目录执行 `git apply -R rollback/rollback_patch_20260504_184707.diff`。
+- 继续产品化升级但不增加新报告模式：新建任务页新增“开始前自动检查这 5 件事”自检区，覆盖模型来源、字幕/转写、浏览器登录态、输出位置和分析模式；根据本地 Qwen、Codex CLI、云模型环境变量、转写器和输出设置动态显示 ok/warn/fail，避免小白点开始后才知道缺配置。
+- 运行闭环改进：提交任务后 WebUI 自动跳到“任务记录”页，并提示可查看阶段进度与报告按钮，减少用户不知道任务去哪了的问题；仍保持当前唯一目标为“观看决策”，未新增“文本结构分析”等新模式。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 29 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 411 tests，OK (skipped=3)。
+- 任务记录页继续自救产品化：新增“失败自救”面板，提供“重新自检 / 切无本地模型 / 用 Deep 重试”三个按钮；失败任务行里的“切到 Deep 后重试”现在会真正切回新建任务页并选中 Deep、开启对应策略，而不只是跳转页面。
+- 运行中任务自动刷新：任务记录页检测到 running/queued 任务后每 5 秒刷新一次，任务结束后自动停止刷新，减少用户手动点刷新和不知道进度变化的问题。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 29 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 411 tests，OK (skipped=3)。
+- 新增一键环境诊断：新建任务页加入“运行环境诊断”入口，任务记录失败自救面板加入“环境诊断”按钮；后端新增 `/api/diagnostics`，一次性汇总模型来源、本地 Qwen、Codex CLI、云模型环境变量、字幕/转写、浏览器登录态、输出位置、PDF 导出和系统文件选择能力。
+- 环境诊断坚持 token 安全：只显示环境变量是否配置和变量名，不读取、不展示明文 token；诊断结果按 ok/warn/fail 给普通用户可执行建议，缺模型来源时会明确阻止误以为可以正式分析。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 30 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 412 tests，OK (skipped=3)。
+- 新增真实视频验收矩阵入口：左侧导航加入“验收矩阵”，后端新增 `/api/smoke-matrix`，默认列出 YouTube 单视频、B 站单视频、B 站列表、小红书单 note、小红书专辑/board、长视频和无字幕/需转写等真实场景；当前只做矩阵可视化和状态文件，不自动跑外部视频，避免误触发平台访问、cookie 或长任务。
+- 验收矩阵用于把“能不能真实用”从口头判断变成可追踪清单：每项记录状态、最后运行时间、报告路径、日志路径和备注，后续真实验收跑完后可回填；默认状态是 `not_run`，不会伪装成已通过。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 31 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 413 tests，OK (skipped=3)。
+- 验收矩阵继续闭环：`/api/smoke-matrix` 现在会读取 WebUI `tasks.json`，按来源自动归类到 YouTube / B 站 / 小红书 / 长视频 / 登录态失败等矩阵项，并回填最近任务状态、报告路径、日志路径、来源和失败原因；页面会标记“已从任务记录自动回填”。
+- 自动回填仍然保持无副作用：只读取本地 WebUI 任务记录，不自动跑外部视频、不读取 cookies、不启动长任务；人工写入的 `smoke_matrix.json` 状态优先于自动推断，方便后续真实验收手动校正。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 32 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 414 tests，OK (skipped=3)。
+- 新增“发布整理 / 回退清单”页面和 `/api/release-readiness`：集中展示 WORKLOG、回退 patch、WebUI 启动入口、测试命令、真实验收矩阵下一步，并提供回退命令复制入口；页面只做本地检查，不提交、不发布、不改配置。
+- 当前产品化判断：WatchBrief WebUI 的零散功能已接近够用，继续堆按钮的收益下降；下一步应以“真实视频验收矩阵”逐项跑 smoke 为主，而不是继续扩散新模式或新页面。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py -v` 通过，Ran 33 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 415 tests，OK (skipped=3)。
+
+## 2026-05-03
+
+- WebUI 产品表达改造：新增 `Fast / Standard / Deep` 分析模式入口，默认 `Standard`；三种模式只映射 WebUI 默认任务超时（Fast=600s、Standard=900s、Deep=1200s），不向 CLI 注入新的 `--analysis-mode` 参数，保留旧 CLI / pipeline 回退兼容。
+- WebUI 文案改名：`提炼模型后端` 改为 `内容理解模型`，`Review 引擎` 改为 `观看判断模型`；右侧当前配置、状态卡片、提示文案同步改名；明确说明模型不直接写 HTML，最终 HTML 始终由固定 renderer 模板生成。
+- 回退机制保留：没有本地 Qwen 时仍可切 `local-openai-compatible`、`Gemini`、`Claude`、`Kimi`、`OpenAI-compatible` 或 `Codex CLI` 做内容理解；观看判断默认仍是无账号本地规则，Codex / 云模型只是可选增强；转写器仍保留 MLX-Audio 到 Whisper 的显式回退选项。
+- 小红书内容结构说明已写入 WebUI：保留专辑标题和原始顺序；每条 note 至少保留 `note_id`、标准 `note_url`、标题、作者和类型；视频 note 进入单视频报告；图文 note 标记 skipped 且不算失败；raw metadata 只进 debug/manifest，不进正式 HTML。
+- 测试更新：新增 WebUI 分析模式命令构建测试，确认 Fast/Standard/Deep 映射 timeout 且不新增 CLI flag；更新静态页面断言覆盖新文案、小红书五点说明和固定 HTML renderer 说明。
+- 校验：`python3 -m py_compile scripts/webui.py` 通过；`python3 -m unittest discover -s tests -p test_webui.py` 通过，Ran 24 tests；全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过，Ran 404 tests，OK (skipped=3)。
+
 ## 2026-05-01
 
 - 阶段十九 D：小红书 board `体态纠正与康复` 14 条全量验收。
@@ -4427,3 +4627,70 @@ python3 watchbrief_v5/scripts/cli.py \
   - 未触发真实 Codex review。
   - 未触发 MLX-Audio。
   - 未保存、打印、展示 cookies 或 token。
+
+## 2026-05-05 B 站收藏夹列表正式运行：fid=3958254310
+
+- 输入：
+  - `https://space.bilibili.com/163343210/favlist?fid=3958254310&ftype=create`
+- 运行目录：
+  - `/Users/apple/Documents/New project`
+- 执行方式：
+  - 先用 resolver 只读展开确认条数。
+  - 再用 WatchBrief V5 CLI 正式运行列表。
+  - 未传 `--output-dir`，使用正式默认输出路径。
+  - 未传 `--diagnostic-run`。
+  - 未自动打开浏览器。
+- 展开结果：
+  - `source_kind=list`
+  - 列表标题：`测试`
+  - 视频数：7
+- 正式命令：
+  - `python3 watchbrief_v5/scripts/cli.py --source-url 'https://space.bilibili.com/163343210/favlist?fid=3958254310&ftype=create' --debug-dir /tmp/watchbrief-favlist-3958254310-debug --review-provider codex-cli --enable-codex-review --codex-home-root ~/.watchbrief_codex --codex-account account2 --codex-model gpt-5.4 --timeout 600 --qwen-timeout 600`
+- 运行结果：
+  - 返回码：0
+  - 总耗时：1012 秒
+  - `total_count=7`
+  - `completed_count=7`
+  - `failed_count=0`
+  - 输出目录：`/Users/apple/Desktop/测试`
+  - Watch Order：`/Users/apple/Desktop/测试/00-watch-order.html`
+- 输出文件：
+  - `00-watch-order.html`
+  - `01-纳瓦尔：选择伴侣就是选择命运，比赚钱更重要.html`
+  - `02-Video-2.html`
+  - `03-Video-3.html`
+  - `04-Video-4.html`
+  - `05-Video-5.html`
+  - `06-Video-6.html`
+  - `07-Video-7.html`
+- 备注：
+  - B 站 favlist 展开返回的第 2-7 条标题为通用 `Video 2` 到 `Video 7`，所以输出文件名也使用了通用标题。
+  - 目录第一层只有 8 个 HTML，无二级产物目录。
+  - cookie 泄露检查：未发现。
+- 边界：
+  - 未跑 YouTube。
+  - 未跑小红书。
+  - 未保存、打印、展示 cookies。
+
+## 2026-05-05 — 修复 B 站收藏夹标题退化为 Video N
+
+- 根因：`space.bilibili.com/.../favlist?fid=...` 没被识别为 B 站列表入口；部分 `yt-dlp --flat-playlist` 条目只给 `Video 2 / Video 3` 占位标题，后续 pipeline 按占位 title 生成文件名、HTML `<title>` 和页面标题。
+- 修复：resolver 现在把 favlist `fid` 标准化为 `ml<fid>`，优先走 B 站收藏列表 API；当 `yt-dlp` 条目是 `Video N` 占位时，用收藏 API / view metadata 的真实标题覆盖。
+- 防护：B 站列表仍无法拿到真实标题时直接失败为 `bilibili_list_expansion_failed`，不再产出 `Video N` 报告。
+- 回归：新增 favlist fid、placeholder reject、API title override 测试；`python3 -m unittest discover -s tests -p test_*.py` 通过，429 tests OK，skipped=3。
+
+## 2026-05-05 — 校准 gpt-5.5 structured assessment 评分标尺
+
+- 问题：本机 cache 显示 gpt-5.5 并非固定分，但整体 replacement_score 明显低于 gpt-5.4。
+- 证据：gpt-5.5 的低分来自 structured_assessment 四项整体偏低，尤其“独创性”和“观看性价比”；scoring.py 的确定性公式按四项正常计算，没有发现公式错误。
+- 根因：review prompt 只说 replacement_score 语义，缺少 0-10 锚点和四维度边界；gpt-5.5 比 gpt-5.4 更严格，容易把普通但有内容的视频压到 0-3。
+- 修复：在 analyzer prompts 中加入 SCORING_RUBRIC，并写入 normalized payload contract，明确四项含义、0-10 锚点、以及“不要把所有普通视频都压到 0-3”。
+- 回归：新增 test_review_prompt_includes_structured_assessment_rubric；全量 unittest 430 tests OK，skipped=3。
+
+## 2026-05-07 — 新增报告目标模式
+
+- 功能：新增 `--report-target`，支持 `watch_decision`、`text_structure`、`knowledge_notes`、`viewpoint_breakdown`、`creation_review`；默认仍是 `watch_decision`。
+- 范围：目标模式已接入 CLI、pipeline manifest / item_manifest、review request、prompt、validator/schema、renderer、report cache identity 和 WebUI；`analysis_mode` 仍只负责 Fast / Standard / Deep。
+- 边界：未改变观看决策默认报告的 required 字段、评分公式、validator 语义和旧 HTML 分支；非观看目标使用 `target_summary` + 固定 key 的 `target_sections` 渲染。
+- 验证：`py_compile` 通过；`test_cli.py`、`test_webui.py`、`test_validator.py`、`test_renderer.py`、`test_analyzer_prompts.py`、`test_analyzer_codex_review.py`、`test_video_pipeline.py` 均通过。
+- 全量：`python3 -m unittest discover -s tests -p 'test_*.py' -v` 跑到 448 tests，失败 1 个既有 B 站音频下载分类断言：期望 `bilibili_audio_url_not_found`，实际 `bilibili_audio_download_failed`；本次未改 `scripts/audio_downloader.py`。

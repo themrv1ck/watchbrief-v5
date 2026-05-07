@@ -29,7 +29,7 @@ def fake_qwen_extract(seed: dict) -> dict:
 class AnalyzerPromptsTest(unittest.TestCase):
     def test_prompt_contains_v5_field_boundaries(self) -> None:
         self.assertIn("replacement_score 只表示", ANALYZER_SYSTEM_PROMPT)
-        self.assertIn("topic 不能影响 replacement_score", ANALYZER_SYSTEM_PROMPT)
+        self.assertIn("整体价值评分", ANALYZER_SYSTEM_PROMPT)
         self.assertIn("final_conclusion 只回答", ANALYZER_SYSTEM_PROMPT)
         self.assertIn("不要重新引入“要点提炼 / 可执行动作清单 / 完整笔记”", ANALYZER_SYSTEM_PROMPT)
 
@@ -61,6 +61,18 @@ class AnalyzerPromptsTest(unittest.TestCase):
         self.assertIn("不要自己重新猜人名", prompt)
         self.assertIn(mock["metadata"]["title"], prompt)
         self.assertIn('"local_qwen_model_call": true', prompt)
+
+    def test_build_review_user_prompt_adds_non_watch_target_contract_only_when_requested(self) -> None:
+        mock = json.loads((ROOT / "golden" / "mock_transcript_heartflow.json").read_text(encoding="utf-8"))
+        local_extract = build_local_extract_payload(mock["metadata"], mock["transcript_segments"], qwen_extractor=fake_qwen_extract)
+
+        default_prompt = build_review_user_prompt(local_extract)
+        target_prompt = build_review_user_prompt(local_extract, report_target="text_structure")
+
+        self.assertNotIn("report_target 目标模式补充契约", default_prompt)
+        self.assertIn("report_target 目标模式补充契约", target_prompt)
+        self.assertIn("text_structure", target_prompt)
+        self.assertIn("structure_overview", target_prompt)
 
 
 if __name__ == "__main__":

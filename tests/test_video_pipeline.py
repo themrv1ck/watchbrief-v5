@@ -22,6 +22,7 @@ from scripts.acquisition_errors import (
     SubtitleUnavailableError,
 )
 from scripts.analyzer.local_extract import LocalExtractError, LocalQwenError, build_local_extract_payload
+from scripts.analyzer.local_review import LOCAL_REVIEW_MODEL_ID, LOCAL_REVIEW_PROMPT_FINGERPRINT
 from scripts.analyzer.codex_review import build_review_request
 from scripts.report_cache import build_report_cache_identity, report_cache_key
 from scripts.transcript_source_adapter import load_transcript_source
@@ -187,6 +188,19 @@ def review_provider_for_golden(item: dict, review_request: dict, local_extract: 
     if "charm" in item["url"]:
         return load_golden("sample_payload_charm.json")
     return load_golden("sample_payload_heartflow.json")
+
+
+def target_review_provider(item: dict, review_request: dict, local_extract: dict) -> dict:
+    payload = review_provider_for_golden(item, review_request, local_extract)
+    payload["report_target"] = str(review_request.get("report_target") or "knowledge_notes")
+    payload["target_summary"] = "这是一份面向知识笔记的中文分析摘要。"
+    payload["target_sections"] = {
+        "core_concepts": ["心流来自目标、反馈和挑战之间的配合。"],
+        "key_facts": ["视频把心流解释为任务结构问题，而不是单纯意志力问题。"],
+        "methods": ["把任务拆小，并让反馈更及时。"],
+        "caveats": ["转写内容只支持对视频内部观点做整理。"],
+    }
+    return payload
 
 
 def fake_qwen_extract(seed: dict) -> dict:
@@ -431,6 +445,31 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(calls, ["local_extract"])
             self.assertTrue(Path(manifest["items"][0]["html_path"]).exists())
 
+    def test_report_target_is_written_to_manifest_review_request_and_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            deps = PipelineDependencies(
+                resolve_url_func=lambda _url: single_resolution(),
+                fetch_subtitles_func=lambda url, subtitle_dir, **kwargs: fixture_material(),
+                build_local_extract_func=local_extract_for_tests,
+                review_options={"report_target": "knowledge_notes", "codex_model": "gpt-test"},
+            )
+
+            manifest = process_source(
+                "https://example.com/watch/heartflow",
+                output_dir,
+                review_response_provider=target_review_provider,
+                deps=deps,
+            )
+
+            self.assertEqual(manifest["report_target"], "knowledge_notes")
+            self.assertEqual(manifest["items"][0]["report_target"], "knowledge_notes")
+            payload = json.loads(Path(manifest["items"][0]["payload_path"]).read_text(encoding="utf-8"))
+            request = json.loads((Path(manifest["items"][0]["item_manifest_path"]).parent / "review_request.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["report_target"], "knowledge_notes")
+            self.assertEqual(request["report_target"], "knowledge_notes")
+            self.assertIn("target_sections", payload)
+
     def test_short_video_does_not_fail_on_low_coverage_ratio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -488,7 +527,7 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(error["reason_code"], "transcript_coverage_too_low")
             self.assertEqual(error["debug"]["transcript_quality_reason"], "segment_count_too_low_without_duration")
 
-    def test_platform_subtitle_with_missing_duration_fails_quality_gate(self) -> None:
+    def test_platform_subtitle_with_missing_duration_falls_back_to_audio(self) -> None:
         calls: list[str] = []
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -508,13 +547,21 @@ class VideoPipelineTest(unittest.TestCase):
                 {"start": "00:34", "end": "00:35", "text": "这是低覆盖字幕内容十二"},
             ]
 
-            def local_extract(*args, **kwargs):
-                calls.append("local_extract")
-                raise AssertionError("local_extract must not run when platform subtitle duration is missing")
+            def download_audio(url, audio_dir, **kwargs):
+                calls.append("download_audio")
+                audio_dir.mkdir(parents=True, exist_ok=True)
+                audio_path = audio_dir / "audio.wav"
+                audio_path.write_bytes(b"RIFF")
+                self.assertFalse(kwargs["subtitle_available"])
+                return {"audio_path": str(audio_path), "method": "bilibili_playurl_api"}
 
-            def render(*args, **kwargs):
-                calls.append("renderer")
-                raise AssertionError("renderer must not run when platform subtitle duration is missing")
+            def transcribe(audio_path, transcript_dir, **kwargs):
+                calls.append("transcribe")
+                return transcript_material_from_segments([
+                    {"start": "00:00", "end": "00:50", "text": "音频转写后的完整正文内容" * 20},
+                    {"start": "00:50", "end": "01:40", "text": "继续音频转写后的正文内容" * 20},
+                    {"start": "01:40", "end": "02:30", "text": "第三段音频转写后的正文内容" * 20},
+                ], source_kind="asr_wav", transcript_quality="ok")
 
             deps = PipelineDependencies(
                 resolve_url_func=lambda _url: {
@@ -528,40 +575,30 @@ class VideoPipelineTest(unittest.TestCase):
                     source_kind="subtitle_bcc",
                     transcript_quality="ok",
                 ),
-                build_local_extract_func=local_extract,
-                render_func=render,
+                download_audio_func=download_audio,
+                transcribe_func=transcribe,
+                build_local_extract_func=local_extract_for_tests,
             )
 
             manifest = process_source(
                 "https://example.com/list",
                 output_dir,
-                review_response_provider=lambda *args: calls.append("codex_review") or {},
+                review_response_provider=review_provider_for_golden,
                 deps=deps,
             )
 
-            self.assertEqual(manifest["completed_count"], 0)
-            self.assertEqual(manifest["failed_count"], 1)
-            self.assertEqual(calls, [])
+            self.assertEqual(manifest["completed_count"], 1)
+            self.assertEqual(manifest["failed_count"], 0)
+            self.assertEqual(calls, ["download_audio", "transcribe"])
             self.assertTrue((output_dir / "00-watch-order.html").exists())
-            self.assertFalse(list(output_dir.glob("01-*.html")))
-            error = manifest["items"][0]["error"]
-            self.assertEqual(error["stage"], "transcript_quality")
-            self.assertEqual(error["reason_code"], "transcript_coverage_too_low")
-            self.assertIsNone(error["debug"]["video_duration_seconds"])
-            self.assertEqual(error["debug"]["transcript_first_start"], 13.0)
-            self.assertEqual(error["debug"]["transcript_last_end"], 35.0)
-            self.assertEqual(error["debug"]["transcript_covered_duration"], 22.0)
-            self.assertIsNone(error["debug"]["transcript_coverage_ratio"])
-            self.assertEqual(error["debug"]["transcript_segment_count"], 12)
-            self.assertGreater(error["debug"]["transcript_plain_text_char_count"], 80)
-            self.assertEqual(error["debug"]["transcript_source"], "subtitle_bcc")
-            self.assertEqual(error["debug"]["transcript_quality_reason"], "video_duration_missing_for_quality_gate")
+            self.assertTrue(list(output_dir.glob("01-*.html")))
             item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8"))
-            steps = {step["step"]: step for step in item_manifest["steps"]}
-            self.assertEqual(steps["transcript_quality"]["status"], "failed")
-            self.assertNotIn("local_extract", steps)
-            self.assertNotIn("codex_review", steps)
-            self.assertNotIn("renderer", steps)
+            quality_steps = [step for step in item_manifest["steps"] if step["step"] == "transcript_quality"]
+            self.assertEqual(quality_steps[0]["status"], "fallback_to_audio")
+            self.assertEqual(quality_steps[0]["transcript_quality_reason"], "video_duration_missing_for_quality_gate")
+            self.assertEqual(quality_steps[-1]["status"], "completed")
+            audio_steps = [step for step in item_manifest["steps"] if step["step"] == "audio_downloader"]
+            self.assertEqual(audio_steps[0]["subtitle_rejection_reason"], "video_duration_missing_for_quality_gate")
 
     def test_missing_duration_with_enough_segments_and_text_continues(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1874,8 +1911,8 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(local_steps[-1]["qwen_prompt_version"], "watchbrief_v5.qwen_local_extract_prompt.v2")
             review_steps = [step for step in item_manifest["steps"] if step["step"] == "codex_review_request"]
             self.assertRegex(review_steps[0]["transcript_hash"], r"^[0-9a-f]{64}$")
-            self.assertEqual(review_steps[0]["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v3")
-            self.assertEqual(review_steps[0]["scoring_formula_version"], "watchbrief_v5.scoring_formula.v1")
+            self.assertEqual(review_steps[0]["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v4")
+            self.assertEqual(review_steps[0]["scoring_formula_version"], "watchbrief_v5.video_value_formula.v2")
             self.assertEqual(review_steps[0]["watchbrief_version"], "watchbrief_v5")
 
     def test_bilibili_login_required_for_subtitle_does_not_enter_audio_downloader(self) -> None:
@@ -2343,6 +2380,47 @@ class VideoPipelineTest(unittest.TestCase):
         self.assertNotEqual(report_cache_key(changed_hash), base_key)
         self.assertNotEqual(report_cache_key(changed_prompt), base_key)
         self.assertNotEqual(report_cache_key(changed_formula), base_key)
+
+    def test_report_cache_key_changes_when_report_target_changes(self) -> None:
+        material = fixture_material()
+        metadata = single_resolution()["videos"][0]
+        extract = local_extract_for_tests(metadata, material["segments"])
+        watch_request = build_review_request(extract)
+        notes_request = build_review_request(extract, report_target="knowledge_notes")
+
+        watch_identity = build_report_cache_identity(watch_request, codex_model="gpt-test")
+        notes_identity = build_report_cache_identity(notes_request, codex_model="gpt-test")
+
+        self.assertEqual(watch_identity["report_target"], "watch_decision")
+        self.assertEqual(notes_identity["report_target"], "knowledge_notes")
+        self.assertNotEqual(report_cache_key(watch_identity), report_cache_key(notes_identity))
+
+    def test_local_review_cache_identity_uses_local_review_fingerprint(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cache_dir = root / "cache"
+            deps = PipelineDependencies(
+                resolve_url_func=lambda url: single_resolution(),
+                fetch_subtitles_func=lambda url, subtitle_dir: fixture_material(),
+                build_local_extract_func=local_extract_for_tests,
+                review_options=report_cache_review_options(cache_dir, codex_model=LOCAL_REVIEW_MODEL_ID),
+            )
+
+            manifest = process_source(
+                "https://example.com/watch/heartflow",
+                root / "local-output",
+                review_response_provider=lambda _item, _request, extract: {
+                    **review_provider_for_golden(_item, _request, extract),
+                    "codex_model": LOCAL_REVIEW_MODEL_ID,
+                    "codex_prompt_fingerprint": LOCAL_REVIEW_PROMPT_FINGERPRINT,
+                },
+                deps=deps,
+            )
+
+            item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8"))
+            cache_payload = json.loads(Path(item_manifest["cached_payload_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(cache_payload["identity"]["codex_model"], LOCAL_REVIEW_MODEL_ID)
+            self.assertEqual(cache_payload["identity"]["codex_prompt_fingerprint"], LOCAL_REVIEW_PROMPT_FINGERPRINT)
 
     def test_failed_payload_is_not_written_to_report_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

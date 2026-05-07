@@ -17,6 +17,7 @@ from scripts.acquisition_errors import (
 )
 from scripts.resolver import (
     bilibili_list_id_from_url,
+    build_bilibili_list_resolution,
     drop_internal_download_fields,
     is_bilibili_list_url,
     is_xiaohongshu_board_url,
@@ -34,11 +35,15 @@ def runner_with_payload(payload: dict):
 
 
 class FakeResponse:
-    def __init__(self, body: bytes) -> None:
+    def __init__(self, body: bytes, url: str = "") -> None:
         self.body = body
+        self.url = url
 
     def read(self) -> bytes:
         return self.body
+
+    def geturl(self) -> str:
+        return self.url
 
     def __enter__(self) -> "FakeResponse":
         return self
@@ -100,6 +105,64 @@ def xiaohongshu_image_note() -> dict:
 
 
 class AcquisitionResolverTest(unittest.TestCase):
+    def test_bilibili_list_resolution_prefers_real_playlist_title_over_current_video_title(self) -> None:
+        videos = [
+            {"title": "视频 1", "url": "https://example.com/1"},
+            {"title": "视频 2", "url": "https://example.com/2"},
+            {"title": "当前视频标题", "url": "https://example.com/3"},
+        ]
+
+        resolved = build_bilibili_list_resolution(
+            "https://www.bilibili.com/list/ml123",
+            videos=videos,
+            title="当前视频标题",
+            fallback_title="真正的列表名",
+            list_id="ml123",
+            resolver_debug={},
+        )
+
+        self.assertEqual(resolved["title"], "真正的列表名")
+        self.assertEqual(resolved["playlist_title"], "真正的列表名")
+        self.assertEqual(resolved["list_title"], "真正的列表名")
+
+    def test_netease_short_program_resolves_to_audio_item_without_exposing_media_url(self) -> None:
+        def fake_urlopen(request, timeout):
+            url = request.full_url
+            if "163cn.tv" in url:
+                return FakeResponse(b"", "https://y.music.163.com/m/program?id=2543999391")
+            if "program/detail" in url:
+                payload = {
+                    "code": 200,
+                    "program": {
+                        "id": 2543999391,
+                        "name": "E35 知识的缝隙",
+                        "duration": 4558373,
+                        "scheduledPublishTime": 1715644800000,
+                        "mainSong": {"id": 2155899477, "name": "E35 知识的缝隙"},
+                        "radio": {"name": "无人知晓"},
+                    },
+                }
+                return FakeResponse(json.dumps(payload).encode("utf-8"), url)
+            if "player/url" in url:
+                payload = {"code": 200, "data": [{"id": 2155899477, "url": "https://media.example/audio.mp3?sig=SECRET"}]}
+                return FakeResponse(json.dumps(payload).encode("utf-8"), url)
+            raise AssertionError(url)
+
+        result = resolve_url(
+            "https://163cn.tv/6wXAydN",
+            urlopen_func=fake_urlopen,
+            runner=runner_with_payload({}),
+        )
+
+        self.assertEqual(result["source_platform"], "netease_music_podcast")
+        self.assertEqual(result["title"], "E35 知识的缝隙")
+        self.assertEqual(result["channel"], "无人知晓")
+        self.assertEqual(result["videos"][0]["duration"], "4558")
+        self.assertEqual(result["videos"][0]["date"], "20240514")
+        self.assertEqual(result["videos"][0]["resolver_debug"]["media_url_available"], True)
+        public = drop_internal_download_fields(result)
+        self.assertNotIn("SECRET", json.dumps(public, ensure_ascii=False))
+
     def test_xiaohongshu_dom_board_notes_uses_returning_javascript_expression_for_safari(self) -> None:
         def safari_expression_runner(command, capture_output, text, timeout):
             js_source = command[5]
@@ -209,6 +272,47 @@ class AcquisitionResolverTest(unittest.TestCase):
         self.assertEqual(resolved["videos"][0]["upload_date"], "20260429")
         self.assertEqual(resolved["videos"][1]["timestamp"], 1777464000)
 
+    def test_bilibili_multipart_entries_are_enriched_with_page_metadata(self) -> None:
+        url = "https://www.bilibili.com/video/BV1KZo5BFEAn/"
+        payload = {
+            "title": "Udemy - Codex - The Practical Guide",
+            "entries": [
+                {"id": "BV1KZo5BFEAn", "title": "Video 1", "url": "https://www.bilibili.com/video/BV1KZo5BFEAn?p=1"},
+                {"id": "BV1KZo5BFEAn", "title": "Video 2", "url": "https://www.bilibili.com/video/BV1KZo5BFEAn?p=2"},
+            ],
+        }
+
+        def urlopen(request, timeout):
+            self.assertIn("x/web-interface/view", request.full_url)
+            view_payload = {
+                "code": 0,
+                "data": {
+                    "bvid": "BV1KZo5BFEAn",
+                    "title": "Udemy - Codex - The Practical Guide",
+                    "duration": 3600,
+                    "pubdate": 1777464000,
+                    "owner": {"name": "lmt831"},
+                    "pages": [
+                        {"page": 1, "cid": 111, "part": "1. Welcome To This Course!", "duration": 37},
+                        {"page": 2, "cid": 222, "part": "2. Course Setup", "duration": 95},
+                    ],
+                },
+            }
+            return FakeResponse(json.dumps(view_payload).encode("utf-8"))
+
+        resolved = resolve_url(url, runner=runner_with_payload(payload), urlopen_func=urlopen)
+
+        self.assertEqual(resolved["source_kind"], "list")
+        self.assertEqual(resolved["video_count"], 2)
+        self.assertEqual(resolved["videos"][0]["title"], "1. Welcome To This Course!")
+        self.assertEqual(resolved["videos"][0]["duration"], 37)
+        self.assertEqual(resolved["videos"][0]["cid"], "111")
+        self.assertEqual(resolved["videos"][1]["title"], "2. Course Setup")
+        self.assertEqual(resolved["videos"][1]["duration"], 95)
+        self.assertEqual(resolved["videos"][1]["cid"], "222")
+        self.assertEqual(resolved["videos"][0]["channel"], "lmt831")
+        self.assertEqual(resolved["videos"][0]["pubdate"], 1777464000)
+
     def test_bilibili_list_url_is_identified_as_list(self) -> None:
         url = "https://www.bilibili.com/list/ml3621337310?oid=114282922511207&bvid=BV1GRRXYEEGn"
 
@@ -221,8 +325,8 @@ class AcquisitionResolverTest(unittest.TestCase):
             "title": "纳瓦尔",
             "playlist_count": 2,
             "entries": [
-                {"id": "BV1GRRXYEEGn", "url": "https://www.bilibili.com/video/BV1GRRXYEEGn"},
-                {"id": "BV1yKZLYTEzV", "url": "https://www.bilibili.com/video/BV1yKZLYTEzV"},
+                {"id": "BV1GRRXYEEGn", "title": "视频 A", "url": "https://www.bilibili.com/video/BV1GRRXYEEGn"},
+                {"id": "BV1yKZLYTEzV", "title": "视频 B", "url": "https://www.bilibili.com/video/BV1yKZLYTEzV"},
             ],
         }
 
@@ -267,6 +371,84 @@ class AcquisitionResolverTest(unittest.TestCase):
         self.assertEqual(resolved["videos"][0]["pubdate"], 1733389510)
         self.assertEqual(resolved["videos"][1]["pubdate"], 1733389520)
         self.assertEqual(resolved["resolver_debug"]["expansion_provider"], "bilibili-fav-list-api")
+
+    def test_bilibili_space_favlist_url_uses_fid_as_list_id_and_real_titles(self) -> None:
+        url = "https://space.bilibili.com/163343210/favlist?fid=3958254310&ftype=create"
+        single_payload = {
+            "id": "BVcurrent",
+            "title": "Only Current Video",
+            "webpage_url": "https://www.bilibili.com/video/BVcurrent",
+        }
+
+        def urlopen(request, timeout):
+            self.assertIn("x/v3/fav/resource/list", request.full_url)
+            self.assertIn("media_id=3958254310", request.full_url)
+            payload = {
+                "code": 0,
+                "data": {
+                    "info": {"title": "AI 收藏夹", "media_count": 2},
+                    "medias": [
+                        {"bvid": "BV1AAAAAAA11", "title": "真实标题 A", "duration": 10, "upper": {"name": "UP"}},
+                        {"bvid": "BV1BBBBBBB22", "title": "真实标题 B", "duration": 20, "upper": {"name": "UP"}},
+                    ],
+                },
+            }
+            return FakeResponse(json.dumps(payload).encode("utf-8"))
+
+        resolved = resolve_url(url, runner=runner_with_payload(single_payload), urlopen_func=urlopen)
+
+        self.assertEqual(resolved["source_kind"], "list")
+        self.assertEqual(resolved["list_id"], "ml3958254310")
+        self.assertEqual(resolved["title"], "AI 收藏夹")
+        self.assertEqual([video["title"] for video in resolved["videos"]], ["真实标题 A", "真实标题 B"])
+        self.assertFalse(any(video["title"].startswith("Video ") for video in resolved["videos"]))
+
+    def test_bilibili_list_placeholder_titles_are_rejected(self) -> None:
+        url = "https://www.bilibili.com/list/ml3621337310?oid=114282922511207&bvid=BV1GRRXYEEGn"
+        payload = {
+            "title": "纳瓦尔",
+            "playlist_count": 2,
+            "entries": [
+                {"id": "BV1GRRXYEEGn", "title": "Video 1", "url": "https://www.bilibili.com/video/BV1GRRXYEEGn"},
+                {"id": "BV1yKZLYTEzV", "title": "Video 2", "url": "https://www.bilibili.com/video/BV1yKZLYTEzV"},
+            ],
+        }
+
+        with self.assertRaises(BilibiliResolverError) as context:
+            resolve_url(url, runner=runner_with_payload(payload), urlopen_func=lambda request, timeout: FakeResponse(b"{}"))
+
+        self.assertEqual(context.exception.reason_code, BILIBILI_LIST_EXPANSION_FAILED)
+        self.assertIn("placeholder Video N", str(context.exception))
+
+    def test_bilibili_list_api_title_replaces_ytdlp_placeholder_title(self) -> None:
+        url = "https://www.bilibili.com/list/ml3621337310?oid=114282922511207&bvid=BV1GRRXYEEGn"
+        payload = {
+            "title": "纳瓦尔",
+            "playlist_count": 2,
+            "entries": [
+                {"id": "BV1GRRXYEEGn", "title": "Video 1", "url": "https://www.bilibili.com/video/BV1GRRXYEEGn"},
+                {"id": "BV1yKZLYTEzV", "title": "Video 2", "url": "https://www.bilibili.com/video/BV1yKZLYTEzV"},
+            ],
+        }
+
+        def urlopen(request, timeout):
+            if "x/v3/fav/resource/list" in request.full_url:
+                api_payload = {
+                    "code": 0,
+                    "data": {
+                        "info": {"title": "纳瓦尔", "media_count": 2},
+                        "medias": [
+                            {"bvid": "BV1GRRXYEEGn", "title": "真实标题 A", "duration": 10, "upper": {"name": "UP"}},
+                            {"bvid": "BV1yKZLYTEzV", "title": "真实标题 B", "duration": 20, "upper": {"name": "UP"}},
+                        ],
+                    },
+                }
+                return FakeResponse(json.dumps(api_payload).encode("utf-8"))
+            return FakeResponse(b"{}")
+
+        resolved = resolve_url(url, runner=runner_with_payload(payload), urlopen_func=urlopen)
+
+        self.assertEqual([video["title"] for video in resolved["videos"]], ["真实标题 A", "真实标题 B"])
 
     def test_bilibili_list_expansion_failure_is_not_single_video_success(self) -> None:
         url = "https://www.bilibili.com/list/ml3621337310?oid=114282922511207&bvid=BV1GRRXYEEGn"

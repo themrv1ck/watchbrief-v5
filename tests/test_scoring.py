@@ -5,7 +5,16 @@ import unittest
 
 from helpers import ROOT, assert_invalid, load_golden
 from scripts.analyzer.codex_review import parse_review_response
-from scripts.scoring import SCORING_FORMULA, SCORING_FORMULA_VERSION, apply_deterministic_scoring, compute_replacement_score
+from scripts.scoring import (
+    SCORING_FORMULA,
+    SCORING_FORMULA_VERSION,
+    apply_deterministic_scoring,
+    compute_replacement_score,
+    formula_version_for_weights,
+    parse_scoring_weights,
+    tag_for_score,
+    weights_for_profile,
+)
 from scripts.validator import validate_normalized_report_payload
 from scripts.watch_order import render_watch_order_html
 
@@ -48,6 +57,34 @@ class ScoringStabilityTest(unittest.TestCase):
             "originality": 5.0,
             "watch_value": 8.0,
         })
+
+        self.assertEqual(score, 5.4)
+
+    def test_custom_scoring_profile_changes_final_score_deterministically(self) -> None:
+        payload = self.raw_model_payload(4.7)
+        payload["structured_assessment"] = {
+            "信息密度": 2.0,
+            "论据质量": 3.0,
+            "独创性": 4.0,
+            "观看性价比": 6.0,
+        }
+        weights = weights_for_profile("watch-value-first")
+
+        adapted = apply_deterministic_scoring(payload, weights)
+
+        self.assertEqual(adapted["replacement_score"], 4.5)
+        self.assertEqual(adapted["score_trace"]["formula"], "information_density*0.15 + evidence_quality*0.2 + originality*0.15 + watch_value*0.5")
+        self.assertEqual(adapted["scoring_formula_version"], formula_version_for_weights(weights))
+        validate_normalized_report_payload(adapted)
+
+    def test_custom_scoring_weights_are_normalized(self) -> None:
+        weights = parse_scoring_weights("information_density=2,evidence_quality=3,originality=2,watch_value=3")
+        score = compute_replacement_score({
+            "information_density": 10.0,
+            "evidence_quality": 0.0,
+            "originality": 5.0,
+            "watch_value": 8.0,
+        }, weights)
 
         self.assertEqual(score, 5.4)
 
@@ -116,6 +153,14 @@ class ScoringStabilityTest(unittest.TestCase):
         self.assertEqual(adapted["replacement_score"], 9.0)
         self.assertEqual(adapted["tag"], "建议完整看")
         validate_normalized_report_payload(adapted)
+
+    def test_score_band_boundaries_match_user_visible_recommendation_ranges(self) -> None:
+        self.assertEqual(tag_for_score(4.9), "不推荐观看")
+        self.assertEqual(tag_for_score(5.0), "只建议跳看")
+        self.assertEqual(tag_for_score(6.5), "只建议跳看")
+        self.assertEqual(tag_for_score(6.6), "值得补看")
+        self.assertEqual(tag_for_score(8.5), "值得补看")
+        self.assertEqual(tag_for_score(8.6), "建议完整看")
 
     def test_watch_order_keeps_playlist_order_after_deterministic_scoring(self) -> None:
         low = parse_review_response(self.raw_model_payload(9.8))

@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from .report_targets import DEFAULT_REPORT_TARGET, normalize_report_target, report_target_label, report_target_section_specs
     from .validator import validate_renderer_input
 except ImportError:  # pragma: no cover - direct script execution
+    from report_targets import DEFAULT_REPORT_TARGET, normalize_report_target, report_target_label, report_target_section_specs
     from validator import validate_renderer_input
 
 try:
@@ -52,6 +54,17 @@ def display_style_patch() -> str:
 }
 .report-note strong{color:var(--ink);font-weight:800}
 .watch-time .time-sep{display:block;color:inherit}
+""".strip()
+
+
+def target_style_patch() -> str:
+    return """
+.target-hero-copy{margin:18px 0 0;color:var(--ink);font-size:18px;line-height:1.8}
+.target-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.target-section h3{margin:0 0 10px;font-size:17px}
+.target-section ul{margin:0;padding-left:20px;color:var(--ink);line-height:1.75}
+.target-section li+li{margin-top:8px}
+@media(max-width:760px){.target-grid{grid-template-columns:1fr}}
 """.strip()
 
 
@@ -147,8 +160,74 @@ def render_report_note(report: dict[str, Any]) -> str:
     return f'\n      <p class="report-note"><strong>说明：</strong>{esc(caveat)}</p>'
 
 
+def render_target_section_points(points: Any) -> str:
+    rows = points if isinstance(points, list) else []
+    return "\n".join(f"<li>{esc(point)}</li>" for point in rows)
+
+
+def render_target_sections(report: dict[str, Any]) -> str:
+    target = normalize_report_target(report.get("report_target"))
+    sections = report.get("target_sections") if isinstance(report.get("target_sections"), dict) else {}
+    rows = []
+    for key, label in report_target_section_specs(target):
+        rows.append(
+            '<div class="panel section target-section">'
+            f"<h3>{esc(label)}</h3>"
+            f"<ul>{render_target_section_points(sections.get(key))}</ul>"
+            "</div>"
+        )
+    return "\n        ".join(rows)
+
+
+def render_target_video_html(report: dict[str, Any]) -> str:
+    target = normalize_report_target(report.get("report_target"))
+    label = report_target_label(target)
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{esc(report["title"])} · {esc(label)} · WatchBrief V5</title>
+<style>
+{reference_style()}
+{display_style_patch()}
+{target_style_patch()}
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">视频速览 · {esc(label)}</div>
+
+  <section class="hero target-report" data-report-target="{esc(target)}">
+    <div class="panel hero-main">
+      <h1>{esc(report["title"])}</h1>
+      <div class="meta-row">
+        <span class="pill"><strong>频道：</strong>{esc(report["channel"])}</span>
+        <span class="pill"><strong>时长：</strong>{esc(report["duration"])}</span>
+        <span class="pill"><strong>日期：</strong>{esc(report["date"])}</span>
+        <span class="pill blue"><strong>主题：</strong>{esc(report["topic"])}</span>
+        <span class="pill blue"><strong>报告模式：</strong>{esc(label)}</span>
+        {original_video_pill(report)}
+      </div>
+      <p class="target-hero-copy">{esc(report["target_summary"])}</p>
+    </div>
+  </section>
+
+  <section class="target-grid">
+        {render_target_sections(report)}
+  </section>
+</main>
+
+{feedback_suffix()}
+</body>
+</html>
+"""
+
+
 def render_single_video_html(payload: dict[str, Any]) -> str:
     report = validate_renderer_input(payload)
+    if normalize_report_target(report.get("report_target")) != DEFAULT_REPORT_TARGET:
+        return render_target_video_html(report)
     path_table = report["path_table"]
     report_band = score_band(report)
     score_num, hero_side_style, score_box_style, tag_style, side_verdict_style = score_styles(report)
@@ -185,7 +264,7 @@ def render_single_video_html(payload: dict[str, Any]) -> str:
 
     <aside class="panel hero-side" {hero_side_style}>
       <div class="score-box" {score_box_style}>
-        <div class="score-label">replacement score</div>
+        <div class="score-label">video value score</div>
         {score_num}
       </div>
       <div class="tag" {tag_style}>{esc(report["tag"])}</div>

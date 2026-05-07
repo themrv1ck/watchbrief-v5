@@ -6,7 +6,7 @@
   "date": "2026-04-21",
   "topic": "社交心理 / 魅力机制 / 关系吸引 / 自我呈现",
   "replacement_score": 3.7,
-  "tag": "报告足够替代",
+  "tag": "不推荐观看",
   "one_line_brief": "这期视频主要讲：魅力来自他人能稳定读到善意、潜力和真实，而不是把自己表演得毫无缺点。",
   "watch_verdict": "看报告基本够，原视频只建议跳看 08:20 | 12:40；不需要完整观看。",
   "highest_compression": "魅力的核心不是完美展示自己，而是让对方同时读到安全感、成长性和不做作的真实信号。",
@@ -57,6 +57,7 @@
     "computed_replacement_score": 3.7,
     "model_suggested_score": 3.7,
     "final_score_source": "deterministic_formula",
+    "score_semantics": "video_overall_value",
     "warnings": []
   },
   "transcript_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -64,9 +65,9 @@
   "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v2",
   "qwen_prompt_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "codex_model": "gpt-5.4",
-  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v3",
+  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v4",
   "codex_prompt_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "scoring_formula_version": "watchbrief_v5.scoring_formula.v1",
+  "scoring_formula_version": "watchbrief_v5.video_value_formula.v2",
   "watchbrief_version": "watchbrief_v5",
   "confidence_note": "mock payload 覆盖字段契约；未接入真实字幕或模型判断。"
 }

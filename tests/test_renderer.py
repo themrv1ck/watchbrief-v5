@@ -10,6 +10,18 @@ from scripts.validator import WatchBriefValidationError
 
 
 class RendererTest(unittest.TestCase):
+    def target_payload(self) -> dict:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["report_target"] = "knowledge_notes"
+        payload["target_summary"] = "这是一份面向知识笔记的中文分析摘要。"
+        payload["target_sections"] = {
+            "core_concepts": ["心流来自目标、反馈和挑战之间的配合。"],
+            "key_facts": ["视频把心流解释为任务结构问题，而不是单纯意志力问题。"],
+            "methods": ["把任务拆小，并让反馈更及时。"],
+            "caveats": ["转写内容只支持对视频内部观点做整理。"],
+        }
+        return payload
+
     def test_render_heartflow_has_expected_sections(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
         html = render_single_video_html(payload)
@@ -19,6 +31,15 @@ class RendererTest(unittest.TestCase):
         self.assertIn("section-watch", html)
         self.assertIn("视频到底讲了什么？", html)
         self.assertIn("如果要看，只看哪里？", html)
+
+    def test_render_non_watch_target_uses_target_sections(self) -> None:
+        html = render_single_video_html(self.target_payload())
+
+        self.assertIn("知识笔记", html)
+        self.assertIn('data-report-target="knowledge_notes"', html)
+        self.assertIn("核心概念", html)
+        self.assertIn("心流来自目标、反馈和挑战之间的配合。", html)
+        self.assertNotIn("如果要看，只看哪里？", html)
 
     def test_render_charm_matches_golden_html(self) -> None:
         payload = load_golden("sample_payload_charm.json")
@@ -147,10 +168,20 @@ class RendererTest(unittest.TestCase):
         self.assertIn('data-score-band="low"', html)
         self.assertIn("--score-band-accent:#f6c90e", html)
 
+    def test_renderer_score_color_medium_band_from_worth_supplementing_score(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["structured_assessment"] = {"信息密度": 7.9, "论据质量": 7.9, "独创性": 7.9, "观看性价比": 7.9}
+        payload["watch_verdict"] = "报告不能完全替代，原视频值得补看；如果时间有限，先看 10:51 | 15:08。"
+        payload = apply_deterministic_scoring(payload)
+        html = render_single_video_html(payload)
+
+        self.assertIn('data-score-band="medium"', html)
+        self.assertIn("--score-band-accent:#ab96e5", html)
+
     def test_renderer_score_color_strong_band_from_high_replacement_score(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
-        payload["structured_assessment"] = {"信息密度": 8.1, "论据质量": 8.1, "独创性": 8.1, "观看性价比": 8.1}
-        payload["watch_verdict"] = "报告不能完全替代，原视频值得补看；如果时间有限，先看 10:51 | 15:08。"
+        payload["structured_assessment"] = {"信息密度": 8.6, "论据质量": 8.6, "独创性": 8.6, "观看性价比": 8.6}
+        payload["watch_verdict"] = "报告不能完全替代，原视频建议完整看完，尤其是 10:51 | 15:08 的完整论证和示范。"
         payload = apply_deterministic_scoring(payload)
         html = render_single_video_html(payload)
 

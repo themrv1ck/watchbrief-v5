@@ -6,7 +6,7 @@
   "date": "2026-04-20",
   "topic": "效率 / 心流 / 任务设计 / 状态管理",
   "replacement_score": 4.7,
-  "tag": "只建议跳看",
+  "tag": "不推荐观看",
   "one_line_brief": "这期视频主要讲：心流更依赖任务结构设计，而不是单靠意志力硬撑注意力。",
   "watch_verdict": "看报告基本够，原视频只建议跳看 10:51 | 15:08；想补前置误区，再看 01:59 | 05:12。",
   "highest_compression": "心流不是把自己逼到更专注，而是把任务改成目标清楚、反馈及时、难度略高于当前能力的系统。",
@@ -64,6 +64,7 @@
     "computed_replacement_score": 4.7,
     "model_suggested_score": 4.7,
     "final_score_source": "deterministic_formula",
+    "score_semantics": "video_overall_value",
     "warnings": []
   },
   "transcript_hash": "fef9ed8077bc798ed8c143ae124dc99e9db44f385f57ad1803a582245914d4e5",
@@ -71,9 +72,9 @@
   "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v2",
   "qwen_prompt_fingerprint": "05a92c698f525918b21fa49089829cb083806fd0853a0d153258be135b3d2691",
   "codex_model": "gpt-5.4",
-  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v3",
+  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v4",
   "codex_prompt_fingerprint": "03f247e80432549f8771da24564509ebf537871963d110014e0cc04b523aac2a",
-  "scoring_formula_version": "watchbrief_v5.scoring_formula.v1",
+  "scoring_formula_version": "watchbrief_v5.video_value_formula.v2",
   "watchbrief_version": "watchbrief_v5",
   "confidence_note": "字幕清晰，关键方法段有明确时间戳，判断置信度中高。"
 }

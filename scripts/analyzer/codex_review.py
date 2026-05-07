@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 try:
-    from .prompts import ANALYZER_SYSTEM_PROMPT, NORMALIZED_PAYLOAD_CONTRACT, WATCHBRIEF_VERSION, build_review_user_prompt
+    from .prompts import ANALYZER_SYSTEM_PROMPT, NORMALIZED_PAYLOAD_CONTRACT, WATCHBRIEF_VERSION, build_review_user_prompt, build_target_report_prompt
+    from ..report_targets import DEFAULT_REPORT_TARGET, normalize_report_target, report_target_contract
     from ..scoring import SCORING_FORMULA_VERSION, apply_deterministic_scoring
     from ..stability import prompt_fingerprint
     from ..validator import WatchBriefValidationError, validate_normalized_report_payload
@@ -26,7 +27,8 @@ except ImportError:  # pragma: no cover - direct script execution
     for path in (ANALYZER_DIR, SCRIPTS_DIR):
         if str(path) not in sys.path:
             sys.path.insert(0, str(path))
-    from prompts import ANALYZER_SYSTEM_PROMPT, NORMALIZED_PAYLOAD_CONTRACT, WATCHBRIEF_VERSION, build_review_user_prompt
+    from prompts import ANALYZER_SYSTEM_PROMPT, NORMALIZED_PAYLOAD_CONTRACT, WATCHBRIEF_VERSION, build_review_user_prompt, build_target_report_prompt
+    from report_targets import DEFAULT_REPORT_TARGET, normalize_report_target, report_target_contract
     from scoring import SCORING_FORMULA_VERSION, apply_deterministic_scoring
     from stability import prompt_fingerprint
     from validator import WatchBriefValidationError, validate_normalized_report_payload
@@ -35,7 +37,7 @@ except ImportError:  # pragma: no cover - direct script execution
 ROOT = Path(__file__).resolve().parents[2]
 SINGLE_VIDEO_SCHEMA_PATH = ROOT / "schemas" / "single_video_report.schema.json"
 STRUCTURED_ASSESSMENT_REQUIRED_KEYS = ("信息密度", "论据质量", "独创性", "观看性价比")
-CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v3"
+CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v4"
 
 
 class CodexReviewError(ValueError):
@@ -54,26 +56,36 @@ class CodexReviewCallError(RuntimeError):
         return f"{self.reason_code}: {self.message}"
 
 
-def build_review_request(local_extract_payload: dict[str, Any]) -> dict[str, Any]:
+def build_review_request(local_extract_payload: dict[str, Any], *, report_target: str = DEFAULT_REPORT_TARGET) -> dict[str, Any]:
     if not isinstance(local_extract_payload, dict):
         raise CodexReviewError("local_extract_payload must be an object")
     if local_extract_payload.get("analysis_boundary", {}).get("does_not_generate_final_report_fields") is not True:
         raise CodexReviewError("local_extract_payload must declare final-report field boundary")
 
-    user_prompt = build_review_user_prompt(local_extract_payload)
-    codex_fingerprint = prompt_fingerprint(
+    target = normalize_report_target(report_target)
+    user_prompt = build_review_user_prompt(local_extract_payload, report_target=target)
+    target_prompt = build_target_report_prompt(target)
+    fingerprint_parts: list[Any] = [
         CODEX_REVIEW_PROMPT_VERSION,
         ANALYZER_SYSTEM_PROMPT,
         NORMALIZED_PAYLOAD_CONTRACT,
         CODEX_CLI_JSON_CONTRACT,
-    )
+    ]
+    if target != DEFAULT_REPORT_TARGET:
+        fingerprint_parts.append(target_prompt)
+    codex_fingerprint = prompt_fingerprint(*fingerprint_parts)
+    contract = copy.deepcopy(NORMALIZED_PAYLOAD_CONTRACT)
+    if target != DEFAULT_REPORT_TARGET:
+        contract["report_target_contract"] = report_target_contract(target)
     return {
         "request_version": "watchbrief_v5.codex_review_request.v1",
         "execution": "manual_or_later_phase_only",
         "model_call_allowed": False,
+        "report_target": target,
         "codex_prompt_version": CODEX_REVIEW_PROMPT_VERSION,
         "codex_prompt_fingerprint": codex_fingerprint,
         "stability_metadata": {
+            "report_target": target,
             "transcript_hash": str(local_extract_payload.get("transcript_hash") or ""),
             "qwen_model_id": str(local_extract_payload.get("qwen_extract", {}).get("_qwen_model") or ""),
             "qwen_prompt_version": str(local_extract_payload.get("analysis_boundary", {}).get("qwen_prompt_version") or ""),
@@ -88,7 +100,8 @@ def build_review_request(local_extract_payload: dict[str, Any]) -> dict[str, Any
             {"role": "user", "content": user_prompt},
         ],
         "expected_output": "normalized_report_payload",
-        "contract": copy.deepcopy(NORMALIZED_PAYLOAD_CONTRACT),
+        "contract": contract,
+        "target_payload_contract_text": target_prompt,
     }
 
 
@@ -316,14 +329,40 @@ def apply_stability_metadata(payload: dict[str, Any], metadata: Optional[dict[st
     return adapted
 
 
-def deterministic_report_adapter(payload: dict[str, Any], metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def deterministic_report_adapter(
+    payload: dict[str, Any],
+    metadata: Optional[dict[str, Any]] = None,
+    scoring_weights: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     try:
-        return apply_deterministic_scoring(apply_stability_metadata(payload, metadata))
+        return apply_deterministic_scoring(apply_stability_metadata(payload, metadata), scoring_weights)
     except ValueError as exc:
         raise CodexReviewError(str(exc), reason_code="schema_invalid") from exc
 
 
-def parse_review_response(raw_response: Any, *, apply_adapter: bool = False, stability_metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def apply_report_target(payload: dict[str, Any], report_target: str = DEFAULT_REPORT_TARGET) -> dict[str, Any]:
+    expected = normalize_report_target(report_target)
+    adapted = copy.deepcopy(payload)
+    actual_value = adapted.get("report_target")
+    if actual_value in (None, ""):
+        if expected != DEFAULT_REPORT_TARGET:
+            adapted["report_target"] = expected
+        return adapted
+    actual = normalize_report_target(actual_value)
+    if expected != DEFAULT_REPORT_TARGET and actual != expected:
+        raise CodexReviewError(f"review response report_target {actual} does not match requested {expected}", reason_code="schema_invalid")
+    adapted["report_target"] = actual
+    return adapted
+
+
+def parse_review_response(
+    raw_response: Any,
+    *,
+    apply_adapter: bool = False,
+    stability_metadata: Optional[dict[str, Any]] = None,
+    scoring_weights: Optional[dict[str, Any]] = None,
+    report_target: str = DEFAULT_REPORT_TARGET,
+) -> dict[str, Any]:
     if isinstance(raw_response, str):
         try:
             _, parsed = load_review_json_object(raw_response)
@@ -335,7 +374,8 @@ def parse_review_response(raw_response: Any, *, apply_adapter: bool = False, sta
         raise CodexReviewError("review response must be JSON string or object", reason_code="invalid_json")
     if apply_adapter:
         parsed = pre_schema_adapter(parsed)
-    parsed = deterministic_report_adapter(parsed, stability_metadata)
+    parsed = apply_report_target(parsed, report_target=report_target)
+    parsed = deterministic_report_adapter(parsed, stability_metadata, scoring_weights)
     validate_single_video_schema(parsed)
     return validate_normalized_report_payload(parsed)
 
@@ -408,7 +448,7 @@ CODEX_CLI_JSON_CONTRACT = """Codex CLI JSON output hard contract:
 - The JSON must fully conform to the WatchBrief V5 schema.
 
 Field rules:
-- replacement_score: number, 0 <= replacement_score <= 10, keep one decimal place. It is only your model-suggested reference; final output will be recomputed deterministically from structured_assessment.
+- replacement_score: number, 0 <= replacement_score <= 10, keep one decimal place. It is the video overall value score. It is only your model-suggested reference; final output will be recomputed deterministically from structured_assessment.
 - tag: string; must be exactly one of: 报告足够替代, 报告基本可替代, 只建议跳看, 值得补看, 建议完整看, 不推荐观看, 解析不足.
 - one_line_brief: string; must start with “这期视频主要讲：”.
 - watch_verdict: string; only says whether the report is enough, whether to watch the original video, and where to watch.
@@ -430,10 +470,10 @@ Field rules:
 - score_basis: object with four string fields: information_density, evidence_quality, originality, watch_value.
 - score_basis values must be strings. Never output numbers, objects, arrays, or omit these fields.
 - structured_assessment: object required for Watch Order pages with numeric fields 信息密度, 论据质量, 独创性, 观看性价比, each from 0 to 10.
-- structured_assessment drives the final deterministic replacement_score using: information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3.
+- structured_assessment drives the final deterministic video overall value score using: information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3.
 - score_trace is generated by deterministic validation. You may omit it; if you output it, it will be overwritten.
 - transcript_hash, qwen_model_id, qwen_prompt_version, qwen_prompt_fingerprint, codex_model, codex_prompt_version, codex_prompt_fingerprint, scoring_formula_version, and watchbrief_version are generated by deterministic validation. You may omit them; if you output them, they will be overwritten.
-- tag must be semantically consistent with the final score bands: below 4.0 means 报告足够替代 or 不推荐观看; 4.0-6.4 means 报告基本可替代 or 只建议跳看; 6.5-8.4 means 值得补看; 8.5+ means 建议完整看.
+- tag must be semantically consistent with the final video-value score bands: 0.1-4.9 means 不推荐观看; 5.0-6.5 means 只建议跳看; 6.6-8.5 means 值得补看; 8.6-10.0 means 建议完整看. Report substitutability may appear in watch_verdict, but must not define the score.
 - Use qwen_extract.important_terms and qwen_extract.corrected_terms for names and terms. Do not guess person names independently. If uncertain, write 疑似某某 instead of a wrong name.
 - confidence_note: string.
 """
@@ -493,6 +533,7 @@ def build_codex_cli_retry_prompt(
         "- structured_assessment must be an object with 信息密度, 论据质量, 独创性, 观看性价比 numeric fields from 0 to 10.\n\n"
         f"{watch_verdict_hint}\n"
         f"{CODEX_CLI_JSON_CONTRACT}\n"
+        f"{review_request.get('target_payload_contract_text') or ''}\n"
         "Previous JSON:\n"
         f"{previous_json}\n"
     )
@@ -639,6 +680,7 @@ def run_codex_review(
     *,
     enable_codex_review: bool = False,
     review_provider: str = "manual",
+    report_target: str = DEFAULT_REPORT_TARGET,
     model: str = "gpt-5.5",
     codex_model: Optional[str] = None,
     codex_home: Optional[str] = None,
@@ -654,7 +696,8 @@ def run_codex_review(
     if not enable_codex_review or provider != "codex-cli":
         raise CodexReviewCallError("model_disabled", "explicit codex review enablement is required")
 
-    review_request = build_review_request(local_extract_payload)
+    target = normalize_report_target(report_target)
+    review_request = build_review_request(local_extract_payload, report_target=target)
     stability_metadata = copy.deepcopy(review_request.get("stability_metadata") or {})
     stability_metadata["codex_model"] = str(codex_model or model)
     raw_sections: list[str] = []
@@ -691,7 +734,7 @@ def run_codex_review(
 
         write_debug_text(debug_dir, "codex_extracted.json", extracted_json + "\n")
         try:
-            adapted = deterministic_report_adapter(pre_schema_adapter(parsed), stability_metadata)
+            adapted = deterministic_report_adapter(apply_report_target(pre_schema_adapter(parsed), report_target=target), stability_metadata)
         except CodexReviewError as exc:
             if exc.reason_code != "schema_invalid":
                 raise

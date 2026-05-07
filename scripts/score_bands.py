@@ -71,8 +71,10 @@ def score_band_from_replacement_score(score: Any) -> str:
     value = _score_value(score)
     if value < 5.0:
         return "skip"
-    if value < 8.0:
+    if value <= 6.5:
         return "low"
+    if value <= 8.5:
+        return "medium"
     return "strong"
 
 

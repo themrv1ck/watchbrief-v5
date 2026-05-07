@@ -9,9 +9,11 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 try:
-    from .scoring import SCORING_FORMULA, SCORING_FORMULA_VERSION, SCORE_TRACE_FINAL_SOURCE, build_score_trace, tag_for_score
+    from .report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, normalize_report_target, report_target_section_keys
+    from .scoring import SCORE_TRACE_FINAL_SOURCE, build_score_trace, formula_version_for_weights, scoring_weights_from_payload, tag_for_score
 except ImportError:  # pragma: no cover
-    from scoring import SCORING_FORMULA, SCORING_FORMULA_VERSION, SCORE_TRACE_FINAL_SOURCE, build_score_trace, tag_for_score
+    from report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, normalize_report_target, report_target_section_keys
+    from scoring import SCORE_TRACE_FINAL_SOURCE, build_score_trace, formula_version_for_weights, scoring_weights_from_payload, tag_for_score
 
 
 VALID_TAGS = (
@@ -25,7 +27,7 @@ VALID_TAGS = (
 )
 WATCHBRIEF_VERSION = "watchbrief_v5"
 QWEN_LOCAL_EXTRACT_PROMPT_VERSION = "watchbrief_v5.qwen_local_extract_prompt.v2"
-CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v3"
+CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v4"
 
 PATH_TABLE_KEYS = ("problem", "mechanism", "turning_point", "landing")
 WATCH_SEGMENT_PRIORITY_ORDER = ("primary", "optional", "backup")
@@ -50,6 +52,7 @@ SCORE_TRACE_KEYS = (
     "computed_replacement_score",
     "model_suggested_score",
     "final_score_source",
+    "score_semantics",
 )
 
 REQUIRED_REPORT_FIELDS = (
@@ -184,7 +187,7 @@ FINAL_CONCLUSION_FORBIDDEN_MARKERS = (
     "无需看",
 )
 
-INCOMPLETE_FINAL_SUFFIXES = ("所以", "但是", "如果", "关键不是", "要", "因此", "这说明")
+INCOMPLETE_FINAL_SUFFIXES = ("所以", "但是", "如果", "关键不是", "因此", "这说明")
 SENTENCE_ENDINGS = ("。", "！", "？", "!", "?")
 
 OVER_ABSTRACT_HIGHEST_COMPRESSION = {
@@ -254,6 +257,14 @@ def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any
 
     if string_has_old_module_label(payload):
         issues.append(ValidationIssue("$", "legacy module label is not allowed", "legacy_module_label"))
+
+    report_target = DEFAULT_REPORT_TARGET
+    if "report_target" in payload:
+        try:
+            report_target = normalize_report_target(payload.get("report_target"))
+        except ValueError:
+            issues.append(ValidationIssue("report_target", f"must be one of {REPORT_TARGETS}", "report_target_enum"))
+    _validate_target_payload(payload, report_target, issues)
 
     replacement_score = payload.get("replacement_score")
     if not isinstance(replacement_score, (int, float)) or isinstance(replacement_score, bool):
@@ -406,6 +417,39 @@ def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any
     return copy.deepcopy(payload)
 
 
+def _validate_target_payload(payload: dict[str, Any], report_target: str, issues: list[ValidationIssue]) -> None:
+    if report_target == DEFAULT_REPORT_TARGET:
+        if "target_summary" in payload:
+            issues.append(ValidationIssue("target_summary", "is only allowed for non-watch report targets", "target_unexpected"))
+        if "target_sections" in payload:
+            issues.append(ValidationIssue("target_sections", "is only allowed for non-watch report targets", "target_unexpected"))
+        return
+
+    if text(payload.get("report_target")) != report_target:
+        issues.append(ValidationIssue("report_target", "must be explicit for non-watch report targets", "target_required"))
+    if not text(payload.get("target_summary")):
+        issues.append(ValidationIssue("target_summary", "must not be empty for non-watch report targets", "target_summary_required"))
+
+    sections = payload.get("target_sections")
+    required_keys = report_target_section_keys(report_target)
+    if not isinstance(sections, dict):
+        issues.append(ValidationIssue("target_sections", "must be an object for non-watch report targets", "target_sections_type"))
+        return
+    actual_keys = tuple(sections.keys())
+    if actual_keys != required_keys:
+        issues.append(ValidationIssue("target_sections", f"must contain keys in order: {list(required_keys)}", "target_sections_keys"))
+    for key in required_keys:
+        rows = sections.get(key)
+        if not isinstance(rows, list):
+            issues.append(ValidationIssue(f"target_sections.{key}", "must be a list of strings", "target_section_type"))
+            continue
+        if not 1 <= len(rows) <= 6:
+            issues.append(ValidationIssue(f"target_sections.{key}", "must contain 1 to 6 rows", "target_section_length"))
+        for index, row in enumerate(rows):
+            if not text(row):
+                issues.append(ValidationIssue(f"target_sections.{key}[{index}]", "row must not be empty", "target_section_row"))
+
+
 def _validate_structured_assessment(value: Any, issues: list[ValidationIssue], path: str) -> None:
     if not isinstance(value, dict):
         issues.append(ValidationIssue(path, "must be an object", "structured_type"))
@@ -438,10 +482,12 @@ def _validate_score_trace_and_tag(payload: dict[str, Any], issues: list[Validati
             issues.append(ValidationIssue(f"score_trace.{key}", "must be a number", "score_trace_number"))
         elif round(float(value), 1) != float(expected[key]):
             issues.append(ValidationIssue(f"score_trace.{key}", "must match deterministic scoring inputs", "score_trace_mismatch"))
-    if score_trace.get("formula") != SCORING_FORMULA:
+    if score_trace.get("formula") != expected["formula"]:
         issues.append(ValidationIssue("score_trace.formula", "must match deterministic formula", "score_trace_formula"))
     if score_trace.get("final_score_source") != SCORE_TRACE_FINAL_SOURCE:
         issues.append(ValidationIssue("score_trace.final_score_source", "must be deterministic_formula", "score_trace_source"))
+    if score_trace.get("score_semantics") != "video_overall_value":
+        issues.append(ValidationIssue("score_trace.score_semantics", "must be video_overall_value", "score_trace_semantics"))
     replacement_score = payload.get("replacement_score")
     if isinstance(replacement_score, (int, float)) and not isinstance(replacement_score, bool):
         if round(float(replacement_score), 1) != float(expected["computed_replacement_score"]):
@@ -451,10 +497,12 @@ def _validate_score_trace_and_tag(payload: dict[str, Any], issues: list[Validati
             issues.append(ValidationIssue("tag", "must match deterministic score band", "tag_score_conflict"))
         verdict = text(payload.get("watch_verdict"))
         score = float(expected["computed_replacement_score"])
-        if score >= 6.5 and any(marker in verdict for marker in ("报告足够替代", "看报告基本够", "报告基本够", "只建议跳看", "不必看", "不用看", "无需看", "不推荐观看")):
-            issues.append(ValidationIssue("watch_verdict", "must not conflict with high remaining watch value", "watch_verdict_score_conflict"))
-        if score < 4.0 and any(marker in verdict for marker in ("建议完整看", "建议完整观看", "值得补看", "值得完整看")):
-            issues.append(ValidationIssue("watch_verdict", "must not conflict with low remaining watch value", "watch_verdict_score_conflict"))
+        has_precise_watch_segments = bool(PIPE_TIME_RANGE_RE.search(verdict))
+        has_strong_no_watch = any(marker in verdict for marker in ("不必看", "不用看", "无需看", "不推荐观看"))
+        if score > 6.5 and has_strong_no_watch and not has_precise_watch_segments:
+            issues.append(ValidationIssue("watch_verdict", "must not conflict with high video value", "watch_verdict_score_conflict"))
+        if score < 5.0 and any(marker in verdict for marker in ("建议完整看", "建议完整观看", "值得补看", "值得完整看")):
+            issues.append(ValidationIssue("watch_verdict", "must not conflict with low video value", "watch_verdict_score_conflict"))
 
 
 def _validate_stability_metadata(payload: dict[str, Any], issues: list[ValidationIssue]) -> None:
@@ -469,7 +517,8 @@ def _validate_stability_metadata(payload: dict[str, Any], issues: list[Validatio
         issues.append(ValidationIssue("qwen_prompt_version", "must match Qwen prompt version", "stable_prompt_version"))
     if text(payload.get("codex_prompt_version")) != CODEX_REVIEW_PROMPT_VERSION:
         issues.append(ValidationIssue("codex_prompt_version", "must match Codex prompt version", "stable_prompt_version"))
-    if text(payload.get("scoring_formula_version")) != SCORING_FORMULA_VERSION:
+    expected_formula_version = formula_version_for_weights(scoring_weights_from_payload(payload))
+    if text(payload.get("scoring_formula_version")) != expected_formula_version:
         issues.append(ValidationIssue("scoring_formula_version", "must match scoring formula version", "stable_formula_version"))
     if text(payload.get("watchbrief_version")) != WATCHBRIEF_VERSION:
         issues.append(ValidationIssue("watchbrief_version", "must match WatchBrief version", "stable_watchbrief_version"))

@@ -7,9 +7,11 @@ from typing import Any, Optional
 
 try:
     from .codex_review import CODEX_CLI_JSON_CONTRACT, build_codex_cli_prompt, build_review_request, write_debug_text
+    from ..report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from .model_clients import ModelClientError, call_named_provider_text
 except ImportError:  # pragma: no cover
     from codex_review import CODEX_CLI_JSON_CONTRACT, build_codex_cli_prompt, build_review_request, write_debug_text
+    from report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from model_clients import ModelClientError, call_named_provider_text
 
 
@@ -39,6 +41,7 @@ def run_cloud_review(
     api_base: str = "",
     api_key_env: str = "",
     timeout: int = 120,
+    report_target: str = DEFAULT_REPORT_TARGET,
     debug_dir: Optional[Path] = None,
     text_model_caller: Any = call_named_provider_text,
 ) -> str:
@@ -47,7 +50,7 @@ def run_cloud_review(
     if provider == "openai-compatible" and not selected_model:
         raise CloudReviewError(provider, "review_model_missing", "--review-model is required for openai-compatible")
 
-    review_request = build_review_request(local_extract_payload)
+    review_request = build_review_request(local_extract_payload, report_target=normalize_report_target(report_target))
     user_prompt = build_codex_cli_prompt(review_request)
     system_prompt = (
         "You are a WatchBrief V5 review adapter. Return exactly one JSON object. "

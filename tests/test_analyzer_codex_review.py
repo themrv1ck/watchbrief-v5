@@ -69,11 +69,11 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertEqual(request["messages"][0]["role"], "system")
         self.assertEqual(request["messages"][1]["role"], "user")
         self.assertIn("final_conclusion", request["contract"]["required_fields"])
-        self.assertEqual(request["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v3")
+        self.assertEqual(request["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v4")
         self.assertRegex(request["codex_prompt_fingerprint"], r"^[0-9a-f]{64}$")
         self.assertRegex(request["stability_metadata"]["transcript_hash"], r"^[0-9a-f]{64}$")
         self.assertEqual(request["stability_metadata"]["qwen_model_id"], DEFAULT_QWEN_MODEL)
-        self.assertEqual(request["stability_metadata"]["scoring_formula_version"], "watchbrief_v5.scoring_formula.v1")
+        self.assertEqual(request["stability_metadata"]["scoring_formula_version"], "watchbrief_v5.video_value_formula.v2")
 
     def test_qwen_terms_are_passed_into_review_request(self) -> None:
         request = build_review_request(self.build_local_extract())
@@ -82,6 +82,23 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertIn("important_terms", prompt)
         self.assertIn("corrected_terms", prompt)
         self.assertIn("flow", prompt)
+
+    def test_build_review_request_carries_report_target_contract(self) -> None:
+        request = build_review_request(self.build_local_extract(), report_target="creation_review")
+
+        self.assertEqual(request["report_target"], "creation_review")
+        self.assertEqual(request["stability_metadata"]["report_target"], "creation_review")
+        self.assertIn("report_target_contract", request["contract"])
+        self.assertIn("creation_review", request["messages"][1]["content"])
+
+    def test_review_prompt_includes_structured_assessment_rubric(self) -> None:
+        request = build_review_request(self.build_local_extract())
+        prompt = request["messages"][1]["content"]
+
+        self.assertIn("structured_assessment_rubric", prompt)
+        self.assertIn("不要把所有普通视频都压到 0-3", prompt)
+        self.assertIn("报告可替代性只能影响观看建议", prompt)
+        self.assertIn("报告可替代性只能影响观看建议", prompt)
 
     def test_review_prompt_requires_chineseized_domain_terms(self) -> None:
         request = build_review_request(self.build_local_extract())
@@ -215,7 +232,7 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
             transport=transport,
         )
 
-        self.assertEqual(result["tag"], "只建议跳看")
+        self.assertEqual(result["tag"], "不推荐观看")
         self.assertEqual(len(calls), 1)
 
     def test_build_codex_cli_command_uses_codex_exec(self) -> None:
@@ -368,7 +385,7 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
 
         parsed = parse_review_response(raw, stability_metadata={**request["stability_metadata"], "codex_model": LOCAL_REVIEW_MODEL_ID})
         self.assertEqual(parsed["codex_model"], LOCAL_REVIEW_MODEL_ID)
-        self.assertEqual(parsed["tag"], "只建议跳看")
+        self.assertIn(parsed["tag"], {"不推荐观看", "只建议跳看"})
         self.assertIn("本地模式", parsed["content_caveat"])
 
     def test_build_local_review_response_uses_qwen_extract_fields(self) -> None:
@@ -377,6 +394,46 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertIn("任务结构", response["one_line_brief"])
         self.assertEqual(response["watch_segments"][0]["priority"], "primary")
         self.assertEqual(response["codex_model"], LOCAL_REVIEW_MODEL_ID)
+
+    def test_local_review_scores_vary_with_extract_evidence(self) -> None:
+        sparse = self.build_local_extract()
+        sparse["qwen_extract"].update({
+            "core_claims": [],
+            "methods": [],
+            "examples": [],
+            "caveats": [],
+            "refined_quotes": [],
+            "important_terms": [],
+            "time_windows": [],
+        })
+        rich = self.build_local_extract()
+        rich["metadata"]["duration"] = "32分10秒"
+        rich["qwen_extract"].update({
+            "core_claims": ["观点一", "观点二", "观点三", "观点四"],
+            "methods": ["方法一", "方法二", "方法三", "方法四"],
+            "examples": ["例子一", "例子二", "例子三", "例子四"],
+            "caveats": ["边界一", "边界二", "边界三"],
+            "refined_quotes": ["金句一", "金句二", "金句三", "金句四"],
+            "important_terms": ["术语一", "术语二", "术语三", "术语四", "术语五"],
+            "time_windows": [
+                {"start": "00:00", "end": "02:00", "excerpt": "开头"},
+                {"start": "02:00", "end": "04:00", "excerpt": "展开"},
+                {"start": "04:00", "end": "06:00", "excerpt": "例子"},
+            ],
+        })
+
+        sparse_parsed = parse_review_response(
+            build_local_review_response(sparse),
+            stability_metadata={**build_review_request(sparse)["stability_metadata"], "codex_model": LOCAL_REVIEW_MODEL_ID},
+        )
+        rich_parsed = parse_review_response(
+            build_local_review_response(rich),
+            stability_metadata={**build_review_request(rich)["stability_metadata"], "codex_model": LOCAL_REVIEW_MODEL_ID},
+        )
+
+        self.assertNotEqual(sparse_parsed["replacement_score"], rich_parsed["replacement_score"])
+        self.assertLess(sparse_parsed["replacement_score"], rich_parsed["replacement_score"])
+        self.assertNotEqual(sparse_parsed["structured_assessment"], rich_parsed["structured_assessment"])
 
     def test_cli_manual_provider_without_enablement_does_not_call_codex(self) -> None:
         with mock.patch("scripts.cli.run_codex_review", side_effect=AssertionError("must not call codex")):

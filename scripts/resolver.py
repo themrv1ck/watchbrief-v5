@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import re
 import subprocess
@@ -84,6 +85,8 @@ DEFAULT_BROWSER_AUTH_ORDER = DEFAULT_COOKIE_BROWSER_ATTEMPTS
 BVID_RE = re.compile(r"\b(BV[0-9A-Za-z]{8,})\b")
 BILIBILI_LIST_PATH_RE = re.compile(r"^/list/(ml\d+)(?:/|$)")
 BILIBILI_FAV_LIST_API = "https://api.bilibili.com/x/v3/fav/resource/list"
+NETEASE_PROGRAM_DETAIL_API = "https://music.163.com/api/dj/program/detail"
+NETEASE_PLAYER_URL_API = "https://music.163.com/api/song/enhance/player/url"
 XIAOHONGSHU_HOST_RE = re.compile(r"(^|\.)xiaohongshu\.com$")
 XIAOHONGSHU_BOARD_API = "https://www.xiaohongshu.com/api/sns/web/v1/board/note"
 XIAOHONGSHU_SENSITIVE_QUERY_KEYS = {"xsec_token", "xsec_source", "token", "sign", "signature"}
@@ -120,7 +123,18 @@ def bilibili_bvid_from_url(url: str) -> str:
 def bilibili_list_id_from_url(url: str) -> str:
     parsed = urllib.parse.urlparse(str(url or ""))
     match = BILIBILI_LIST_PATH_RE.match(parsed.path)
-    return match.group(1) if match else ""
+    if match:
+        return match.group(1)
+    query = urllib.parse.parse_qs(parsed.query)
+    # Bilibili space/favlist URLs expose the favorite-list id as fid.
+    # Treat it as the same media_id used by x/v3/fav/resource/list so the
+    # resolver can fetch authoritative titles instead of accepting yt-dlp's
+    # flat-playlist placeholders (Video 2, Video 3, ...).
+    if parsed.path.rstrip("/").endswith("/favlist"):
+        fid = str((query.get("fid") or [""])[0]).strip()
+        if fid.isdigit():
+            return f"ml{fid}"
+    return ""
 
 
 def is_bilibili_list_url(url: str) -> bool:
@@ -163,6 +177,133 @@ def xiaohongshu_board_id_from_url(url: str) -> str:
 
 def is_xiaohongshu_board_url(url: str) -> bool:
     return bool(is_xiaohongshu_url(url) and xiaohongshu_board_id_from_url(url))
+
+
+def is_netease_music_url(url: str) -> bool:
+    host = urllib.parse.urlparse(str(url or "")).netloc.lower()
+    return host == "163cn.tv" or host.endswith("music.163.com") or host.endswith("music.163.com.cn")
+
+
+def netease_program_id_from_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(str(url or ""))
+    query = urllib.parse.parse_qs(parsed.query)
+    value = str((query.get("id") or query.get("programId") or [""])[0]).strip()
+    if value.isdigit():
+        return value
+    match = re.search(r"(?:^|/)program(?:/|$).*?(?:[?&]id=|/)(\d+)", str(url or ""))
+    return match.group(1) if match else ""
+
+
+def fetch_final_url(url: str, *, headers: dict[str, str], urlopen_func: Any, timeout: int) -> str:
+    request = urllib.request.Request(url, headers=headers)
+    with urlopen_func(request, timeout=timeout) as response:
+        final_url = getattr(response, "geturl", lambda: "")()
+        return str(final_url or url)
+
+
+def format_unix_ms_date(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if number <= 0:
+        return ""
+    if number > 10_000_000_000:
+        number = number / 1000.0
+    return datetime.datetime.fromtimestamp(number, datetime.UTC).strftime("%Y%m%d")
+
+
+def fetch_netease_json(url: str, *, headers: dict[str, str], urlopen_func: Any, timeout: int) -> dict[str, Any]:
+    try:
+        payload = json.loads(fetch_text(url, headers=headers, urlopen_func=urlopen_func, timeout=timeout))
+    except Exception as exc:
+        raise ResolverError("NetEase Music API returned invalid JSON", ["netease-api", url], str(exc)) from exc
+    if not isinstance(payload, dict):
+        raise ResolverError("NetEase Music API JSON must be an object", ["netease-api", url])
+    return payload
+
+
+def resolve_netease_program(
+    source_url: str,
+    *,
+    urlopen_func: Any,
+    timeout: int,
+) -> dict[str, Any]:
+    headers = {
+        "User-Agent": BILIBILI_USER_AGENT,
+        "Referer": "https://music.163.com/",
+    }
+    canonical_url = source_url
+    program_id = netease_program_id_from_url(source_url)
+    if not program_id:
+        try:
+            canonical_url = fetch_final_url(source_url, headers=headers, urlopen_func=urlopen_func, timeout=min(timeout, 60))
+        except Exception as exc:
+            raise ResolverError("NetEase Music short URL expansion failed", ["netease-short-url", source_url], str(exc)) from exc
+        program_id = netease_program_id_from_url(canonical_url)
+    if not program_id:
+        raise ResolverError("NetEase Music program id was not found", ["netease-program", source_url])
+
+    detail_url = NETEASE_PROGRAM_DETAIL_API + "?" + urllib.parse.urlencode({"id": program_id})
+    detail = fetch_netease_json(detail_url, headers=headers, urlopen_func=urlopen_func, timeout=min(timeout, 120))
+    program = detail.get("program")
+    if not isinstance(program, dict) or int(detail.get("code") or 0) != 200:
+        raise ResolverError("NetEase Music program detail was unavailable", ["netease-program-detail", program_id], str(detail)[:500])
+    main_song = program.get("mainSong") if isinstance(program.get("mainSong"), dict) else {}
+    song_id = str(main_song.get("id") or program.get("mainTrackId") or "").strip()
+    if not song_id.isdigit():
+        raise ResolverError("NetEase Music program audio id was not found", ["netease-program-detail", program_id])
+
+    player_url = NETEASE_PLAYER_URL_API + "?" + urllib.parse.urlencode({"id": song_id, "ids": f"[{song_id}]", "br": "320000"})
+    player = fetch_netease_json(player_url, headers=headers, urlopen_func=urlopen_func, timeout=min(timeout, 120))
+    data = player.get("data")
+    first = data[0] if isinstance(data, list) and data and isinstance(data[0], dict) else {}
+    media_url = str(first.get("url") or "").strip()
+    if not media_url:
+        raise ResolverError("NetEase Music program audio URL was unavailable", ["netease-player-url", song_id], str(player)[:500])
+
+    title = str(program.get("name") or main_song.get("name") or "Untitled Podcast")
+    radio = program.get("radio") if isinstance(program.get("radio"), dict) else {}
+    dj = program.get("dj") if isinstance(program.get("dj"), dict) else {}
+    channel = str(radio.get("name") or dj.get("nickname") or "网易云音乐播客")
+    duration_ms = program.get("duration") or main_song.get("duration") or first.get("time")
+    try:
+        duration_seconds = max(0, int(float(duration_ms) / 1000))
+    except (TypeError, ValueError):
+        duration_seconds = 0
+    date = format_unix_ms_date(program.get("scheduledPublishTime") or program.get("createTime"))
+    item = {
+        "title": title,
+        "url": canonical_url,
+        "id": program_id,
+        "duration": str(duration_seconds) if duration_seconds else "",
+        "channel": channel,
+        "date": date,
+        "source_platform": "netease_music_podcast",
+        "_media_url": media_url,
+        "resolver_debug": {
+            "resolver_method": "netease_music_program_api",
+            "source_platform": "netease_music_podcast",
+            "program_id": program_id,
+            "song_id": song_id,
+            "media_url_available": True,
+            "fallback_success": True,
+            "reason_code": "",
+        },
+    }
+    return {
+        "resolution_version": "watchbrief_v5.resolution.v1",
+        "source_kind": "single",
+        "source_platform": "netease_music_podcast",
+        "url": canonical_url,
+        "title": title,
+        "id": program_id,
+        "duration": item["duration"],
+        "channel": channel,
+        "date": date,
+        "videos": [item],
+        "resolver_debug": item["resolver_debug"],
+    }
 
 
 def xiaohongshu_canonical_note_url(note_id: str) -> str:
@@ -1203,6 +1344,100 @@ def has_metadata_value(value: Any) -> bool:
     return value not in (None, "", [], {})
 
 
+def is_placeholder_video_title(value: Any) -> bool:
+    return bool(re.fullmatch(r"Video\s+\d+", str(value or "").strip()))
+
+
+def fill_video_from_bilibili_view_metadata(
+    video: dict[str, Any],
+    *,
+    cookie_header: str,
+    source_url: str,
+    urlopen_func: Any,
+    timeout: int,
+) -> dict[str, Any]:
+    current = dict(video)
+    bvid = str(current.get("bvid") or current.get("id") or "").strip()
+    if not bvid.startswith("BV"):
+        bvid = bilibili_bvid_from_url(str(current.get("url") or ""))
+    if not bvid:
+        return current
+    try:
+        metadata = fetch_bilibili_view_metadata(
+            bvid,
+            headers=request_headers(str(current.get("url") or source_url), cookie_header),
+            urlopen_func=urlopen_func,
+            timeout=min(timeout, 120),
+        )
+    except Exception:
+        return current
+    if not metadata:
+        return current
+    title = str(metadata.get("title") or "").strip()
+    if title and (not current.get("title") or is_placeholder_video_title(current.get("title"))):
+        current["title"] = title
+    if metadata.get("duration") not in (None, "", 0) and not has_metadata_value(current.get("duration")):
+        current["duration"] = metadata.get("duration")
+    owner = metadata.get("owner") if isinstance(metadata.get("owner"), dict) else {}
+    channel = str(owner.get("name") or "").strip()
+    if channel and not current.get("channel"):
+        current["channel"] = channel
+    pages = metadata.get("pages") if isinstance(metadata.get("pages"), list) else []
+    if pages and not current.get("cid"):
+        first_page = next((page for page in pages if isinstance(page, dict)), {})
+        if isinstance(first_page, dict) and first_page.get("cid") not in (None, ""):
+            current["cid"] = str(first_page.get("cid"))
+    for key, value in publish_metadata_from_entry(metadata).items():
+        if has_metadata_value(value) and not has_metadata_value(current.get(key)):
+            current[key] = value
+    current["bvid"] = bvid
+    return current
+
+
+def enrich_bilibili_list_item_metadata(
+    videos: list[dict[str, Any]],
+    *,
+    source_url: str,
+    cookie_header: str,
+    urlopen_func: Any,
+    timeout: int,
+) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for video in videos:
+        needs_metadata = (
+            not has_metadata_value(video.get("title"))
+            or is_placeholder_video_title(video.get("title"))
+            or not has_metadata_value(video.get("duration"))
+            or not has_metadata_value(video.get("channel"))
+        )
+        enriched.append(
+            fill_video_from_bilibili_view_metadata(
+                video,
+                cookie_header=cookie_header,
+                source_url=source_url,
+                urlopen_func=urlopen_func,
+                timeout=timeout,
+            )
+            if needs_metadata
+            else dict(video)
+        )
+    return enriched
+
+
+def assert_bilibili_list_has_real_titles(videos: list[dict[str, Any]], *, source_url: str, resolver_debug: dict[str, Any]) -> None:
+    bad = [str(video.get("bvid") or video.get("url") or index + 1) for index, video in enumerate(videos) if is_placeholder_video_title(video.get("title")) or not str(video.get("title") or "").strip()]
+    if bad:
+        debug = dict(resolver_debug or {})
+        debug["missing_title_items"] = bad[:10]
+        debug["missing_title_count"] = len(bad)
+        raise BilibiliResolverError(
+            BILIBILI_LIST_EXPANSION_FAILED,
+            "Bilibili list item titles were not resolved; refusing to render placeholder Video N reports",
+            ["bilibili-list-title-validation", source_url],
+            debug=debug,
+        )
+
+
 def publish_metadata_from_entry(entry: dict[str, Any]) -> dict[str, Any]:
     metadata: dict[str, Any] = {}
     for key in PUBLISH_METADATA_FIELDS:
@@ -1275,6 +1510,16 @@ def list_title_from_bilibili_api(data: dict[str, Any]) -> str:
     return ""
 
 
+def choose_bilibili_list_title(*candidates: Any, videos: list[dict[str, Any]], list_id: str) -> str:
+    item_titles = {str(video.get("title") or "").strip() for video in videos if str(video.get("title") or "").strip()}
+    cleaned = [str(candidate or "").strip() for candidate in candidates if str(candidate or "").strip()]
+    for candidate in cleaned:
+        if len(item_titles) > 1 and candidate in item_titles:
+            continue
+        return candidate
+    return cleaned[0] if cleaned else str(list_id or "Bilibili List")
+
+
 def build_bilibili_list_resolution(
     source_url: str,
     *,
@@ -1282,6 +1527,7 @@ def build_bilibili_list_resolution(
     title: str,
     list_id: str,
     resolver_debug: dict[str, Any],
+    fallback_title: str = "",
 ) -> dict[str, Any]:
     if not videos:
         raise BilibiliResolverError(
@@ -1290,14 +1536,15 @@ def build_bilibili_list_resolution(
             ["bilibili-list-expansion", source_url],
             debug=resolver_debug,
         )
+    resolved_title = choose_bilibili_list_title(title, fallback_title, videos=videos, list_id=list_id)
     return {
         "resolution_version": "watchbrief_v5.resolution.v1",
         "source_kind": "list",
         "url": source_url,
         "source_url": source_url,
-        "title": str(title or list_id or "Bilibili List"),
-        "playlist_title": str(title or ""),
-        "list_title": str(title or ""),
+        "title": resolved_title,
+        "playlist_title": resolved_title,
+        "list_title": resolved_title,
         "list_id": list_id,
         "video_count": len(videos),
         "videos": videos,
@@ -1336,7 +1583,21 @@ def resolve_bilibili_list_from_page_or_api(
     api_data = fetch_bilibili_list_metadata(list_id, headers=headers, urlopen_func=urlopen_func, timeout=min(timeout, 120))
     api_videos = videos_from_bilibili_list_api(api_data, debug) if api_data else []
     api_title = list_title_from_bilibili_api(api_data) if api_data else ""
+    page_title = ""
     if api_videos:
+        api_videos = enrich_bilibili_list_item_metadata(
+            api_videos,
+            source_url=url,
+            cookie_header=cookie_header,
+            urlopen_func=urlopen_func,
+            timeout=timeout,
+        )
+        assert_bilibili_list_has_real_titles(api_videos, source_url=url, resolver_debug=debug)
+        if len({str(video.get("title") or "").strip() for video in api_videos if str(video.get("title") or "").strip()}) > 1 and api_title and any(api_title == str(video.get("title") or "").strip() for video in api_videos):
+            try:
+                page_title = html_title(fetch_text(url, headers=headers, urlopen_func=urlopen_func, timeout=min(timeout, 120)))
+            except Exception:
+                page_title = ""
         debug["fallback_success"] = True
         debug["reason_code"] = ""
         debug["expansion_provider"] = "bilibili-fav-list-api"
@@ -1344,6 +1605,7 @@ def resolve_bilibili_list_from_page_or_api(
             url,
             videos=api_videos,
             title=api_title,
+            fallback_title=page_title,
             list_id=list_id,
             resolver_debug=debug,
         )
@@ -1384,6 +1646,14 @@ def resolve_bilibili_list_from_page_or_api(
         for index, item in enumerate(unique_items)
     ]
     if videos:
+        videos = enrich_bilibili_list_item_metadata(
+            videos,
+            source_url=url,
+            cookie_header=cookie_header,
+            urlopen_func=urlopen_func,
+            timeout=timeout,
+        )
+        assert_bilibili_list_has_real_titles(videos, source_url=url, resolver_debug=debug)
         debug["fallback_method"] = "bilibili_page_initial_state"
         debug["fallback_success"] = True
         debug["reason_code"] = ""
@@ -1596,6 +1866,76 @@ def normalize_video_entry(entry: dict[str, Any], index: int) -> dict[str, Any]:
     return normalized
 
 
+def bilibili_page_number_from_url(url: str, fallback: int) -> int:
+    parsed = urllib.parse.urlparse(str(url or ""))
+    query = urllib.parse.parse_qs(parsed.query)
+    raw = query.get("p", [""])[0]
+    try:
+        page = int(raw)
+    except (TypeError, ValueError):
+        page = fallback
+    return page if page > 0 else fallback
+
+
+def enrich_bilibili_multipart_videos(
+    videos: list[dict[str, Any]],
+    *,
+    source_url: str,
+    cookie_header: str,
+    urlopen_func: Any,
+    timeout: int,
+) -> list[dict[str, Any]]:
+    """Fill Bilibili multi-P entries with per-page title/cid/duration from the view API."""
+    bvid = bilibili_bvid_from_url(source_url)
+    if not bvid:
+        for video in videos:
+            candidate = str(video.get("bvid") or video.get("id") or video.get("url") or "")
+            match = BVID_RE.search(candidate)
+            if match:
+                bvid = match.group(1)
+                break
+    if not bvid:
+        return videos
+    try:
+        video_data = fetch_bilibili_view_metadata(
+            bvid,
+            headers=request_headers(source_url, cookie_header),
+            urlopen_func=urlopen_func,
+            timeout=min(timeout, 120),
+        )
+    except Exception:
+        return videos
+    pages = video_data.get("pages") if isinstance(video_data, dict) else None
+    if not isinstance(pages, list) or not pages:
+        return videos
+    page_by_index = {idx: page for idx, page in enumerate(pages, 1) if isinstance(page, dict)}
+    owner = video_data.get("owner") if isinstance(video_data.get("owner"), dict) else {}
+    channel = str(owner.get("name") or "")
+    publish_metadata = publish_metadata_from_entry(video_data)
+    enriched: list[dict[str, Any]] = []
+    for fallback_index, video in enumerate(videos, 1):
+        current = dict(video)
+        page_index = bilibili_page_number_from_url(str(current.get("url") or ""), fallback_index)
+        page = page_by_index.get(page_index, {})
+        if page:
+            part = str(page.get("part") or "").strip()
+            if part and (not current.get("title") or str(current.get("title")).startswith("Video ")):
+                current["title"] = part
+            if page.get("duration") not in (None, "", 0):
+                current["duration"] = page.get("duration")
+            if page.get("cid") not in (None, ""):
+                current["cid"] = str(page.get("cid"))
+            current["page_index"] = page_index
+        current.setdefault("bvid", bvid)
+        if channel and not current.get("channel"):
+            current["channel"] = channel
+        for key, value in publish_metadata.items():
+            if has_metadata_value(value) and not has_metadata_value(current.get(key)):
+                current[key] = value
+        enriched.append(current)
+    return enriched
+
+
 def build_bilibili_list_resolution_from_ytdlp(
     source_url: str,
     payload: dict[str, Any],
@@ -1631,10 +1971,13 @@ def build_bilibili_list_resolution_from_ytdlp(
             if not bvid:
                 continue
             api_video = api_by_bvid.get(bvid, {})
+            entry_title = str(entry.get("title") or "").strip()
+            api_title = str(api_video.get("title") or "").strip()
+            title = api_title if (api_title and (not entry_title or is_placeholder_video_title(entry_title))) else entry_title
             videos.append(normalize_bilibili_list_video(
                 bvid=bvid,
                 index=index,
-                title=str(entry.get("title") or api_video.get("title") or ""),
+                title=title,
                 duration=entry.get("duration_string") or entry.get("duration") or api_video.get("duration") or "",
                 channel=str(entry.get("channel") or entry.get("uploader") or api_video.get("channel") or ""),
                 publish_metadata={
@@ -1643,6 +1986,14 @@ def build_bilibili_list_resolution_from_ytdlp(
                 },
                 resolver_debug=debug,
             ))
+    if videos:
+        videos = enrich_bilibili_list_item_metadata(
+            videos,
+            source_url=source_url,
+            cookie_header=cookie_header,
+            urlopen_func=urlopen_func,
+            timeout=timeout,
+        )
     if api_videos and len(api_videos) > len(videos):
         api_debug = {
             "resolver_method": "bilibili_list_expansion",
@@ -1660,12 +2011,21 @@ def build_bilibili_list_resolution_from_ytdlp(
             "list_id": list_id,
             "expansion_provider": "bilibili-fav-list-api",
         }
+        api_videos = enrich_bilibili_list_item_metadata(
+            api_videos,
+            source_url=source_url,
+            cookie_header=cookie_header,
+            urlopen_func=urlopen_func,
+            timeout=timeout,
+        )
+        assert_bilibili_list_has_real_titles(api_videos, source_url=source_url, resolver_debug=api_debug)
         for video in api_videos:
             video["resolver_debug"] = api_debug
         return build_bilibili_list_resolution(
             source_url,
             videos=api_videos,
             title=api_title,
+            fallback_title=str(payload.get("playlist_title") or payload.get("title") or ""),
             list_id=list_id,
             resolver_debug=api_debug,
         )
@@ -1684,6 +2044,8 @@ def build_bilibili_list_resolution_from_ytdlp(
             urlopen_func=urlopen_func,
             timeout=timeout,
         )
+    if videos:
+        assert_bilibili_list_has_real_titles(videos, source_url=source_url, resolver_debug=debug)
     if not videos:
         return resolve_bilibili_list_from_page_or_api(
             source_url,
@@ -1698,7 +2060,8 @@ def build_bilibili_list_resolution_from_ytdlp(
     return build_bilibili_list_resolution(
         source_url,
         videos=videos,
-        title=api_title or str(payload.get("playlist_title") or payload.get("title") or ""),
+        title=api_title,
+        fallback_title=str(payload.get("playlist_title") or payload.get("title") or ""),
         list_id=list_id,
         resolver_debug=debug,
     )
@@ -1724,6 +2087,9 @@ def resolve_url(
         raise ResolverError("resolver input must be an http(s) URL")
     bilibili_list_id = bilibili_list_id_from_url(source_url) if is_bilibili_url(source_url) else ""
     xiaohongshu_board_id = xiaohongshu_board_id_from_url(source_url) if is_xiaohongshu_url(source_url) else ""
+
+    if is_netease_music_url(source_url):
+        return resolve_netease_program(source_url, urlopen_func=urlopen_func, timeout=timeout)
 
     if xiaohongshu_board_id:
         attempted_sources: list[str] = []
@@ -1932,6 +2298,14 @@ def resolve_url(
     entries = payload.get("entries")
     if isinstance(entries, list) and entries:
         videos = [normalize_video_entry(entry, index) for index, entry in enumerate(entries) if isinstance(entry, dict)]
+        if is_bilibili_url(source_url):
+            videos = enrich_bilibili_multipart_videos(
+                videos,
+                source_url=source_url,
+                cookie_header=source_cookie_header(selected_source, cookie_file, cookie_header),
+                urlopen_func=urlopen_func,
+                timeout=timeout,
+            )
         if not videos:
             raise ResolverError("resolver list payload did not contain usable video entries", last_command)
         for video in videos:
