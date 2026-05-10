@@ -280,7 +280,13 @@ const categoryConfig = {script_json(category_config_for_script())};
 const filterOrder = {script_json(["all", *BAND_DISPLAY_ORDER])};
 const items = {script_json(items)};
 const watchOrderStats = {script_json(stats)};
+const sortOptions = [
+  {{ key: 'original', label: '原始顺序' }},
+  {{ key: 'score-asc', label: '评分从低到高' }},
+  {{ key: 'score-desc', label: '评分从高到低' }}
+];
 let activeFilter = 'all';
+let activeSort = 'original';
 
 function escapeHtml(value) {{
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -316,6 +322,46 @@ function buildFilterChip(filterKey) {{
       <span class="filter-text">${{config.label}}</span>
     </button>
   `;
+}}
+
+function buildSortChip(option) {{
+  const activeClass = option.key === activeSort ? 'active' : '';
+  return `
+    <button
+      class="sort-chip ${{activeClass}}"
+      type="button"
+      data-sort="${{option.key}}"
+    >${{escapeHtml(option.label)}}</button>
+  `;
+}}
+
+function scoreValue(item) {{
+  const score = Number(item.score);
+  return Number.isFinite(score) ? score : null;
+}}
+
+function sortedItems(sourceItems) {{
+  if (activeSort === 'original') {{
+    return sourceItems;
+  }}
+  const direction = activeSort === 'score-asc' ? 1 : -1;
+  return [...sourceItems].sort((left, right) => {{
+    const leftScore = scoreValue(left);
+    const rightScore = scoreValue(right);
+    if (leftScore === null && rightScore === null) {{
+      return items.indexOf(left) - items.indexOf(right);
+    }}
+    if (leftScore === null) {{
+      return 1;
+    }}
+    if (rightScore === null) {{
+      return -1;
+    }}
+    if (leftScore !== rightScore) {{
+      return (leftScore - rightScore) * direction;
+    }}
+    return items.indexOf(left) - items.indexOf(right);
+  }});
 }}
 
 function buildBadges(item, config) {{
@@ -400,13 +446,22 @@ function renderFilterBanner() {{
   document.getElementById('filter-banner').innerHTML = content;
 }}
 
+function renderSortControls() {{
+  const target = document.getElementById('sort-controls');
+  if (!target) {{
+    return;
+  }}
+  target.innerHTML = sortOptions.map(buildSortChip).join('');
+}}
+
 function renderList() {{
   const filtered = activeFilter === 'all'
     ? items
     : items.filter((item) => item.filterKey === activeFilter || item.type === activeFilter);
-  document.getElementById('rank-list').innerHTML = filtered.map(buildRankCard).join('');
+  const visibleItems = sortedItems(filtered);
+  document.getElementById('rank-list').innerHTML = visibleItems.map(buildRankCard).join('');
   const emptyState = document.getElementById('empty-state');
-  if (filtered.length === 0) {{
+  if (visibleItems.length === 0) {{
     const config = categoryConfig[activeFilter] || categoryConfig.all;
     emptyState.hidden = false;
     emptyState.style.setProperty('--empty-accent', config.accent);
@@ -430,8 +485,19 @@ document.getElementById('filter-banner').addEventListener('click', (event) => {{
   renderList();
 }});
 
+document.getElementById('sort-controls').addEventListener('click', (event) => {{
+  const chip = event.target.closest('[data-sort]');
+  if (!chip) {{
+    return;
+  }}
+  activeSort = chip.dataset.sort;
+  renderSortControls();
+  renderList();
+}});
+
 renderStats();
 renderFilterBanner();
+renderSortControls();
 renderList();
 </script>""".strip()
 
@@ -493,7 +559,8 @@ def render_watch_order_html(payload: dict[str, Any]) -> str:
 
   <div class="section-block">
     <div class="section-head">
-      <div class="section-label">播放列表顺序 · 原始顺序</div>
+      <div class="section-label">播放列表顺序</div>
+      <div class="sort-controls" id="sort-controls"></div>
       <div class="section-line"></div>
     </div>
     <div class="filter-banner" id="filter-banner"></div>

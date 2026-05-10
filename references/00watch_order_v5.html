@@ -120,6 +120,7 @@ body {
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .section-label {
@@ -128,6 +129,38 @@ body {
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.sort-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.sort-chip {
+  appearance: none;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.03);
+  color: #8f9db8;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color .15s, background-color .15s, color .15s;
+}
+
+.sort-chip:hover {
+  border-color: #8f9db8;
+  color: var(--text);
+}
+
+.sort-chip.active {
+  border-color: #ffffff;
+  background: rgba(255,255,255,.08);
+  color: #ffffff;
 }
 
 .section-line {
@@ -491,7 +524,8 @@ body {
 
   <div class="section-block">
     <div class="section-head">
-      <div class="section-label">播放列表顺序 · 50条示例</div>
+      <div class="section-label">播放列表顺序</div>
+      <div class="sort-controls" id="sort-controls"></div>
       <div class="section-line"></div>
     </div>
     <div class="filter-banner" id="filter-banner"></div>
@@ -605,7 +639,13 @@ const categoryConfig = {
 };
 
 const filterOrder = ['all', 'strong', 'medium', 'low', 'skip', 'failed'];
+const sortOptions = [
+  { key: 'original', label: '原始顺序' },
+  { key: 'score-asc', label: '评分从低到高' },
+  { key: 'score-desc', label: '评分从高到低' }
+];
 let activeFilter = 'all';
+let activeSort = 'original';
 
 function pad(num) {
   return String(num).padStart(2, '0');
@@ -679,6 +719,46 @@ function buildFilterChip(filterKey) {
       <span class="filter-text">${config.label}</span>
     </button>
   `;
+}
+
+function buildSortChip(option) {
+  const activeClass = option.key === activeSort ? 'active' : '';
+  return `
+    <button
+      class="sort-chip ${activeClass}"
+      type="button"
+      data-sort="${option.key}"
+    >${option.label}</button>
+  `;
+}
+
+function scoreValue(item) {
+  const score = Number(item.score);
+  return Number.isFinite(score) ? score : null;
+}
+
+function sortedItems(sourceItems) {
+  if (activeSort === 'original') {
+    return sourceItems;
+  }
+  const direction = activeSort === 'score-asc' ? 1 : -1;
+  return [...sourceItems].sort((left, right) => {
+    const leftScore = scoreValue(left);
+    const rightScore = scoreValue(right);
+    if (leftScore === null && rightScore === null) {
+      return items.indexOf(left) - items.indexOf(right);
+    }
+    if (leftScore === null) {
+      return 1;
+    }
+    if (rightScore === null) {
+      return -1;
+    }
+    if (leftScore !== rightScore) {
+      return (leftScore - rightScore) * direction;
+    }
+    return items.indexOf(left) - items.indexOf(right);
+  });
 }
 
 function buildRankCard(item) {
@@ -756,15 +836,20 @@ function renderFilterBanner() {
   `;
 }
 
+function renderSortControls() {
+  document.getElementById('sort-controls').innerHTML = sortOptions.map(buildSortChip).join('');
+}
+
 function renderList() {
   const filtered = activeFilter === 'all'
     ? items
     : items.filter((item) => item.quality?.key === activeFilter || item.type === activeFilter);
+  const visibleItems = sortedItems(filtered);
 
-  document.getElementById('rank-list').innerHTML = filtered.map((item) => buildRankCard(item)).join('');
+  document.getElementById('rank-list').innerHTML = visibleItems.map((item) => buildRankCard(item)).join('');
 
   const emptyState = document.getElementById('empty-state');
-  if (filtered.length === 0) {
+  if (visibleItems.length === 0) {
     const config = categoryConfig[activeFilter];
     emptyState.hidden = false;
     emptyState.style.setProperty('--empty-accent', config.accent);
@@ -788,8 +873,19 @@ document.getElementById('filter-banner').addEventListener('click', (event) => {
   renderList();
 });
 
+document.getElementById('sort-controls').addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-sort]');
+  if (!chip) {
+    return;
+  }
+  activeSort = chip.dataset.sort;
+  renderSortControls();
+  renderList();
+});
+
 renderStats();
 renderFilterBanner();
+renderSortControls();
 renderList();
 </script>
 </body>

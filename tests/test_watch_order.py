@@ -127,7 +127,12 @@ class WatchOrderTest(unittest.TestCase):
             html.index('"pageFile": "01-heartflow.html"'),
             html.index('"pageFile": "02-charm.html"'),
         )
-        self.assertIn("播放列表顺序 · 原始顺序", html)
+        self.assertIn("播放列表顺序", html)
+        self.assertIn('id="sort-controls"', html)
+        self.assertIn("评分从低到高", html)
+        self.assertIn("评分从高到低", html)
+        self.assertIn("activeSort = chip.dataset.sort", html)
+        self.assertIn("const visibleItems = sortedItems(filtered)", html)
 
     def test_score_band_mapping_in_cards_from_low_score(self) -> None:
         video = load_golden("sample_payload_charm.json")
