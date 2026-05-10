@@ -287,6 +287,7 @@ const sortOptions = [
 ];
 let activeFilter = 'all';
 let activeSort = 'original';
+let sortMenuOpen = false;
 
 function escapeHtml(value) {{
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
@@ -324,12 +325,18 @@ function buildFilterChip(filterKey) {{
   `;
 }}
 
-function buildSortChip(option) {{
+function activeSortOption() {{
+  return sortOptions.find((option) => option.key === activeSort) || sortOptions[0];
+}}
+
+function buildSortOption(option) {{
   const activeClass = option.key === activeSort ? 'active' : '';
   return `
     <button
-      class="sort-chip ${{activeClass}}"
+      class="sort-option ${{activeClass}}"
       type="button"
+      role="menuitemradio"
+      aria-checked="${{option.key === activeSort ? 'true' : 'false'}}"
       data-sort="${{option.key}}"
     >${{escapeHtml(option.label)}}</button>
   `;
@@ -451,7 +458,22 @@ function renderSortControls() {{
   if (!target) {{
     return;
   }}
-  target.innerHTML = sortOptions.map(buildSortChip).join('');
+  const current = activeSortOption();
+  target.innerHTML = `
+    <button
+      class="sort-toggle"
+      type="button"
+      aria-haspopup="menu"
+      aria-expanded="${{sortMenuOpen ? 'true' : 'false'}}"
+      data-sort-toggle
+    >
+      <span>${{escapeHtml(current.label)}}</span>
+      <span class="sort-toggle-arrow">${{sortMenuOpen ? '▲' : '▼'}}</span>
+    </button>
+    <div class="sort-menu" role="menu" ${{sortMenuOpen ? '' : 'hidden'}}>
+      ${{sortOptions.map(buildSortOption).join('')}}
+    </div>
+  `;
 }}
 
 function renderList() {{
@@ -486,13 +508,36 @@ document.getElementById('filter-banner').addEventListener('click', (event) => {{
 }});
 
 document.getElementById('sort-controls').addEventListener('click', (event) => {{
-  const chip = event.target.closest('[data-sort]');
-  if (!chip) {{
+  event.stopPropagation();
+  const toggle = event.target.closest('[data-sort-toggle]');
+  if (toggle) {{
+    sortMenuOpen = !sortMenuOpen;
+    renderSortControls();
     return;
   }}
-  activeSort = chip.dataset.sort;
+  const option = event.target.closest('[data-sort]');
+  if (!option) {{
+    return;
+  }}
+  activeSort = option.dataset.sort;
+  sortMenuOpen = false;
   renderSortControls();
   renderList();
+}});
+
+document.addEventListener('click', (event) => {{
+  const sortControls = document.getElementById('sort-controls');
+  if (sortMenuOpen && sortControls && !sortControls.contains(event.target)) {{
+    sortMenuOpen = false;
+    renderSortControls();
+  }}
+}});
+
+document.addEventListener('keydown', (event) => {{
+  if (event.key === 'Escape' && sortMenuOpen) {{
+    sortMenuOpen = false;
+    renderSortControls();
+  }}
 }});
 
 renderStats();

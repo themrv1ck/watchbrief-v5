@@ -131,7 +131,9 @@ class WatchOrderTest(unittest.TestCase):
         self.assertIn('id="sort-controls"', html)
         self.assertIn("评分从低到高", html)
         self.assertIn("评分从高到低", html)
-        self.assertIn("activeSort = chip.dataset.sort", html)
+        self.assertIn("data-sort-toggle", html)
+        self.assertIn("sortMenuOpen = !sortMenuOpen", html)
+        self.assertIn("activeSort = option.dataset.sort", html)
         self.assertIn("const visibleItems = sortedItems(filtered)", html)
 
     def test_score_band_mapping_in_cards_from_low_score(self) -> None:
