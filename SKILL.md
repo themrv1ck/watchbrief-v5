@@ -1,6 +1,6 @@
 ---
 name: watchbrief_v5
-description: WatchBrief V5 是视频观看决策报告生成器。它不是下载器，也不是普通摘要器。目标是生成固定结构的中文报告与可观看顺序页，判断报告替代性与原视频剩余观看价值。
+description: WatchBrief V5 是视频内容导读与内容评分报告生成器。它不是下载器，也不是普通摘要器。目标是生成固定结构的中文报告与可观看顺序页，提炼视频主要内容、内容综合评分和补看入口；是否观看由用户自己决定。
 ---
 
 # WatchBrief V5
@@ -15,7 +15,7 @@ description: WatchBrief V5 是视频观看决策报告生成器。它不是下�
 
 ## 关键边界
 
-- 只处理“观看决策”输出，不替代下载器或转写器的独立职责。
+- 默认处理“内容导读”输出：先讲清视频主要内容、内容质量/可信度/信息密度评分依据和补看入口，不替用户做最终观看决定，也不替代下载器或转写器的独立职责。
 - 只允许使用固定字段契约输出，renderer 只做填充，不做内容创作。
 - 不出现旧模块：要点提炼 / 可执行动作清单 / 完整笔记。
 - 不改视觉模板结构：`references/video_report_v5.html` 与 `references/00watch_order_v5.html` 冻结为字段占位模板源。
@@ -87,6 +87,15 @@ python3 scripts/cli.py \
 - 高分不能显示“报告足够替代”，低分不能显示“建议完整看”；冲突必须在 payload / validator / retry 层解决，renderer 不兜底。
 - 默认启用 report cache，目录是 `~/.watchbrief/cache/reports/`。同一 `transcript_hash`、Qwen/Codex 模型、prompt fingerprint、评分公式和 WatchBrief 版本命中时，直接复用上一次通过验证的 `normalized_payload`，不再调用 Codex review。需要重新分析时显式传 `--force-reanalysis`。
 
+## Oracle / Hermes 路由纪律
+
+- Oracle 收到 WatchBrief、视频内容导读、视频提炼、视频分析、视频总结、YouTube 视频内容提取类任务时，必须优先使用本 skill；不得先加载或执行通用 `youtube-content` transcript 路线。
+- 如果 `skill_view('watchbrief_v5')` 或同名 skill 加载出现歧义，必须停止并向 Seth 汇报“watchbrief_v5 skill collision”，不得改走 `youtube-content`、`fetch_transcript.py`、裸 `yt-dlp` 或浏览器乱试。
+- 同一 YouTube URL 在同一用户请求/session 中，如果当前 WatchBrief manifest 已证明 `completed_count=0` 且原因是平台限制、登录验证、bot check 或字幕不可用，不得继续跑多条完整采集路径。必须引用最新 manifest 的路径、stage、reason_code，短答并说明需要的唯一解锁动作。
+- 用户重复发送同一 URL 时，除非用户明确说已经改变浏览器登录/验证状态或提供了 transcript/subtitle，否则不得重新运行 YouTube transcript API、`yt-dlp`、cookies、Safari 或 WatchBrief 全链路。
+- WatchBrief 不是通用下载器、播放器、录音器或临场抓取脚本集合。正式 pipeline 拿不到字幕/转写时，必须按 manifest 的 `stage` / `reason_code` 停止并报告；如需音频 fallback，只能通过 WatchBrief CLI 内置 `audio_downloader -> transcriber` 路径触发，不得自行打开视频播放并用系统音频、麦克风、BoomAudio、AVFoundation 或屏幕录制来替代采集。
+- 不得打印 cookies、tokens、signed URLs、API keys 或 auth 文件内容。
+
 ## YouTube 字幕策略
 
 - YouTube 默认先抓英文原字幕，不先请求 `zh-Hans` / `zh` 翻译字幕。
@@ -98,6 +107,10 @@ python3 scripts/cli.py \
 - YouTube Connect fallback 成功后必须继续 `local_extract -> Codex review -> validator -> renderer`，并跳过 audio_downloader / MLX-Audio。item_manifest 记录 `resolver_failed=true`、`resolver_reason_code=platform_restriction`、`transcript_fallback_provider=youtube-connect`、`transcript_fallback_success=true`。
 - YouTube Connect fallback 失败时保留原 resolver 失败，不伪装成功。
 - 如果 YouTube 要求确认不是机器人，只能打开 Chrome 到目标视频页让用户手动验证；不得自动点击验证码、不得绕过验证、不得保存或打印 cookies。验证后用 `yt-dlp --cookies-from-browser chrome --skip-download --list-subs <url>` 做只读复测。
+- 当用户明确说“用 Safari”时，先打开/确认 Safari 当前标签是目标视频，再运行正式 CLI 的 `--cookies-from-browser safari`。如果失败为 `ERROR: could not find safari cookies database` 或 Safari cookie access error，不要把它概括成“Safari 不可用”：继续用 Safari DOM 做只读探测，至少提取 `document.title`、`ytInitialPlayerResponse.videoDetails`、页面可见字幕状态、`captionTracks`、时长/频道/观看量等元信息。
+- Safari DOM 探测如果页面可播放但显示“无法显示字幕”、`captionTracks` 为空，或 `fetch_youtube_safari_transcript()` 返回 `returned no usable transcript segments`，结论应限定为“Safari 页面未暴露 transcript，不能可靠提炼内容”。不要用标题、描述、推荐列表或页面元信息硬编视频摘要。
+- Safari `performance.getEntriesByType('resource')` 可能暴露 signed `videoplayback` URL；这些 URL 不得打印、保存到 manifest/日志或作为稳定下载路径。实测可能 403，不能把失败 URL 当作可复用音频采集方案。若要继续，只能走用户授权的浏览器验证/正常 CLI cookie 路线；不要主动提出用系统音频、麦克风、BoomAudio、AVFoundation 或屏幕录制录音来替代 WatchBrief 采集。
+- 用户质疑“为什么不直接下载音频/为什么把问题扔给我”时，先承认并回到官方 pipeline：目标是修复 `audio_downloader -> transcriber` 的前置条件，而不是让用户手动处理。排查顺序：确认 CLI 是否因 Hermes profile HOME 指向导致浏览器 cookie 路径错位；必要时只在命令环境中设置 `HOME=/Users/apple` 复测；若进入 macOS TCC/Full Disk Access 边界，只报告最小授权动作和只读复测命令。不要把浏览器能播放但 CLI 不能下载概括成“只能录音”。
 
 ## B 站登录态
 

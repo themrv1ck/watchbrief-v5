@@ -16,7 +16,7 @@ class TemplateSourceTest(unittest.TestCase):
     def test_video_report_template_has_single_video_markers(self) -> None:
         for marker in [
             "视频到底讲了什么？",
-            "如果要看，只看哪里？",
+            "如果要补原片，先看哪里？",
             "one-line brief",
             "final-conclusion",
             "feedback-launcher",
@@ -42,7 +42,7 @@ class TemplateSourceTest(unittest.TestCase):
             self.assertIn(marker, self.watch_order_template)
 
     def test_watch_order_template_excludes_single_video_markers(self) -> None:
-        for marker in ["视频到底讲了什么？", "如果要看，只看哪里？", "feedback-launcher"]:
+        for marker in ["视频到底讲了什么？", "如果要补原片，先看哪里？", "feedback-launcher"]:
             self.assertNotIn(marker, self.watch_order_template)
 
 

@@ -29,7 +29,8 @@ if __package__ in (None, ""):
     from scripts.report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, normalize_report_target
     from scripts.resolver import resolve_url
     from scripts.scoring import SCORING_PROFILES, formula_version_for_weights, parse_scoring_weights, weights_for_profile
-    from scripts.video_pipeline import PipelineDependencies, PipelineError, process_source
+    from scripts.video_pipeline import PipelineDependencies, PipelineError, process_source, resolve_with_youtube_connect_fallback
+    from scripts.watchbrief_codex_state import DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT, read_current_watchbrief_codex_account, watchbrief_codex_root
     from scripts.youtube_manual_verification import (
         chrome_verification_command,
         needs_manual_youtube_verification,
@@ -46,7 +47,8 @@ else:
     from .report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, normalize_report_target
     from .resolver import resolve_url
     from .scoring import SCORING_PROFILES, formula_version_for_weights, parse_scoring_weights, weights_for_profile
-    from .video_pipeline import PipelineDependencies, PipelineError, process_source
+    from .video_pipeline import PipelineDependencies, PipelineError, process_source, resolve_with_youtube_connect_fallback
+    from .watchbrief_codex_state import DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT, read_current_watchbrief_codex_account, watchbrief_codex_root
     from .youtube_manual_verification import (
         chrome_verification_command,
         needs_manual_youtube_verification,
@@ -70,6 +72,42 @@ ANALYSIS_MODE_DEFAULTS = {
     "standard": {"timeout": 900, "force_reanalysis": False, "keep_debug_artifacts": False},
     "deep": {"timeout": 1200, "force_reanalysis": True, "keep_debug_artifacts": True},
 }
+
+
+def codex_review_preflight_ready(
+    *,
+    codex_home: str | None,
+    codex_home_root: str | None,
+    codex_account: str | None,
+    codex_bin: str = "codex",
+) -> bool:
+    if shutil.which(codex_bin) is None:
+        return False
+    if codex_home:
+        home = Path(codex_home).expanduser()
+    else:
+        root = watchbrief_codex_root(codex_home_root or DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT)
+        account = codex_account or read_current_watchbrief_codex_account(root)
+        home = root / account
+    return bool(home.exists() and (home / "auth.json").exists() and (home / "config.toml").exists())
+
+
+def resolve_auto_review_provider(args: argparse.Namespace) -> None:
+    if args.review_provider != "auto":
+        return
+    if codex_review_preflight_ready(
+        codex_home=args.codex_home,
+        codex_home_root=args.codex_home_root,
+        codex_account=args.codex_account,
+    ):
+        args.review_provider = "codex-cli"
+        args.enable_codex_review = True
+        if not args.codex_home and not args.codex_home_root:
+            args.codex_home_root = DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT
+        if not args.codex_home and not args.codex_account:
+            args.codex_account = read_current_watchbrief_codex_account(watchbrief_codex_root(args.codex_home_root))
+        return
+    args.review_provider = "local"
 
 
 def safe_slug(value: str, fallback: str) -> str:
@@ -180,10 +218,22 @@ def make_resolver_for_source_file(
     def source_file_resolver(_source: str, **kwargs: Any) -> dict[str, Any]:
         videos: list[dict[str, Any]] = []
         for source_index, url in enumerate(urls, start=1):
-            resolved = resolve_func(url, **kwargs)
+            try:
+                resolved = resolve_func(url, **kwargs)
+            except BaseException as exc:
+                fallback_resolution = resolve_with_youtube_connect_fallback(
+                    url,
+                    exc,
+                    PipelineDependencies(resolver_options=dict(kwargs)),
+                )
+                if fallback_resolution is None:
+                    raise
+                resolved = fallback_resolution
             resolved_items = resolved.get("videos")
             if not isinstance(resolved_items, list) or not resolved_items:
                 resolved_items = [resolved]
+            elif kwargs.get("allow_playlist_expansion") is False:
+                resolved_items = [resolved_items[0]]
             for item_index, raw_item in enumerate(resolved_items, start=1):
                 item = copy.deepcopy(raw_item) if isinstance(raw_item, dict) else {}
                 for key in (
@@ -340,8 +390,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--review-provider",
-        choices=("manual", "mock", "codex", "codex-cli", "local", "local-rules", "gemini", "claude", "kimi", "openai-compatible"),
-        default="manual",
+        choices=("auto", "manual", "mock", "codex", "codex-cli", "local", "local-rules", "gemini", "claude", "kimi", "openai-compatible"),
+        default="auto",
     )
     parser.add_argument(
         "--enable-codex-review",
@@ -410,11 +460,23 @@ def parse_args() -> argparse.Namespace:
         help="explicit cookies.txt file for yt-dlp and Bilibili fallback",
     )
     parser.add_argument("--no-browser-auth", action="store_true", help="disable authorized browser session use")
+    parser.add_argument(
+        "--no-playlist-expansion",
+        action="store_true",
+        help="diagnostic/rerun mode: process only the current URL item and do not expand playlists or Bilibili multi-P pages",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    resolve_auto_review_provider(args)
+
+    if (args.review_provider == "codex-cli" or args.extract_provider == "codex-cli-extract") and not args.codex_home:
+        if not args.codex_home_root:
+            args.codex_home_root = DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT
+        if not args.codex_account:
+            args.codex_account = read_current_watchbrief_codex_account(watchbrief_codex_root(args.codex_home_root))
 
     source_path: Path | None = None
     mode_defaults = ANALYSIS_MODE_DEFAULTS[args.analysis_mode]
@@ -460,6 +522,7 @@ def main() -> int:
 
     resolver_options: dict[str, Any] = {
         "allow_browser_auth": not args.no_browser_auth,
+        "allow_playlist_expansion": not args.no_playlist_expansion,
     }
     subtitle_options: dict[str, Any] = {}
     audio_download_options: dict[str, Any] = {}
@@ -639,7 +702,11 @@ def main() -> int:
             reason = str(error.get("reason_code", "pipeline_failed"))
             message = str(error.get("error", "unknown"))
             print(f"  stage={stage} reason={reason} message={message}")
-            if needs_manual_youtube_verification(error):
+            if needs_manual_youtube_verification(
+                error,
+                item,
+                {"transcript_fallback_debug": manifest.get("transcript_fallback_debug")},
+            ):
                 url = str(item.get("url") or source_value)
                 print("  manual_verification_required: open Chrome and complete YouTube verification manually")
                 print(f"  manual_verification_open: {shell_command(chrome_verification_command(url))}")

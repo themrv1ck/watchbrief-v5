@@ -8,30 +8,72 @@ controls.
 
 from __future__ import annotations
 
-import subprocess
 import shlex
-from typing import Any
+import subprocess
+from typing import Any, Iterable
 
 
 BOT_VERIFICATION_MARKERS = (
     "platform_restriction",
     "sign in to confirm",
+    "sign in",
     "not a bot",
     "bot check",
     "login verification",
+    "login_required",
+    "login required",
+    "youtube is blocking requests from your ip",
+    "blocking requests from your ip",
+)
+
+TRANSCRIPT_FALLBACK_FAILURE_MARKERS = (
+    "youtube-connect",
+    "youtube transcript fallback",
+    "safari transcript fallback",
+    "transcript_fallback_success false",
+    "transcript fallback returned no usable transcript segments",
+    "no usable transcript segments",
 )
 
 
-def needs_manual_youtube_verification(error: dict[str, Any]) -> bool:
-    text = " ".join(
-        str(value or "")
-        for value in (
-            error.get("stage"),
-            error.get("reason_code"),
-            error.get("error"),
-        )
-    ).lower()
-    return any(marker in text for marker in BOT_VERIFICATION_MARKERS)
+def _walk_values(value: Any) -> Iterable[str]:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            yield str(key)
+            yield from _walk_values(nested)
+    elif isinstance(value, (list, tuple, set)):
+        for nested in value:
+            yield from _walk_values(nested)
+    elif value is not None:
+        yield str(value)
+
+
+def _context_text(*contexts: Any) -> str:
+    return " ".join(piece for context in contexts for piece in _walk_values(context)).lower()
+
+
+def _has_resolver_failure(text: str) -> bool:
+    return "resolver_failed" in text or ("resolver" in text and "failed" in text)
+
+
+def _has_transcript_fallback_failure(text: str) -> bool:
+    has_fallback_marker = any(marker in text for marker in TRANSCRIPT_FALLBACK_FAILURE_MARKERS)
+    has_failure_marker = (
+        "transcript_fallback_success false" in text
+        or ("transcript_fallback_success" in text and "false" in text)
+        or "returned no usable transcript segments" in text
+        or "no usable transcript segments" in text
+        or "unavailable" in text
+        or "failed" in text
+    )
+    return has_fallback_marker and has_failure_marker
+
+
+def needs_manual_youtube_verification(*contexts: Any) -> bool:
+    text = _context_text(*contexts)
+    if any(marker in text for marker in BOT_VERIFICATION_MARKERS):
+        return True
+    return _has_resolver_failure(text) and _has_transcript_fallback_failure(text)
 
 
 def chrome_verification_command(url: str) -> list[str]:

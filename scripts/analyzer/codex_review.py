@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover - direct script execution
 ROOT = Path(__file__).resolve().parents[2]
 SINGLE_VIDEO_SCHEMA_PATH = ROOT / "schemas" / "single_video_report.schema.json"
 STRUCTURED_ASSESSMENT_REQUIRED_KEYS = ("信息密度", "论据质量", "独创性", "观看性价比")
-CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v4"
+CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v5"
 
 
 class CodexReviewError(ValueError):
@@ -63,6 +63,8 @@ def build_review_request(local_extract_payload: dict[str, Any], *, report_target
         raise CodexReviewError("local_extract_payload must declare final-report field boundary")
 
     target = normalize_report_target(report_target)
+    payload_metadata = local_extract_payload.get("metadata") if isinstance(local_extract_payload.get("metadata"), dict) else {}
+    payload_transcript = local_extract_payload.get("transcript") if isinstance(local_extract_payload.get("transcript"), dict) else {}
     user_prompt = build_review_user_prompt(local_extract_payload, report_target=target)
     target_prompt = build_target_report_prompt(target)
     fingerprint_parts: list[Any] = [
@@ -86,6 +88,12 @@ def build_review_request(local_extract_payload: dict[str, Any], *, report_target
         "codex_prompt_fingerprint": codex_fingerprint,
         "stability_metadata": {
             "report_target": target,
+            "source_url": str(payload_metadata.get("url") or ""),
+            "source_title": str(payload_metadata.get("title") or ""),
+            "source_channel": str(payload_metadata.get("channel") or ""),
+            "source_bvid": str(payload_metadata.get("bvid") or ""),
+            "source_cid": str(payload_metadata.get("cid") or ""),
+            "transcript_source": str(payload_transcript.get("source") or ""),
             "transcript_hash": str(local_extract_payload.get("transcript_hash") or ""),
             "qwen_model_id": str(local_extract_payload.get("qwen_extract", {}).get("_qwen_model") or ""),
             "qwen_prompt_version": str(local_extract_payload.get("analysis_boundary", {}).get("qwen_prompt_version") or ""),
@@ -259,6 +267,10 @@ def stringify_basis_value(value: Any) -> str:
 
 def pre_schema_adapter(payload: dict[str, Any]) -> dict[str, Any]:
     adapted = copy.deepcopy(payload)
+    # These are Qwen local-extract helper fields.  Codex may echo them at the
+    # final report root, but the final schema intentionally disallows them.
+    adapted.pop("important_terms", None)
+    adapted.pop("corrected_terms", None)
 
     score = adapted.get("replacement_score")
     if isinstance(score, (int, float)) and not isinstance(score, bool):
@@ -312,6 +324,15 @@ def apply_stability_metadata(payload: dict[str, Any], metadata: Optional[dict[st
     if not metadata:
         return copy.deepcopy(payload)
     adapted = copy.deepcopy(payload)
+    source_map = {
+        "title": "source_title",
+        "url": "source_url",
+        "channel": "source_channel",
+    }
+    for payload_key, metadata_key in source_map.items():
+        value = metadata.get(metadata_key)
+        if payload_key in adapted and value not in (None, "") and not str(adapted.get(payload_key) or "").strip():
+            adapted[payload_key] = str(value)
     for key in (
         "transcript_hash",
         "qwen_model_id",
@@ -448,12 +469,13 @@ CODEX_CLI_JSON_CONTRACT = """Codex CLI JSON output hard contract:
 - The JSON must fully conform to the WatchBrief V5 schema.
 
 Field rules:
-- replacement_score: number, 0 <= replacement_score <= 10, keep one decimal place. It is the video overall value score. It is only your model-suggested reference; final output will be recomputed deterministically from structured_assessment.
+- replacement_score: number, 0 <= replacement_score <= 10, keep one decimal place. It is a video content score based on content quality, credibility/evidence quality, information density, originality, expression quality, and time cost. It is not a watch/don't-watch decision. It is only your model-suggested reference; final output will be recomputed deterministically from structured_assessment.
 - tag: string; must be exactly one of: 报告足够替代, 报告基本可替代, 只建议跳看, 值得补看, 建议完整看, 不推荐观看, 解析不足.
 - one_line_brief: string; must start with “这期视频主要讲：”.
-- watch_verdict: string; only says whether the report is enough, whether to watch the original video, and where to watch.
+- watch_verdict: string; say what the report already extracts and where to jump if the user wants source context. Do not decide on behalf of the user; provide a补看入口, not a final watch/don't-watch command.
 - watch_verdict must contain either an exact pipe time range copied from the primary watch segment, such as `20:44 | 32:34`, or a clear no-watch decision using 不必看 / 不用看 / 无需看 / 不推荐观看.
 - If watch_segments contains a primary segment, copy that exact primary `start | end` into watch_verdict unless the decision is no-watch. Do not write vague phrases like “首选片段” without the actual time range.
+- Prefer neutral wording such as “如果用户要补看原片，入口是 `start | end`”. If you use wording such as “建议看”, it must clearly mean timestamp navigation after the user has chosen to补看, not a final watch/don't-watch decision.
 - Time ranges in watch_verdict must use `start | end`. Never use `start - end`, `start 到 end`, `start 至 end`, or any non-pipe separator.
 - highest_compression: string.
 - path_table: object with problem, mechanism, turning_point, landing, all strings.
@@ -466,6 +488,9 @@ Field rules:
 - watch_segments[].title: required. primary title starts with 首选片段：, optional with 可选补看：, backup with 备选：.
 - watch_segments: exactly one primary, at most one optional.
 - watch_segments[].label is forbidden. Use title, not label.
+- watch_segments primary must be the best understanding-entry segment, not merely the densest or latest segment. After watching primary, a reader should know what the video is mainly about, what object/product/idea is being discussed, what problem it addresses, and what path/mechanism creates the claimed effect.
+- For product/technology/explainer/opinion videos, prefer a segment that combines object definition + core path/mechanism + effect. Intro suspense, greeting, cold open, and anecdotal setup are usually not primary. Privacy, deployment, limitations, commercialization, or risk-only segments are usually optional/backup unless they also explain the object, path, and effect.
+- If compact_local_extract_payload includes watch_segment_candidates, choose primary/optional/backup from those candidates unless you have a stronger exact timestamp from the input. Do not ignore understanding-entry candidates and default to either 00:00 or a high-density late segment.
 - only_one_segment: string. It must match the primary start/end. Example: 只选一段：00:00 | 00:05。这一段已经覆盖全片核心。
 - score_basis: object with four string fields: information_density, evidence_quality, originality, watch_value.
 - score_basis values must be strings. Never output numbers, objects, arrays, or omit these fields.
@@ -473,7 +498,7 @@ Field rules:
 - structured_assessment drives the final deterministic video overall value score using: information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3.
 - score_trace is generated by deterministic validation. You may omit it; if you output it, it will be overwritten.
 - transcript_hash, qwen_model_id, qwen_prompt_version, qwen_prompt_fingerprint, codex_model, codex_prompt_version, codex_prompt_fingerprint, scoring_formula_version, and watchbrief_version are generated by deterministic validation. You may omit them; if you output them, they will be overwritten.
-- tag must be semantically consistent with the final video-value score bands: 0.1-4.9 means 不推荐观看; 5.0-6.5 means 只建议跳看; 6.6-8.5 means 值得补看; 8.6-10.0 means 建议完整看. Report substitutability may appear in watch_verdict, but must not define the score.
+- tag is a legacy compatibility band derived from the content score. Do not treat it as the user's final viewing decision. Report substitutability may appear in watch_verdict, but must not define the score.
 - Use qwen_extract.important_terms and qwen_extract.corrected_terms for names and terms. Do not guess person names independently. If uncertain, write 疑似某某 instead of a wrong name.
 - confidence_note: string.
 """
@@ -502,6 +527,22 @@ def build_codex_cli_retry_prompt(
     system = str(review_request["messages"][0]["content"])
     errors = "\n".join(f"- {error}" for error in schema_errors)
     watch_verdict_hint = ""
+    arrow_chain_hint = ""
+    if any("arrow_chain" in error and "maxLength" in error for error in schema_errors):
+        arrow_chain_hint = (
+            "\narrow_chain targeted correction:\n"
+            "- Every arrow_chain node must be 18 Chinese characters or fewer.\n"
+            "- Keep 5 to 7 nodes; compress each node into a short noun/verb phrase.\n"
+            "- Do not change the video judgment; only shorten arrow_chain strings.\n"
+        )
+    legacy_label_hint = ""
+    if any("legacy module label" in error or "legacy_module_label" in error for error in schema_errors):
+        legacy_label_hint = (
+            "\nlegacy module label targeted correction:\n"
+            "- Remove old V1/V2 module labels from every string field.\n"
+            "- Forbidden labels include: 要点提炼, 可执行动作清单, 完整笔记, 关键洞察, 行动建议.\n"
+            "- Rewrite the affected sentence in plain content terms; do not mention template/module names.\n"
+        )
     if any("watch_verdict" in error for error in schema_errors):
         watch_verdict_hint = (
             "\nwatch_verdict targeted correction:\n"
@@ -532,6 +573,8 @@ def build_codex_cli_retry_prompt(
         "- score_basis.watch_value must be a string.\n\n"
         "- structured_assessment must be an object with 信息密度, 论据质量, 独创性, 观看性价比 numeric fields from 0 to 10.\n\n"
         f"{watch_verdict_hint}\n"
+        f"{arrow_chain_hint}\n"
+        f"{legacy_label_hint}\n"
         f"{CODEX_CLI_JSON_CONTRACT}\n"
         f"{review_request.get('target_payload_contract_text') or ''}\n"
         "Previous JSON:\n"

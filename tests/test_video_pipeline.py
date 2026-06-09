@@ -19,6 +19,7 @@ from scripts.acquisition_errors import (
     BilibiliResolverError,
     BilibiliSubtitleError,
     PlatformRestrictionError,
+    ResolverError,
     SubtitleUnavailableError,
 )
 from scripts.analyzer.local_extract import LocalExtractError, LocalQwenError, build_local_extract_payload
@@ -350,6 +351,67 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertNotIn("codex_review", steps)
             self.assertNotIn("renderer", steps)
 
+    def test_multipart_audio_parts_are_all_transcribed_and_merged_before_coverage_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            calls: list[str] = []
+            captured: dict[str, Any] = {}
+
+            def download_audio(url, audio_dir, **kwargs):
+                audio_dir.mkdir(parents=True, exist_ok=True)
+                paths = [audio_dir / "BV_mock_p1.wav", audio_dir / "BV_mock_p2.wav", audio_dir / "BV_mock_p3.wav"]
+                for path in paths:
+                    path.write_bytes(b"RIFFmock")
+                return {"audio_path": str(paths[0]), "audio_paths": [str(path) for path in paths], "method": "yt_dlp"}
+
+            def transcribe(audio_path, transcript_dir, **kwargs):
+                calls.append(Path(audio_path).name)
+                return transcript_material_from_segments([
+                    {"start": "00:00", "end": "01:40", "text": f"{Path(audio_path).stem} 完整正文内容" * 20},
+                ], source_kind="asr_wav", transcript_quality="degraded")
+
+            def local_extract(metadata, transcript_segments, **kwargs):
+                captured["segments"] = copy.deepcopy(transcript_segments)
+                return local_extract_for_tests(metadata, transcript_segments, **kwargs)
+
+            deps = PipelineDependencies(
+                resolve_url_func=lambda _url: {
+                    "resolution_version": "watchbrief_v5.resolution.v1",
+                    "source_kind": "single",
+                    "url": "https://www.bilibili.com/video/BV_mock/",
+                    "videos": [{
+                        "title": "multipart",
+                        "url": "https://www.bilibili.com/video/BV_mock/",
+                        "duration": 300,
+                        "bvid": "BV_mock",
+                    }],
+                },
+                fetch_subtitles_func=lambda url, subtitle_dir, **kwargs: (_ for _ in ()).throw(SubtitleUnavailableError("mock no subtitle")),
+                download_audio_func=download_audio,
+                transcribe_func=transcribe,
+                build_local_extract_func=local_extract,
+            )
+
+            manifest = process_source(
+                "https://www.bilibili.com/video/BV_mock/",
+                output_dir,
+                review_response_provider=review_provider_for_golden,
+                deps=deps,
+            )
+
+            self.assertEqual(manifest["completed_count"], 1)
+            self.assertEqual(calls, ["BV_mock_p1.wav", "BV_mock_p2.wav", "BV_mock_p3.wav"])
+            self.assertEqual([segment["end"] for segment in captured["segments"]], ["01:40", "03:20", "05:00"])
+            item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8"))
+            audio_steps = [step for step in item_manifest["steps"] if step["step"] == "audio_downloader"]
+            self.assertTrue(audio_steps[0]["multipart_audio_detected"])
+            self.assertEqual(audio_steps[0]["audio_part_count"], 3)
+            merge_steps = [step for step in item_manifest["steps"] if step["step"] == "transcriber_merge"]
+            self.assertEqual(merge_steps[0]["audio_part_count"], 3)
+            quality_steps = [step for step in item_manifest["steps"] if step["step"] == "transcript_quality"]
+            self.assertEqual(quality_steps[-1]["status"], "completed")
+            self.assertEqual(quality_steps[-1]["transcript_last_end"], 300.0)
+
     def test_list_low_coverage_item_counts_as_failed_and_watch_order_shows_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -409,6 +471,65 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(quality_steps[-1]["status"], "failed")
             self.assertEqual(quality_steps[-1]["transcript_source"], "asr_wav")
 
+    def test_bilibili_ai_subtitle_title_transcript_mismatch_falls_back_to_audio(self) -> None:
+        calls: list[str] = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            def download_audio(url, audio_dir, **kwargs):
+                calls.append("download_audio")
+                audio_dir.mkdir(parents=True, exist_ok=True)
+                audio_path = audio_dir / "audio.wav"
+                audio_path.write_bytes(b"RIFF")
+                self.assertFalse(kwargs["subtitle_available"])
+                return {"audio_path": str(audio_path), "method": "bilibili_playurl_api"}
+
+            def transcribe(audio_path, transcript_dir, **kwargs):
+                calls.append("transcribe")
+                return transcript_material_from_segments([
+                    {"start": "00:00", "end": "08:00", "text": "养成习惯成长速度自律方法复盘" * 40},
+                    {"start": "08:00", "end": "16:00", "text": "顶尖的人通过环境设计和反馈机制保持长期行动" * 40},
+                ], source_kind="asr_wav", transcript_quality="ok")
+
+            deps = PipelineDependencies(
+                resolve_url_func=lambda _url: {
+                    "resolution_version": "watchbrief_v5.resolution.v1",
+                    "source_kind": "single",
+                    "url": "https://www.bilibili.com/video/BV1mismatch/",
+                    "videos": [{
+                        "title": "养成这5个习惯，你的成长速度会超越99%的人（顶尖的1%靠的不是自律）",
+                        "url": "https://www.bilibili.com/video/BV1mismatch/",
+                        "duration": "20:00",
+                        "bvid": "BV1mismatch",
+                        "cid": "12345",
+                    }],
+                },
+                fetch_subtitles_func=lambda url, subtitle_dir, **kwargs: transcript_material_from_segments([
+                    {"start": "00:00", "end": "08:00", "text": "蔡徐坤品牌代言粉丝消费力内娱偶像经济商业价值" * 30},
+                    {"start": "08:00", "end": "16:30", "text": "明星塌房之后品牌合作和粉丝市场发生变化" * 30},
+                ], source_kind="subtitle_bcc", transcript_quality="ok"),
+                download_audio_func=download_audio,
+                transcribe_func=transcribe,
+                build_local_extract_func=local_extract_for_tests,
+            )
+
+            manifest = process_source(
+                "https://www.bilibili.com/video/BV1mismatch/",
+                output_dir,
+                review_response_provider=review_provider_for_golden,
+                deps=deps,
+            )
+
+            self.assertEqual(manifest["completed_count"], 1)
+            self.assertEqual(calls, ["download_audio", "transcribe"])
+            item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8"))
+            quality_steps = [step for step in item_manifest["steps"] if step["step"] == "transcript_quality"]
+            self.assertEqual(quality_steps[0]["status"], "fallback_to_audio")
+            self.assertEqual(quality_steps[0]["reason_code"], "subtitle_title_transcript_mismatch")
+            self.assertEqual(quality_steps[0]["transcript_quality_reason"], "title_transcript_mismatch")
+            self.assertEqual(quality_steps[-1]["status"], "completed")
+            self.assertEqual(quality_steps[-1]["transcript_source"], "asr_wav")
+
     def test_transcript_coverage_enough_continues_normally(self) -> None:
         calls: list[str] = []
 
@@ -427,8 +548,8 @@ class VideoPipelineTest(unittest.TestCase):
                     "videos": [{"title": "ok", "url": "https://example.com/watch", "duration": 187}],
                 },
                 fetch_subtitles_func=lambda url, subtitle_dir, **kwargs: transcript_material_from_segments([
-                    {"start": "00:00", "end": "00:30", "text": "足够覆盖的正文内容" * 8},
-                    {"start": "00:30", "end": "01:00", "text": "继续覆盖正文内容" * 8},
+                    {"start": "00:00", "end": "01:05", "text": "足够覆盖的正文内容" * 8},
+                    {"start": "01:05", "end": "02:10", "text": "继续覆盖正文内容" * 8},
                 ], source_kind="subtitle_vtt", transcript_quality="ok"),
                 build_local_extract_func=local_extract,
             )
@@ -1147,6 +1268,8 @@ class VideoPipelineTest(unittest.TestCase):
             deps = PipelineDependencies(
                 resolve_url_func=resolve,
                 youtube_connect_fallback_func=fallback,
+                youtube_chrome_fallback_func=None,
+                youtube_safari_fallback_func=None,
                 fetch_subtitles_func=fetch_subtitles,
                 download_audio_func=download_audio,
                 transcribe_func=transcribe,
@@ -1186,6 +1309,135 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(transcriber_steps, [])
             self.assertEqual(local_extract_steps[-1]["status"], "completed")
 
+    def test_youtube_connect_failure_uses_chrome_page_transcript_before_safari(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_url = "https://www.youtube.com/watch?v=Er2s-CFoZSo"
+            captured: dict[str, Any] = {}
+
+            def resolve(_url, **_kwargs):
+                raise PlatformRestrictionError(
+                    "resolver",
+                    "platform restricted resolver access",
+                    ["yt-dlp", "--dump-single-json", source_url],
+                    "Sign in to confirm you’re not a bot",
+                )
+
+            def connect_fallback(_url):
+                raise SubtitleUnavailableError("YouTube Connect transcript unavailable")
+
+            def chrome_fallback(_url):
+                captured["chrome_url"] = _url
+                from scripts.providers.youtube_connect_provider import YouTubeConnectTranscript
+
+                return YouTubeConnectTranscript(
+                    provider="chrome-transcript",
+                    source_platform="youtube",
+                    video_id="Er2s-CFoZSo",
+                    title="Chrome fallback title",
+                    duration="00:20",
+                    playlist_title="",
+                    subtitle_kind="browser_transcript",
+                    subtitle_lang="zh-Hans",
+                    subtitle_format="yt_initial_data_transcript",
+                    plain_text="第一段 第二段",
+                    source_url=source_url,
+                    segments=[
+                        {"start": "00:00", "end": "00:10", "text": "第一段" * 20},
+                        {"start": "00:10", "end": "00:20", "text": "第二段" * 20},
+                    ],
+                )
+
+            deps = PipelineDependencies(
+                resolve_url_func=resolve,
+                youtube_connect_fallback_func=connect_fallback,
+                youtube_chrome_fallback_func=chrome_fallback,
+                youtube_safari_fallback_func=lambda _url: (_ for _ in ()).throw(AssertionError("Safari fallback must not run after Chrome succeeds")),
+                fetch_subtitles_func=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("subtitle fetcher must not run")),
+                download_audio_func=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("audio downloader must not run")),
+                build_local_extract_func=local_extract_for_tests,
+            )
+
+            manifest = process_source(
+                source_url,
+                Path(temp_dir),
+                review_response_provider=review_provider_for_golden,
+                deps=deps,
+            )
+
+            self.assertEqual(manifest["completed_count"], 1)
+            self.assertEqual(manifest["failed_count"], 0)
+            self.assertEqual(captured["chrome_url"], source_url)
+            self.assertEqual(manifest["resolver_debug"]["fallback_method"], "chrome_yt_initial_data_transcript")
+            item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(item_manifest["transcript_fallback_provider"], "chrome-transcript")
+            self.assertTrue(item_manifest["transcript_fallback_success"])
+
+    def test_youtube_debug_platform_restriction_triggers_safari_fallback_after_generic_resolver_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_url = "https://www.youtube.com/watch?v=Er2s-CFoZSo"
+            captured: dict[str, Any] = {}
+
+            def resolve(_url, **_kwargs):
+                exc = ResolverError("yt-dlp failed to resolve URL", ["yt-dlp", "--dump-single-json", source_url], "")
+                exc.debug = {
+                    "resolver_method": "yt_dlp",
+                    "cookies_source": "browser:safari",
+                    "cookies_fallback_reason": "platform_restriction",
+                    "fallback_method": "",
+                    "fallback_success": False,
+                }
+                raise exc
+
+            def connect_fallback(_url):
+                raise SubtitleUnavailableError("YouTube Connect transcript unavailable")
+
+            def safari_fallback(_url):
+                captured["safari_url"] = _url
+                from scripts.providers.youtube_connect_provider import YouTubeConnectTranscript
+
+                return YouTubeConnectTranscript(
+                    provider="safari-transcript",
+                    source_platform="youtube",
+                    video_id="Er2s-CFoZSo",
+                    title="Safari fallback title",
+                    duration="00:20",
+                    playlist_title="",
+                    subtitle_kind="browser_transcript",
+                    subtitle_lang="zh-Hans",
+                    subtitle_format="yt_initial_data_transcript",
+                    plain_text="第一段 第二段",
+                    source_url=source_url,
+                    segments=[
+                        {"start": "00:00", "end": "00:10", "text": "第一段" * 20},
+                        {"start": "00:10", "end": "00:20", "text": "第二段" * 20},
+                    ],
+                )
+
+            deps = PipelineDependencies(
+                resolve_url_func=resolve,
+                youtube_connect_fallback_func=connect_fallback,
+                resolver_options={"cookies_from_browser": "safari", "allow_browser_auth": True},
+                youtube_safari_fallback_func=safari_fallback,
+                fetch_subtitles_func=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("subtitle fetcher must not run")),
+                download_audio_func=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("audio downloader must not run")),
+                build_local_extract_func=local_extract_for_tests,
+            )
+
+            manifest = process_source(
+                source_url,
+                Path(temp_dir),
+                review_response_provider=review_provider_for_golden,
+                deps=deps,
+            )
+
+            self.assertEqual(manifest["completed_count"], 1)
+            self.assertEqual(manifest["failed_count"], 0)
+            self.assertEqual(captured["safari_url"], source_url)
+            self.assertEqual(manifest["resolver_debug"]["fallback_method"], "safari_yt_initial_data_transcript")
+            item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(item_manifest["transcript_fallback_provider"], "safari-transcript")
+            self.assertTrue(item_manifest["transcript_fallback_success"])
+
     def test_youtube_connect_fallback_failure_preserves_resolver_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source_url = "https://www.youtube.com/watch?v=Er2s-CFoZSo"
@@ -1204,6 +1456,8 @@ class VideoPipelineTest(unittest.TestCase):
             deps = PipelineDependencies(
                 resolve_url_func=resolve,
                 youtube_connect_fallback_func=fallback,
+                youtube_chrome_fallback_func=None,
+                youtube_safari_fallback_func=None,
                 download_audio_func=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("audio downloader must not run")),
             )
 
@@ -1911,11 +2165,12 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(local_steps[-1]["qwen_prompt_version"], "watchbrief_v5.qwen_local_extract_prompt.v2")
             review_steps = [step for step in item_manifest["steps"] if step["step"] == "codex_review_request"]
             self.assertRegex(review_steps[0]["transcript_hash"], r"^[0-9a-f]{64}$")
-            self.assertEqual(review_steps[0]["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v4")
+            self.assertEqual(review_steps[0]["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v5")
             self.assertEqual(review_steps[0]["scoring_formula_version"], "watchbrief_v5.video_value_formula.v2")
             self.assertEqual(review_steps[0]["watchbrief_version"], "watchbrief_v5")
 
-    def test_bilibili_login_required_for_subtitle_does_not_enter_audio_downloader(self) -> None:
+    def test_bilibili_login_required_for_subtitle_falls_back_to_audio(self) -> None:
+        seen_kwargs: dict = {}
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
 
@@ -1927,18 +2182,23 @@ class VideoPipelineTest(unittest.TestCase):
                     debug={
                         "provider": "bilibili_content_provider",
                         "need_login_subtitle": True,
-                        "audio_fallback_allowed": False,
+                        "audio_fallback_allowed": True,
                         "audio_downloader_skipped_due_to_subtitle": False,
                     },
                 )
 
-            def download_audio(*args, **kwargs):
-                raise AssertionError("audio downloader must not run when Bilibili subtitles require login")
+            def download_audio(url, output_dir, **kwargs):
+                seen_kwargs.update(kwargs)
+                audio_path = output_dir / "mock.wav"
+                audio_path.parent.mkdir(parents=True, exist_ok=True)
+                audio_path.write_bytes(b"RIFFmock")
+                return {"audio_path": str(audio_path), "method": "bilibili_playurl_api"}
 
             deps = PipelineDependencies(
                 resolve_url_func=lambda url: bilibili_resolution(),
                 fetch_subtitles_func=fetch_subtitles,
                 download_audio_func=download_audio,
+                transcribe_func=lambda audio_path, transcript_dir, language="": fixture_material(),
                 build_local_extract_func=local_extract_for_tests,
             )
 
@@ -1949,16 +2209,18 @@ class VideoPipelineTest(unittest.TestCase):
                 deps=deps,
             )
 
-            self.assertEqual(manifest["completed_count"], 0)
-            self.assertEqual(manifest["failed_count"], 1)
-            self.assertEqual(manifest["items"][0]["error"]["reason_code"], LOGIN_REQUIRED_FOR_SUBTITLE)
+            self.assertEqual(manifest["completed_count"], 1)
+            self.assertEqual(seen_kwargs["subtitle_checked"], True)
+            self.assertEqual(seen_kwargs["subtitle_available"], False)
+            self.assertEqual(seen_kwargs["bvid"], "BV1xx411c7mD")
+            self.assertEqual(seen_kwargs["cid"], "12345")
             item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8"))
             subtitle_steps = [step for step in item_manifest["steps"] if step["step"] == "subtitle_fetcher"]
             audio_steps = [step for step in item_manifest["steps"] if step["step"] == "audio_downloader"]
-            self.assertEqual(subtitle_steps[-1]["status"], "failed")
+            self.assertEqual(subtitle_steps[-1]["status"], "unavailable")
             self.assertEqual(subtitle_steps[-1]["reason_code"], LOGIN_REQUIRED_FOR_SUBTITLE)
-            self.assertFalse(subtitle_steps[-1]["audio_fallback_allowed"])
-            self.assertEqual(audio_steps, [])
+            self.assertTrue(subtitle_steps[-1]["audio_fallback_allowed"])
+            self.assertEqual(audio_steps[-1]["status"], "completed")
 
     def test_bilibili_no_subtitle_available_is_the_audio_fallback_boundary(self) -> None:
         seen_kwargs: dict = {}
@@ -2376,10 +2638,13 @@ class VideoPipelineTest(unittest.TestCase):
         changed_prompt["codex_prompt_fingerprint"] = "1" * 64
         changed_formula = dict(base)
         changed_formula["scoring_formula_version"] = "watchbrief_v5.scoring_formula.v2"
+        changed_source = dict(base)
+        changed_source["source_url"] = "https://example.com/watch/other"
 
         self.assertNotEqual(report_cache_key(changed_hash), base_key)
         self.assertNotEqual(report_cache_key(changed_prompt), base_key)
         self.assertNotEqual(report_cache_key(changed_formula), base_key)
+        self.assertNotEqual(report_cache_key(changed_source), base_key)
 
     def test_report_cache_key_changes_when_report_target_changes(self) -> None:
         material = fixture_material()

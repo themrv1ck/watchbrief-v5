@@ -69,7 +69,7 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertEqual(request["messages"][0]["role"], "system")
         self.assertEqual(request["messages"][1]["role"], "user")
         self.assertIn("final_conclusion", request["contract"]["required_fields"])
-        self.assertEqual(request["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v4")
+        self.assertEqual(request["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v5")
         self.assertRegex(request["codex_prompt_fingerprint"], r"^[0-9a-f]{64}$")
         self.assertRegex(request["stability_metadata"]["transcript_hash"], r"^[0-9a-f]{64}$")
         self.assertEqual(request["stability_metadata"]["qwen_model_id"], DEFAULT_QWEN_MODEL)
@@ -117,6 +117,33 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertIn("CTA -> 行动号召 / 行动按钮", prompt)
         self.assertIn("features and benefits -> 功能与收益", prompt)
         self.assertIn("普通营销 / 产品 / 创作者术语不得成串裸露英文", prompt)
+
+    def test_review_prompt_carries_watch_segment_candidates_and_rejects_opening_hook_default(self) -> None:
+        extract = self.build_local_extract()
+        extract["metadata"]["duration"] = "16分20秒"
+        extract["transcript"]["segments"] = [
+            {"start": "00:00", "end": "01:00", "text": "开头钩子讲神秘手表和体验冲击。"},
+            {"start": "10:00", "end": "11:00", "text": "Zero Skill 自进化智能体会自己造工具和 skill。"},
+            {"start": "12:00", "end": "13:00", "text": "early fusion 早融合把心率 IMU 音频 图像对齐到同一条时间线。"},
+            {"start": "14:00", "end": "15:00", "text": "隐私和本地部署方案，可以把 server 套件部署到 home lab。"},
+        ]
+        extract["qwen_extract"].update({
+            "main_axis": "解释可穿戴智能体如何自进化、多模态融合并支持本地部署。",
+            "core_claims": ["Zero Skill 自进化和 early fusion 是关键机制。"],
+            "methods": ["使用本地部署 server 套件对接本地模型。"],
+            "important_terms": ["Zero Skill", "early fusion", "本地部署", "server", "home lab"],
+        })
+
+        request = build_review_request(extract)
+        prompt = request["messages"][1]["content"]
+
+        self.assertIn("watch_segment_candidates", prompt)
+        self.assertIn("12:00", prompt)
+        self.assertIn("15:00", prompt)
+        self.assertIn("不是替用户决定原视频要不要看", prompt)
+        self.assertIn("理解入口", prompt)
+        self.assertIn("不要因为 transcript excerpt 从 00:00 开始就默认选择开头", prompt)
+        self.assertIn("开头钩子", prompt)
 
     def test_build_review_request_requires_boundary_flag(self) -> None:
         local_extract = self.build_local_extract()
@@ -330,6 +357,36 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
 
         self.assertEqual(adapted["content_caveat"], "")
 
+    def test_pre_schema_adapter_drops_local_extract_term_helpers(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["important_terms"] = ["WOOP"]
+        payload["corrected_terms"] = ["Woop -> WOOP"]
+
+        adapted = pre_schema_adapter(payload)
+
+        self.assertNotIn("important_terms", adapted)
+        self.assertNotIn("corrected_terms", adapted)
+
+    def test_deterministic_adapter_restores_empty_source_metadata(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["title"] = ""
+        payload["url"] = ""
+        payload["channel"] = ""
+
+        adapted = parse_review_response(
+            payload,
+            apply_adapter=True,
+            stability_metadata={
+                "source_title": "源视频标题",
+                "source_url": "https://example.com/video",
+                "source_channel": "源频道",
+            },
+        )
+
+        self.assertEqual(adapted["title"], "源视频标题")
+        self.assertEqual(adapted["url"], "https://example.com/video")
+        self.assertEqual(adapted["channel"], "源频道")
+
     def test_call_codex_cli_missing_command_is_classified(self) -> None:
         with mock.patch("scripts.analyzer.codex_review.shutil.which", return_value=None):
             with self.assertRaises(CodexReviewCallError) as context:
@@ -395,6 +452,70 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertEqual(response["watch_segments"][0]["priority"], "primary")
         self.assertEqual(response["codex_model"], LOCAL_REVIEW_MODEL_ID)
 
+    def test_local_review_ranks_high_value_segments_instead_of_opening_hook(self) -> None:
+        extract = self.build_local_extract()
+        extract["metadata"]["duration"] = "16分20秒"
+        segments = []
+        texts = [
+            "开场讲一个神秘手表体验，引出好奇心和生活记录。",
+            "第一天体验很空，首页出现几张卡片，属于铺垫。",
+            "朋友案例说明 AI 发现了一些生活细节。",
+            "继续讲朋友案例和情绪故事。",
+            "这里仍然是体验故事，没有展开技术原理。",
+            "生活记录案例继续推进。",
+            "体验反馈说明 AI 会提醒日常事项。",
+            "这一段是过渡铺垫。",
+            "继续铺垫用户为什么想知道原理。",
+            "准备进入原理说明。",
+            "接下来讲原理，Zero Skill 自进化智能体，agent 在没有前置工具时自己造工具。",
+            "agent 遇到问题会现场写代码，解决后把 skill 工具沉淀进工具库。",
+            "第二个关键点是多模态 early fusion 早融合，对比 late fusion 晚融合。",
+            "早融合把心率 IMU 音频 图像 对齐到同一条时间线，减少细节丢失。",
+            "隐私问题的方案是本地部署 server 套件，home lab 对接本地模型或自己的 API。",
+            "最后讲限制，开发版硬件、续航、麦克风和声纹识别仍有提升空间。",
+        ]
+        for index, text in enumerate(texts):
+            segments.append({
+                "start": f"{index:02d}:00",
+                "end": f"{index + 1:02d}:00",
+                "text": text,
+            })
+        extract["transcript"]["segments"] = segments
+        extract["transcript"]["segment_count"] = len(segments)
+        extract["transcript"]["char_count"] = sum(len(item["text"]) for item in segments)
+        extract["time_windows"] = [
+            {"start": "00:00", "end": "01:00", "excerpt": texts[0]},
+            {"start": "01:00", "end": "02:00", "excerpt": texts[1]},
+        ]
+        extract["qwen_extract"].update({
+            "main_axis": "通过可穿戴设备理解人的状态，并说明智能体如何自进化和本地部署。",
+            "core_claims": [
+                "Zero Skill 自进化让 agent 能为不同用户生成不同 skill。",
+                "early fusion 早融合能把多模态信号放到同一时间线理解。",
+                "隐私风险必须通过本地部署和数据边界来处理。",
+            ],
+            "methods": [
+                "让 agent 现场写代码并沉淀工具。",
+                "用本地部署 server 套件对接本地模型或自有 API。",
+            ],
+            "examples": ["手表通过心率、音频和 IMU 识别紧张状态。"],
+            "important_terms": ["Zero Skill", "agent", "early fusion", "本地部署", "server", "home lab"],
+        })
+
+        response = build_local_review_response(extract)
+        parsed = parse_review_response(
+            response,
+            stability_metadata={**build_review_request(extract)["stability_metadata"], "codex_model": LOCAL_REVIEW_MODEL_ID},
+        )
+
+        primary = parsed["watch_segments"][0]
+        self.assertEqual(primary["priority"], "primary")
+        self.assertNotEqual(primary["start"], "00:00")
+        self.assertGreaterEqual(int(primary["start"].split(":")[0]), 10)
+        self.assertIn("核心逻辑入口", primary["title"])
+        self.assertIn(f"{primary['start']} | {primary['end']}", parsed["watch_verdict"])
+        self.assertIn(f"{primary['start']} | {primary['end']}", parsed["only_one_segment"])
+
     def test_local_review_scores_vary_with_extract_evidence(self) -> None:
         sparse = self.build_local_extract()
         sparse["qwen_extract"].update({
@@ -434,6 +555,46 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertNotEqual(sparse_parsed["replacement_score"], rich_parsed["replacement_score"])
         self.assertLess(sparse_parsed["replacement_score"], rich_parsed["replacement_score"])
         self.assertNotEqual(sparse_parsed["structured_assessment"], rich_parsed["structured_assessment"])
+
+    def test_local_review_dense_explainers_do_not_collapse_to_same_score(self) -> None:
+        first = self.build_local_extract()
+        first["metadata"]["duration"] = "31分37秒"
+        first["time_windows"] = [{"start": f"0{i}:00", "end": f"0{i}:30", "excerpt": "dense"} for i in range(6)]
+        first["qwen_extract"].update({
+            "core_claims": [f"印度中国论点{i}" for i in range(14)],
+            "methods": [f"地缘分析方法{i}" for i in range(5)],
+            "examples": [f"边境例证{i}" for i in range(7)],
+            "caveats": ["商业植入内容", "数据边界", "术语误差", "反方不足"],
+            "refined_quotes": [f"金句{i}" for i in range(7)],
+            "important_terms": [f"术语{i}" for i in range(22)],
+        })
+        second = self.build_local_extract()
+        second["metadata"]["duration"] = "34分18秒"
+        second["time_windows"] = [{"start": f"0{i}:00", "end": f"0{i}:30", "excerpt": "dense"} for i in range(6)]
+        second["qwen_extract"].update({
+            "core_claims": [f"沙特城市论点{i}" for i in range(9)],
+            "methods": [f"现场观察方法{i}" for i in range(5)],
+            "examples": [f"Neom例证{i}" for i in range(4)],
+            "caveats": ["可行性存疑", "搬迁争议", "信息透明度低", "治理风险"],
+            "refined_quotes": [f"金句{i}" for i in range(5)],
+            "important_terms": [f"术语{i}" for i in range(9)],
+        })
+
+        first_parsed = parse_review_response(
+            build_local_review_response(first),
+            stability_metadata={**build_review_request(first)["stability_metadata"], "codex_model": LOCAL_REVIEW_MODEL_ID},
+        )
+        second_parsed = parse_review_response(
+            build_local_review_response(second),
+            stability_metadata={**build_review_request(second)["stability_metadata"], "codex_model": LOCAL_REVIEW_MODEL_ID},
+        )
+
+        self.assertNotEqual(first_parsed["structured_assessment"], second_parsed["structured_assessment"])
+        self.assertNotEqual(first_parsed["replacement_score"], second_parsed["replacement_score"])
+        self.assertGreaterEqual(first_parsed["replacement_score"], 7.6)
+        self.assertGreaterEqual(second_parsed["replacement_score"], 7.5)
+        self.assertLessEqual(first_parsed["replacement_score"], 8.2)
+        self.assertLessEqual(second_parsed["replacement_score"], 8.2)
 
     def test_cli_manual_provider_without_enablement_does_not_call_codex(self) -> None:
         with mock.patch("scripts.cli.run_codex_review", side_effect=AssertionError("must not call codex")):
@@ -601,6 +762,30 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertIn("only fix watch_verdict", prompt)
         self.assertIn("exact primary watch_segments start/end as `start | end`", prompt)
         self.assertIn("20:44 | 32:34", prompt)
+
+    def test_arrow_chain_max_length_retry_prompt_is_targeted(self) -> None:
+        request = build_review_request(self.build_local_extract())
+        prompt = build_codex_cli_retry_prompt(
+            request,
+            previous_json='{"arrow_chain": ["这是一个明显超过十八个字的链路节点"]}',
+            schema_errors=["$.arrow_chain[0] is longer than maxLength"],
+        )
+
+        self.assertIn("arrow_chain targeted correction", prompt)
+        self.assertIn("18 Chinese characters or fewer", prompt)
+        self.assertIn("only shorten arrow_chain strings", prompt)
+
+    def test_legacy_module_label_retry_prompt_is_targeted(self) -> None:
+        request = build_review_request(self.build_local_extract())
+        prompt = build_codex_cli_retry_prompt(
+            request,
+            previous_json='{"content_caveat": "这里出现完整笔记模块"}',
+            schema_errors=["$: legacy module label is not allowed"],
+        )
+
+        self.assertIn("legacy module label targeted correction", prompt)
+        self.assertIn("Remove old V1/V2 module labels", prompt)
+        self.assertIn("要点提炼", prompt)
 
     def test_schema_invalid_after_adapter_still_fails(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")

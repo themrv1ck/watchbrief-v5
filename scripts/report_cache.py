@@ -24,6 +24,11 @@ REPORT_CACHE_ENV = "WATCHBRIEF_REPORT_CACHE_DIR"
 DEFAULT_REPORT_CACHE_DIR = Path.home() / ".watchbrief" / "cache" / "reports"
 REPORT_CACHE_KEY_FIELDS = (
     "report_target",
+    "source_url",
+    "source_title",
+    "source_bvid",
+    "source_cid",
+    "transcript_source",
     "transcript_hash",
     "qwen_model_id",
     "qwen_prompt_fingerprint",
@@ -49,6 +54,11 @@ def build_report_cache_identity(review_request: dict[str, Any], *, codex_model: 
         metadata = {}
     identity = {
         "report_target": normalize_report_target(review_request.get("report_target") or metadata.get("report_target") or DEFAULT_REPORT_TARGET),
+        "source_url": str(metadata.get("source_url") or "none"),
+        "source_title": str(metadata.get("source_title") or "none"),
+        "source_bvid": str(metadata.get("source_bvid") or "none"),
+        "source_cid": str(metadata.get("source_cid") or "none"),
+        "transcript_source": str(metadata.get("transcript_source") or "none"),
         "transcript_hash": str(metadata.get("transcript_hash") or ""),
         "qwen_model_id": str(metadata.get("qwen_model_id") or ""),
         "qwen_prompt_fingerprint": str(metadata.get("qwen_prompt_fingerprint") or ""),

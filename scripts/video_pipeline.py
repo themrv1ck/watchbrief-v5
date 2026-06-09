@@ -36,6 +36,7 @@ try:
         fetch_youtube_connect_transcript,
         material_from_youtube_connect,
     )
+    from .providers.youtube_safari_provider import fetch_youtube_chrome_transcript, fetch_youtube_safari_transcript
     from .report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from .renderer import render_single_video_html
     from .report_cache import build_report_cache_identity, read_cached_report, report_cache_dir, write_cached_report
@@ -43,7 +44,7 @@ try:
     from .subtitle_fetcher import fetch_platform_subtitles
     from .transcriber import transcribe_audio_to_material
     from .transcript_source_adapter import transcript_material_to_local_extract_input
-    from .transcript_quality import MIN_TRANSCRIPT_COVERAGE_RATIO, validate_transcript_coverage
+    from .transcript_quality import MIN_TRANSCRIPT_COVERAGE_RATIO, parse_time_seconds, validate_transcript_coverage
     from .watch_order import write_watch_order
     from .scoring import SCORING_FORMULA_VERSION
 except ImportError:  # pragma: no cover - direct script execution
@@ -58,6 +59,7 @@ except ImportError:  # pragma: no cover - direct script execution
         fetch_youtube_connect_transcript,
         material_from_youtube_connect,
     )
+    from providers.youtube_safari_provider import fetch_youtube_chrome_transcript, fetch_youtube_safari_transcript
     from report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from renderer import render_single_video_html
     from report_cache import build_report_cache_identity, read_cached_report, report_cache_dir, write_cached_report
@@ -65,7 +67,7 @@ except ImportError:  # pragma: no cover - direct script execution
     from subtitle_fetcher import fetch_platform_subtitles
     from transcriber import transcribe_audio_to_material
     from transcript_source_adapter import transcript_material_to_local_extract_input
-    from transcript_quality import MIN_TRANSCRIPT_COVERAGE_RATIO, validate_transcript_coverage
+    from transcript_quality import MIN_TRANSCRIPT_COVERAGE_RATIO, parse_time_seconds, validate_transcript_coverage
     from watch_order import write_watch_order
     from scoring import SCORING_FORMULA_VERSION
 
@@ -82,6 +84,7 @@ SUBTITLE_QUALITY_AUDIO_FALLBACK_REASONS = {
     "segment_count_too_low",
     "plain_text_char_count_too_low",
     "video_duration_missing_for_quality_gate",
+    "title_transcript_mismatch",
 }
 
 
@@ -161,12 +164,16 @@ def subtitle_quality_should_fallback_to_audio(debug: dict[str, Any]) -> bool:
 def subtitle_quality_fallback_reason_code(reason: str) -> str:
     if reason == SUBTITLE_TIMELINE_AUDIO_FALLBACK_REASON:
         return "subtitle_timeline_mismatch"
+    if reason == "title_transcript_mismatch":
+        return "subtitle_title_transcript_mismatch"
     return "subtitle_quality_insufficient"
 
 
 def subtitle_quality_fallback_error(reason: str) -> str:
     if reason == SUBTITLE_TIMELINE_AUDIO_FALLBACK_REASON:
         return "subtitle timeline exceeds video duration; retrying with audio transcription"
+    if reason == "title_transcript_mismatch":
+        return "subtitle title/content mismatch; retrying with audio transcription"
     return "platform subtitle quality is insufficient; retrying with audio transcription"
 
 
@@ -177,6 +184,8 @@ class PipelineDependencies:
     download_audio_func: Callable[..., Any] = download_standard_audio
     transcribe_func: Callable[..., Any] = transcribe_audio_to_material
     youtube_connect_fallback_func: Optional[Callable[[str], Any]] = fetch_youtube_connect_transcript
+    youtube_chrome_fallback_func: Optional[Callable[[str], Any]] = fetch_youtube_chrome_transcript
+    youtube_safari_fallback_func: Optional[Callable[[str], Any]] = fetch_youtube_safari_transcript
     build_local_extract_func: Callable[..., dict[str, Any]] = build_local_extract_payload
     build_review_request_func: Callable[..., dict[str, Any]] = build_review_request
     parse_review_response_func: Callable[[Any], dict[str, Any]] = parse_review_response
@@ -362,6 +371,86 @@ def audio_path_from_result(result: Any) -> Path:
     raise PipelineError("audio_downloader", "audio_download_failed", "audio downloader did not return audio_path")
 
 
+def audio_paths_from_result(result: Any) -> list[Path]:
+    raw_paths: Any = None
+    if isinstance(result, dict):
+        raw_paths = result.get("audio_paths")
+    else:
+        raw_paths = getattr(result, "audio_paths", None)
+    paths: list[Path] = []
+    if isinstance(raw_paths, list):
+        for raw_path in raw_paths:
+            if raw_path:
+                paths.append(Path(raw_path))
+    if paths:
+        return paths
+    return [audio_path_from_result(result)]
+
+
+def seconds_to_compact_timestamp(value: float) -> str:
+    total_seconds = max(0, int(round(value)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+def shift_segment_timestamps(segment: dict[str, Any], offset_seconds: float) -> dict[str, Any]:
+    shifted = copy.deepcopy(segment)
+    for key in ("start", "end"):
+        parsed = parse_time_seconds(shifted.get(key))
+        if parsed is not None:
+            shifted[key] = seconds_to_compact_timestamp(parsed + offset_seconds)
+    if shifted.get("start_seconds") is not None:
+        parsed_start_seconds = parse_time_seconds(shifted.get("start_seconds"))
+        if parsed_start_seconds is not None:
+            shifted["start_seconds"] = parsed_start_seconds + offset_seconds
+    return shifted
+
+
+def merge_transcribed_materials(materials: list[dict[str, Any]], *, audio_paths: list[Path]) -> dict[str, Any]:
+    if not materials:
+        raise PipelineError("transcriber", "transcription_failed", "no transcribed materials to merge")
+    if len(materials) == 1:
+        return materials[0]
+    merged = copy.deepcopy(materials[0])
+    merged_segments: list[dict[str, Any]] = []
+    offset_seconds = 0.0
+    providers: list[str] = []
+    source_kinds: list[str] = []
+    for material in materials:
+        source = material.get("source", {}) if isinstance(material.get("source"), dict) else {}
+        provider = str(source.get("transcriber") or source.get("provider") or "").strip()
+        kind = str(source.get("kind") or "").strip()
+        if provider and provider not in providers:
+            providers.append(provider)
+        if kind and kind not in source_kinds:
+            source_kinds.append(kind)
+        segments = [segment for segment in material.get("segments", []) if isinstance(segment, dict)]
+        shifted_segments = [shift_segment_timestamps(segment, offset_seconds) for segment in segments]
+        merged_segments.extend(shifted_segments)
+        local_ends = [parse_time_seconds(segment.get("end")) for segment in segments]
+        local_ends = [value for value in local_ends if isinstance(value, (int, float))]
+        if local_ends:
+            offset_seconds += max(local_ends)
+    merged["segments"] = merged_segments
+    merged["segment_count"] = len(merged_segments)
+    merged["char_count"] = sum(len(str(segment.get("text") or "")) for segment in merged_segments)
+    merged["transcript_quality"] = "degraded" if any(material.get("transcript_quality") == "degraded" for material in materials) else merged.get("transcript_quality", "ok")
+    merged["source"] = {
+        "kind": "asr_wav",
+        "multipart_merged": True,
+        "audio_part_count": len(audio_paths),
+        "audio_paths": [str(path) for path in audio_paths],
+        "source_kinds": source_kinds,
+    }
+    if providers:
+        merged["source"]["transcriber"] = providers[0]
+        merged["source"]["transcriber_providers"] = providers
+    return merged
+
+
 def audio_method_from_result(result: Any) -> str:
     if isinstance(result, dict) and result.get("method"):
         return str(result["method"])
@@ -530,12 +619,17 @@ def is_youtube_resolver_fallback_trigger(source_url: str, exc: BaseException) ->
     if stage and stage != "resolver":
         return False
     reason_code = str(getattr(exc, "reason_code", ""))
+    debug = getattr(exc, "debug", None)
+    debug_text = ""
+    if isinstance(debug, dict):
+        debug_text = " ".join(str(value or "") for value in debug.values())
     text = " ".join(
         str(value or "")
         for value in (
             reason_code,
             getattr(exc, "message", ""),
             getattr(exc, "stderr", ""),
+            debug_text,
             str(exc),
         )
     ).lower()
@@ -569,23 +663,21 @@ def youtube_connect_fallback_debug(
     return debug
 
 
-def resolve_with_youtube_connect_fallback(
+def build_youtube_transcript_fallback_resolution(
     source_url: str,
     exc: BaseException,
-    deps: PipelineDependencies,
-) -> Optional[dict[str, Any]]:
-    if not is_youtube_resolver_fallback_trigger(source_url, exc):
-        return None
-    if deps.youtube_connect_fallback_func is None:
-        return None
+    transcript: Any,
+    *,
+    fallback_method: str,
+) -> dict[str, Any]:
     video_id = extract_youtube_video_id(source_url)
     reason_code = str(getattr(exc, "reason_code", "") or "platform_restriction")
-    transcript = deps.youtube_connect_fallback_func(source_url)
     material = material_from_youtube_connect(transcript)
     title = str(getattr(transcript, "title", "") or video_id)
     duration = str(getattr(transcript, "duration", "") or "unknown")
+    provider = str(getattr(transcript, "provider", "") or fallback_method)
     fallback_debug = youtube_connect_fallback_debug(
-        provider=str(getattr(transcript, "provider", "") or "youtube-connect"),
+        provider=provider,
         success=True,
         reason_code=reason_code,
     )
@@ -594,18 +686,18 @@ def resolve_with_youtube_connect_fallback(
         "url": source_url,
         "id": video_id,
         "duration": duration,
-        "channel": "未知",
+        "channel": str(getattr(transcript, "channel", "") or "未知"),
         "date": "未知",
         "resolver_debug": {
             "resolver_method": "yt_dlp",
-            "fallback_method": "youtube_connect_transcript",
+            "fallback_method": fallback_method,
             **fallback_debug,
         },
         "transcript_fallback": {
             **fallback_debug,
             "source_platform": "youtube",
             "video_id": video_id,
-            "transcript_source": material.get("source", {}).get("kind", "youtube_connect"),
+            "transcript_source": material.get("source", {}).get("kind", fallback_method),
             "subtitle_lang": getattr(transcript, "subtitle_lang", "en"),
             "subtitle_format": getattr(transcript, "subtitle_format", "transcript"),
             "segment_count": material.get("segment_count"),
@@ -620,10 +712,64 @@ def resolve_with_youtube_connect_fallback(
         "title": title,
         "id": video_id,
         "duration": duration,
-        "channel": "未知",
+        "channel": item["channel"],
         "videos": [item],
         "resolver_debug": item["resolver_debug"],
     }
+
+
+def resolve_with_youtube_connect_fallback(
+    source_url: str,
+    exc: BaseException,
+    deps: PipelineDependencies,
+) -> Optional[dict[str, Any]]:
+    if not is_youtube_resolver_fallback_trigger(source_url, exc):
+        return None
+    fallback_errors: list[str] = []
+    if deps.youtube_connect_fallback_func is not None:
+        try:
+            transcript = deps.youtube_connect_fallback_func(source_url)
+            return build_youtube_transcript_fallback_resolution(
+                source_url,
+                exc,
+                transcript,
+                fallback_method="youtube_connect_transcript",
+            )
+        except BaseException as connect_exc:
+            fallback_errors.append(f"youtube-connect: {connect_exc}")
+
+    allow_browser_auth = bool(deps.resolver_options.get("allow_browser_auth", True))
+    if allow_browser_auth:
+        browser_fallbacks: dict[str, tuple[Optional[Callable[[str], Any]], str, str]] = {
+            "chrome": (deps.youtube_chrome_fallback_func, "chrome_yt_initial_data_transcript", "chrome-transcript"),
+            "safari": (deps.youtube_safari_fallback_func, "safari_yt_initial_data_transcript", "safari-transcript"),
+        }
+        explicit_browser = str(deps.resolver_options.get("cookies_from_browser") or "").split(":", 1)[0].strip().lower()
+        if explicit_browser:
+            browser_order = [explicit_browser]
+        else:
+            raw_attempts = deps.resolver_options.get("cookie_browser_attempts") or ["chrome", "safari"]
+            if isinstance(raw_attempts, str):
+                raw_attempts = [part.strip() for part in raw_attempts.split(",")]
+            browser_order = [str(browser or "").split(":", 1)[0].strip().lower() for browser in raw_attempts]
+        for browser in browser_order:
+            fallback_func, fallback_method, error_label = browser_fallbacks.get(browser, (None, "", ""))
+            if fallback_func is None:
+                continue
+            try:
+                transcript = fallback_func(source_url)
+                return build_youtube_transcript_fallback_resolution(
+                    source_url,
+                    exc,
+                    transcript,
+                    fallback_method=fallback_method,
+                )
+            except BaseException as browser_exc:
+                fallback_errors.append(f"{error_label}: {browser_exc}")
+
+    if fallback_errors:
+        raise SubtitleUnavailableError("; ".join(fallback_errors))
+    return None
 
 
 def initial_manifest(source_url: str, source_kind: str, total_count: int) -> dict[str, Any]:
@@ -756,7 +902,7 @@ def process_source(
                 manifest["resolver_debug"] = getattr(exc, "debug")
             if fallback_error is not None and is_youtube_resolver_fallback_trigger(source_url, exc):
                 manifest["transcript_fallback_debug"] = youtube_connect_fallback_debug(
-                    provider="youtube-connect",
+                    provider="youtube-transcript-fallback",
                     success=False,
                     reason_code=str(getattr(exc, "reason_code", "") or "platform_restriction"),
                     error=str(fallback_error),
@@ -969,10 +1115,14 @@ def process_video_item(
                         merged_debug.update(safe_media_refresh_debug(refresh_result))
                     setattr(exc, "debug", merged_debug)
                 raise
-        audio_path = audio_path_from_result(audio_result)
+        audio_paths = audio_paths_from_result(audio_result)
+        audio_path = audio_paths[0]
         audio_step = audio_debug_from_result(audio_result)
         audio_step.update(audio_source_debug)
         audio_step["audio_path"] = str(audio_path)
+        audio_step["audio_paths"] = [str(path) for path in audio_paths]
+        audio_step["audio_part_count"] = len(audio_paths)
+        audio_step["multipart_audio_detected"] = len(audio_paths) > 1
         audio_step["audio_downloader_skipped_due_to_subtitle"] = False
         if rejection_debug:
             audio_step.update({
@@ -983,16 +1133,36 @@ def process_video_item(
         step("audio_downloader", "completed", audio_step)
         transcriber_kwargs = {"language": ""}
         transcriber_kwargs.update(deps.transcriber_options)
-        transcribe_result = deps.transcribe_func(audio_path, transcript_dir, **transcriber_kwargs)
-        transcribed_material = material_from_result(transcribe_result)
-        step(
-            "transcriber",
-            "completed",
-            {
-                "source": transcribed_material.get("source", {}),
-                "sanitization": transcribed_material.get("sanitization", {}),
-            },
-        )
+        transcribed_materials: list[dict[str, Any]] = []
+        for part_index, part_audio_path in enumerate(audio_paths, start=1):
+            transcribe_result = deps.transcribe_func(part_audio_path, transcript_dir, **transcriber_kwargs)
+            part_material = material_from_result(transcribe_result)
+            transcribed_materials.append(part_material)
+            step(
+                "transcriber",
+                "completed",
+                {
+                    "source": part_material.get("source", {}),
+                    "sanitization": part_material.get("sanitization", {}),
+                    "audio_path": str(part_audio_path),
+                    "audio_part_index": part_index,
+                    "audio_part_count": len(audio_paths),
+                    "multipart_audio_merge_pending": len(audio_paths) > 1,
+                },
+            )
+        transcribed_material = merge_transcribed_materials(transcribed_materials, audio_paths=audio_paths)
+        if len(audio_paths) > 1:
+            step(
+                "transcriber_merge",
+                "completed",
+                {
+                    "audio_part_count": len(audio_paths),
+                    "source": transcribed_material.get("source", {}),
+                    "segment_count": transcribed_material.get("segment_count"),
+                    "char_count": transcribed_material.get("char_count"),
+                    "transcript_last_end": parse_time_seconds(transcribed_material.get("segments", [])[-1].get("end")) if transcribed_material.get("segments") else None,
+                },
+            )
         return transcribed_material
 
     try:
@@ -1055,6 +1225,7 @@ def process_video_item(
                     video_duration=metadata.get("duration"),
                     segments=subtitle_local_input["transcript_segments"],
                     transcript_source=subtitle_local_input["transcript_source"],
+                    title=metadata.get("title"),
                 )
                 if subtitle_quality_should_fallback_to_audio(subtitle_quality_debug):
                     fallback_reason = str(subtitle_quality_debug.get("transcript_quality_reason") or "")
@@ -1063,7 +1234,7 @@ def process_video_item(
                         "error": subtitle_quality_fallback_error(fallback_reason),
                         "fallback_stage": "audio_downloader",
                         "subtitle_rejected_due_to_quality": True,
-                        "coverage_threshold": MIN_TRANSCRIPT_COVERAGE_RATIO,
+                        "coverage_threshold": subtitle_quality_debug.get("coverage_threshold", MIN_TRANSCRIPT_COVERAGE_RATIO),
                         **subtitle_quality_debug,
                     }
                     step("transcript_quality", "fallback_to_audio", rejection_debug)
@@ -1071,6 +1242,8 @@ def process_video_item(
                         subtitle_available=True,
                         rejection_debug=subtitle_quality_debug,
                     )
+                    local_input = None
+                    transcript_quality_debug = None
                 else:
                     local_input = subtitle_local_input
                     transcript_quality_debug = subtitle_quality_debug
@@ -1088,11 +1261,17 @@ def process_video_item(
             except SubtitleUnavailableError as exc:
                 subtitle_error_step = {"reason_code": exc.reason_code, "error": exc.message}
                 subtitle_error_step.update(subtitle_debug_from_error(exc))
+                for key in ("bvid", "cid", "playinfo"):
+                    if subtitle_error_step.get(key) and not item.get(key):
+                        item[key] = subtitle_error_step[key]
                 step("subtitle_fetcher", "unavailable", subtitle_error_step)
                 material = download_and_transcribe_audio(subtitle_available=False)
             except BilibiliSubtitleError as exc:
                 subtitle_error_step = {"reason_code": exc.reason_code, "error": exc.message}
                 subtitle_error_step.update(subtitle_debug_from_error(exc))
+                for key in ("bvid", "cid", "playinfo"):
+                    if subtitle_error_step.get(key) and not item.get(key):
+                        item[key] = subtitle_error_step[key]
                 fallback_allowed = bool(subtitle_error_step.get("audio_fallback_allowed", True))
                 step("subtitle_fetcher", "unavailable" if fallback_allowed else "failed", subtitle_error_step)
                 if not fallback_allowed:
@@ -1105,13 +1284,14 @@ def process_video_item(
                 video_duration=metadata.get("duration"),
                 segments=local_input["transcript_segments"],
                 transcript_source=local_input["transcript_source"],
+                title=metadata.get("title"),
             )
         if transcript_quality_debug.get("transcript_quality_passed") is not True:
             failed_debug = {
                 "stage": "transcript_quality",
                 "reason_code": "transcript_coverage_too_low",
                 "error": "transcript coverage is too low for reliable analysis",
-                "coverage_threshold": MIN_TRANSCRIPT_COVERAGE_RATIO,
+                "coverage_threshold": transcript_quality_debug.get("coverage_threshold", MIN_TRANSCRIPT_COVERAGE_RATIO),
                 **transcript_quality_debug,
             }
             step("transcript_quality", "failed", failed_debug)
@@ -1120,7 +1300,7 @@ def process_video_item(
             "transcript_quality",
             "completed",
             {
-                "coverage_threshold": MIN_TRANSCRIPT_COVERAGE_RATIO,
+                "coverage_threshold": transcript_quality_debug.get("coverage_threshold", MIN_TRANSCRIPT_COVERAGE_RATIO),
                 **transcript_quality_debug,
             },
         )
@@ -1192,6 +1372,11 @@ def process_video_item(
         if isinstance(stability, dict):
             stability["scoring_formula_version"] = scoring_formula_version
             stability["report_target"] = report_target
+            stability["source_url"] = str(item.get("url") or metadata.get("url") or "")
+            stability["source_title"] = str(item.get("title") or metadata.get("title") or "")
+            stability["source_bvid"] = str(item.get("bvid") or item.get("aid") or "")
+            stability["source_cid"] = str(item.get("cid") or "")
+            stability["transcript_source"] = str(local_input.get("transcript_source") or stability.get("transcript_source") or "")
         deps.write_json_func(review_request_path, review_request)
         codex_model_id = str(deps.review_options.get("codex_model") or "")
         step(

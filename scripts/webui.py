@@ -30,9 +30,21 @@ import urllib.request
 try:
     from .report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, REPORT_TARGET_DESCRIPTIONS, REPORT_TARGET_LABELS
     from .transcriber import has_whisper_cli, mlx_audio_python_statuses
+    from .watchbrief_codex_state import (
+        DEFAULT_WATCHBRIEF_CODEX_ACCOUNT,
+        DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT,
+        read_current_watchbrief_codex_account,
+        watchbrief_codex_root,
+    )
 except ImportError:  # pragma: no cover
     from report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, REPORT_TARGET_DESCRIPTIONS, REPORT_TARGET_LABELS
     from transcriber import has_whisper_cli, mlx_audio_python_statuses
+    from watchbrief_codex_state import (
+        DEFAULT_WATCHBRIEF_CODEX_ACCOUNT,
+        DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT,
+        read_current_watchbrief_codex_account,
+        watchbrief_codex_root,
+    )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = PROJECT_ROOT / "scripts" / "cli.py"
@@ -45,8 +57,8 @@ SOURCE_UPLOAD_DIR = STATE_DIR / "source_files"
 DEFAULT_QWEN_MODEL = "qwen3-30b-a3b-instruct-2507-mlx"
 DEFAULT_QWEN_BASE_URL = "http://127.0.0.1:1234/v1"
 DEFAULT_CODEX_MODEL = "gpt-5.5"
-DEFAULT_CODEX_ACCOUNT = "account2"
-DEFAULT_CODEX_HOME_ROOT = "~/.watchbrief_codex"
+DEFAULT_CODEX_ACCOUNT = DEFAULT_WATCHBRIEF_CODEX_ACCOUNT
+DEFAULT_CODEX_HOME_ROOT = DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT
 
 SUPPORTED_REVIEW_PROVIDERS = {"local", "codex-cli", "mock", "gemini", "claude", "kimi", "openai-compatible"}
 UNSUPPORTED_REVIEW_PROVIDERS = {"manual"}
@@ -638,7 +650,7 @@ def build_cli_command(payload: dict[str, Any], *, report_target_override: str | 
         codex_home_root = _clean_text(payload.get("codex_home_root")) or DEFAULT_CODEX_HOME_ROOT
         if codex_home_root:
             command.extend(["--codex-home-root", codex_home_root])
-        codex_account = _clean_text(payload.get("codex_account")) or DEFAULT_CODEX_ACCOUNT
+        codex_account = _clean_text(payload.get("codex_account")) or read_current_watchbrief_codex_account(watchbrief_codex_root(codex_home_root))
         if codex_account:
             command.extend(["--codex-account", codex_account])
 

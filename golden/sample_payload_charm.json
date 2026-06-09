@@ -65,7 +65,7 @@
   "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v2",
   "qwen_prompt_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "codex_model": "gpt-5.4",
-  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v4",
+  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v5",
   "codex_prompt_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
   "scoring_formula_version": "watchbrief_v5.video_value_formula.v2",
   "watchbrief_version": "watchbrief_v5",

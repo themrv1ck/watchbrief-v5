@@ -76,6 +76,16 @@ class ValidatorTest(unittest.TestCase):
         payload["one_line_brief"] = "这期视频主要讲：心流方法，建议看 10:51 | 15:08。"
         assert_invalid(self, payload, "one_line_scope")
 
+    def test_one_line_allows_domain_scoring_terms(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["one_line_brief"] = "这期视频主要讲：睡眠软件评分体系如何影响用户对休息质量的判断。"
+        validate_normalized_report_payload(payload)
+
+    def test_one_line_still_rejects_watchbrief_score_advice(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["one_line_brief"] = "这期视频主要讲：这支视频评分 8 分，建议补看。"
+        assert_invalid(self, payload, "one_line_scope")
+
     def test_watch_verdict_requires_pipe_time_or_no_watch_decision(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
         payload["watch_verdict"] = "看报告基本够，原视频只建议跳看 10:51-15:08。"

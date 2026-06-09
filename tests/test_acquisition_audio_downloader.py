@@ -11,11 +11,12 @@ import helpers  # noqa: F401 - ensures watchbrief_v5 is on sys.path before scrip
 from scripts.acquisition_errors import (
     AudioDownloadBlockedError,
     AudioDownloadError,
+    AUDIO_DOWNLOAD_TIMEOUT,
     BilibiliAudioDownloadError,
     FormatConversionError,
     PlatformRestrictionError,
 )
-from scripts.audio_downloader import download_standard_audio, request_headers
+from scripts.audio_downloader import download_standard_audio, pick_audio_files, request_headers
 
 
 class FakeResponse:
@@ -70,7 +71,38 @@ class AcquisitionAudioDownloaderTest(unittest.TestCase):
             )
 
             self.assertEqual(result.audio_path.name, "abc.wav")
+            self.assertEqual([path.name for path in (result.audio_paths or [])], ["abc.wav"])
             self.assertIn("--audio-format", result.command)
+
+    def test_pick_audio_files_uses_natural_multipart_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            for name in ("BV_mock_p10.wav", "BV_mock_p2.wav", "BV_mock_p1.wav"):
+                (output_dir / name).write_bytes(b"RIFFmock")
+
+            picked = pick_audio_files(output_dir)
+
+            self.assertEqual([path.name for path in picked], ["BV_mock_p1.wav", "BV_mock_p2.wav", "BV_mock_p10.wav"])
+
+    def test_multipart_audio_download_result_preserves_all_parts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            def run(command, capture_output, text, timeout):
+                for name in ("BV_mock_p2.wav", "BV_mock_p1.wav"):
+                    (output_dir / name).write_bytes(b"RIFFmock")
+                return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+            result = download_standard_audio(
+                "https://www.bilibili.com/video/BV_mock/",
+                output_dir,
+                subtitle_checked=True,
+                subtitle_available=False,
+                runner=run,
+            )
+
+            self.assertEqual(result.audio_path.name, "BV_mock_p1.wav")
+            self.assertEqual([path.name for path in (result.audio_paths or [])], ["BV_mock_p1.wav", "BV_mock_p2.wav"])
 
     def test_explicit_browser_cookies_are_passed_to_non_bilibili_audio_download(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -389,6 +421,61 @@ class AcquisitionAudioDownloaderTest(unittest.TestCase):
             )
 
             self.assertEqual(result.method, "bilibili_playinfo_fallback")
+
+    def test_bilibili_412_with_explicit_browser_cookies_uses_cookie_header_in_playurl_api(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            seen_requests: list = []
+
+            class Cookie:
+                name = "SESSDATA"
+                value = "BROWSER_SECRET"
+
+            def browser_loader(domain_name: str):
+                self.assertEqual(domain_name, "bilibili.com")
+                return [Cookie()]
+
+            def run(command, capture_output, text, timeout):
+                if command[0] == "yt-dlp":
+                    return subprocess.CompletedProcess(command, 1, stdout="", stderr="HTTP Error 412: Precondition Failed")
+                if command[0] == "ffmpeg":
+                    Path(command[-1]).write_bytes(b"RIFFmock")
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                raise AssertionError(command)
+
+            result = download_standard_audio(
+                "https://www.bilibili.com/video/BV1xx411c7mD/",
+                output_dir,
+                subtitle_checked=True,
+                subtitle_available=False,
+                runner=run,
+                urlopen_func=self.playurl_api_then_audio({"baseUrl": "https://upos.mock/audio.m4a"}, seen_requests),
+                cookies_from_browser="chrome",
+                browser_cookie_loader=browser_loader,
+                bvid="BV1xx411c7mD",
+                cid="12345",
+            )
+
+            self.assertEqual(result.method, "bilibili_playurl_api")
+            playurl_requests = [request for request in seen_requests if "x/player/playurl" in request.full_url]
+            self.assertTrue(playurl_requests)
+            self.assertEqual(dict(playurl_requests[0].header_items()).get("Cookie"), "SESSDATA=BROWSER_SECRET")
+
+    def test_bilibili_ytdlp_timeout_is_classified(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            def run(command, capture_output, text, timeout):
+                raise subprocess.TimeoutExpired(command, timeout, stderr="timed out")
+
+            with self.assertRaises(AudioDownloadError) as ctx:
+                download_standard_audio(
+                    "https://www.bilibili.com/video/BV1abc",
+                    Path(temp_dir),
+                    subtitle_checked=True,
+                    subtitle_available=False,
+                    runner=run,
+                    timeout=1,
+                )
+            self.assertEqual(ctx.exception.reason_code, AUDIO_DOWNLOAD_TIMEOUT)
 
     def test_bilibili_initial_state_fallback_uses_playurl_api(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

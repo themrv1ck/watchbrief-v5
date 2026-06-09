@@ -212,7 +212,7 @@ class BilibiliContentProviderTest(unittest.TestCase):
 
         self.assertEqual(context.exception.reason_code, LOGIN_REQUIRED_FOR_SUBTITLE)
         self.assertTrue(context.exception.debug["need_login_subtitle"])
-        self.assertFalse(context.exception.debug["audio_fallback_allowed"])
+        self.assertTrue(context.exception.debug["audio_fallback_allowed"])
 
     def test_empty_subtitle_url_track_is_login_required_not_no_subtitle(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -229,7 +229,7 @@ class BilibiliContentProviderTest(unittest.TestCase):
 
         self.assertEqual(context.exception.reason_code, LOGIN_REQUIRED_FOR_SUBTITLE)
         self.assertTrue(context.exception.debug["need_login_subtitle"])
-        self.assertFalse(context.exception.debug["audio_fallback_allowed"])
+        self.assertTrue(context.exception.debug["audio_fallback_allowed"])
 
     def test_no_subtitle_available_allows_audio_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

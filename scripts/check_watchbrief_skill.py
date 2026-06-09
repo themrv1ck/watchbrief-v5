@@ -47,7 +47,7 @@ REQUIRED_SCRIPTS = [
 ]
 VIDEO_TEMPLATE_REQUIRED = [
     "视频到底讲了什么？",
-    "如果要看，只看哪里？",
+    "如果要补原片，先看哪里？",
     "one-line brief",
     "final-conclusion",
     "feedback-launcher",
@@ -70,7 +70,7 @@ WATCH_ORDER_TEMPLATE_REQUIRED = [
 ]
 WATCH_ORDER_TEMPLATE_FORBIDDEN = [
     "视频到底讲了什么？",
-    "如果要看，只看哪里？",
+    "如果要补原片，先看哪里？",
     "feedback-launcher",
 ]
 

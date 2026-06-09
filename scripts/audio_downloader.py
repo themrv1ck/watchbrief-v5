@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import urllib.error
 import urllib.parse
@@ -18,6 +19,7 @@ try:
     from .acquisition_errors import (
         AudioDownloadBlockedError,
         AudioDownloadError,
+        AUDIO_DOWNLOAD_TIMEOUT,
         BILIBILI_412_BLOCKED,
         BILIBILI_AUDIO_CONVERT_FAILED,
         BILIBILI_AUDIO_DOWNLOAD_FAILED,
@@ -38,6 +40,7 @@ except ImportError:  # pragma: no cover
     from acquisition_errors import (
         AudioDownloadBlockedError,
         AudioDownloadError,
+        AUDIO_DOWNLOAD_TIMEOUT,
         BILIBILI_412_BLOCKED,
         BILIBILI_AUDIO_CONVERT_FAILED,
         BILIBILI_AUDIO_DOWNLOAD_FAILED,
@@ -69,6 +72,7 @@ class AudioDownloadResult:
     audio_path: Path
     command: list[str]
     method: str = "yt_dlp"
+    audio_paths: list[Path] | None = None
     cookies_source: str = ""
     audio_url_source: str = ""
     fallback_success: bool = False
@@ -78,14 +82,33 @@ class AudioDownloadResult:
     cookies_fallback_reason: str = ""
 
 
-def pick_audio_file(output_dir: Path) -> Path:
+def audio_sort_key(path: Path) -> tuple[str, int, str]:
+    """Sort yt-dlp multipart outputs in playback order.
+
+    Bilibili multipart downloads commonly produce names like ``BV..._p1.wav``
+    through ``BV..._p35.wav``. Lexical sorting puts ``p10`` before ``p2``;
+    natural sorting is required before transcription/merge.
+    """
+    stem = path.stem
+    match = re.search(r"(?:^|[_\-.])p(\d+)(?:$|[_\-.])", stem, flags=re.IGNORECASE)
+    if match:
+        prefix = stem[: match.start()]
+        return (prefix, int(match.group(1)), stem)
+    return (stem, 0, stem)
+
+
+def pick_audio_files(output_dir: Path) -> list[Path]:
     candidates = [
         path for path in output_dir.rglob(f"*{STANDARD_AUDIO_EXTENSION}")
         if path.is_file() and path.stat().st_size > 0
     ]
     if not candidates:
         raise AudioDownloadError("audio download produced no standard WAV file")
-    return sorted(candidates)[0]
+    return sorted(candidates, key=audio_sort_key)
+
+
+def pick_audio_file(output_dir: Path) -> Path:
+    return pick_audio_files(output_dir)[0]
 
 
 def ensure_audio_fallback_allowed(*, subtitle_checked: bool, subtitle_available: bool) -> None:
@@ -138,10 +161,50 @@ def cookie_header_from_file(path: Optional[Path]) -> str:
     return "; ".join(pairs)
 
 
-def effective_cookie_header(cookie_header: Optional[str], cookie_file: Optional[Path]) -> str:
-    return str(cookie_header or os.environ.get("WATCHBRIEF_BILIBILI_COOKIE_HEADER") or "").strip() or cookie_header_from_file(
+def read_browser_cookie_header(browser: str, *, domain_name: str = "bilibili.com", loader: Any = None) -> str:
+    browser_name = str(browser or "").strip().lower().replace("-", "_")
+    if not browser_name:
+        return ""
+    if loader is None:
+        try:
+            import browser_cookie3  # type: ignore
+        except Exception:
+            return ""
+        loader = getattr(browser_cookie3, browser_name, None)
+    if loader is None:
+        return ""
+    try:
+        jar = loader(domain_name=domain_name)
+    except Exception:
+        return ""
+    pairs: list[str] = []
+    for cookie in jar:
+        name = str(getattr(cookie, "name", "") or "")
+        value = str(getattr(cookie, "value", "") or "")
+        if name and value:
+            pairs.append(f"{name}={value}")
+    return "; ".join(pairs)
+
+
+def effective_cookie_header(
+    cookie_header: Optional[str],
+    cookie_file: Optional[Path],
+    *,
+    cookies_from_browser: Optional[str] = None,
+    browser_cookie_loader: Any = None,
+) -> str:
+    explicit_header = str(cookie_header or os.environ.get("WATCHBRIEF_BILIBILI_COOKIE_HEADER") or "").strip()
+    if explicit_header:
+        return explicit_header
+    file_header = cookie_header_from_file(
         cookie_file or (Path(os.environ["WATCHBRIEF_BILIBILI_COOKIE_FILE"]).expanduser() if os.environ.get("WATCHBRIEF_BILIBILI_COOKIE_FILE") else None)
     )
+    if file_header:
+        return file_header
+    browser = configured_cookies_from_browser(cookies_from_browser)
+    if browser:
+        return read_browser_cookie_header(browser, loader=browser_cookie_loader)
+    return ""
 
 
 def configured_cookie_file(cookie_file: Optional[Path]) -> Optional[Path]:
@@ -604,6 +667,7 @@ def download_standard_audio(
     cookie_header: Optional[str] = None,
     cookies_from_browser: Optional[str] = None,
     cookie_browser_attempts: Any = None,
+    browser_cookie_loader: Any = None,
     bvid: str = "",
     cid: str = "",
     playinfo: Optional[dict[str, Any]] = None,
@@ -625,6 +689,7 @@ def download_standard_audio(
                     cookie_file=cookie_file,
                     cookie_header=cookie_header,
                     cookies_from_browser=browser,
+                    browser_cookie_loader=browser_cookie_loader,
                     bvid=bvid,
                     cid=cid,
                     playinfo=playinfo,
@@ -668,7 +733,11 @@ def download_standard_audio(
             cookies_from_browser=cookies_from_browser,
             cookie_file=cookie_file,
         )
-    result = runner(command, capture_output=True, text=True, timeout=timeout)
+    try:
+        result = runner(command, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        stderr = str(exc.stderr or exc.output or "")
+        raise AudioDownloadError("audio download timed out", command, stderr, reason_code=AUDIO_DOWNLOAD_TIMEOUT) from exc
     stderr = str(result.stderr or "")
     if result.returncode != 0:
         if is_bilibili_url(url):
@@ -692,7 +761,7 @@ def download_standard_audio(
                         runner=runner,
                         timeout=timeout,
                         urlopen_func=urlopen_func,
-                        cookie_header=effective_cookie_header(cookie_header, cookie_file),
+                        cookie_header=effective_cookie_header(cookie_header, cookie_file, cookies_from_browser=cookies_from_browser, browser_cookie_loader=browser_cookie_loader),
                         cookies_source=cookies_source_label(cookies_from_browser=cookies_from_browser, cookie_file=cookie_file, cookie_header=cookie_header),
                         bvid=bvid,
                         cid=cid,
@@ -707,7 +776,8 @@ def download_standard_audio(
             raise FormatConversionError("audio_downloader", "audio format conversion failed", command, stderr)
         raise AudioDownloadError("audio download failed", command, stderr)
     try:
-        audio_path = pick_audio_file(output_dir)
+        audio_paths = pick_audio_files(output_dir)
+        audio_path = audio_paths[0]
     except AudioDownloadError as exc:
         if is_bilibili_url(url):
             try:
@@ -717,7 +787,7 @@ def download_standard_audio(
                     runner=runner,
                     timeout=timeout,
                     urlopen_func=urlopen_func,
-                    cookie_header=effective_cookie_header(cookie_header, cookie_file),
+                    cookie_header=effective_cookie_header(cookie_header, cookie_file, cookies_from_browser=cookies_from_browser, browser_cookie_loader=browser_cookie_loader),
                     cookies_source=cookies_source_label(cookies_from_browser=cookies_from_browser, cookie_file=cookie_file, cookie_header=cookie_header),
                     bvid=bvid,
                     cid=cid,
@@ -730,6 +800,7 @@ def download_standard_audio(
         audio_path=audio_path,
         command=command,
         method="yt_dlp",
+        audio_paths=audio_paths,
         cookies_source=(
             cookies_source_label(cookies_from_browser=cookies_from_browser, cookie_file=cookie_file, cookie_header=cookie_header)
             if is_bilibili_url(url) or cookies_from_browser or cookie_file or cookie_header
@@ -763,7 +834,11 @@ def main() -> int:
     )
     args.json_output.parent.mkdir(parents=True, exist_ok=True)
     args.json_output.write_text(
-        json.dumps({"audio_path": str(result.audio_path), "method": result.method}, ensure_ascii=False, indent=2) + "\n",
+        json.dumps({
+            "audio_path": str(result.audio_path),
+            "audio_paths": [str(path) for path in (result.audio_paths or [result.audio_path])],
+            "method": result.method,
+        }, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     return 0

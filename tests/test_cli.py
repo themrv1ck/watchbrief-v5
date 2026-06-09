@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import contextlib
 import io
 import json
@@ -63,6 +64,64 @@ class CliTest(unittest.TestCase):
             self.assertEqual(resolved["videos"][1]["duration_seconds"], 42)
             self.assertEqual(resolved["videos"][1]["timestamp"], 1777464000)
 
+    def test_source_file_resolver_uses_youtube_fallback_for_per_url_resolver_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_file = root / "urls.txt"
+            source_file.write_text("https://www.youtube.com/watch?v=Er2s-CFoZSo\n", encoding="utf-8")
+            original_error = RuntimeError("yt-dlp failed to resolve URL")
+
+            def fake_resolve(url: str, **kwargs):
+                raise original_error
+
+            fallback_resolution = {
+                "source_kind": "single",
+                "resolver_debug": {"fallback_method": "safari_yt_initial_data_transcript"},
+                "videos": [
+                    {
+                        "title": "from safari fallback",
+                        "url": "https://www.youtube.com/watch?v=Er2s-CFoZSo",
+                        "duration": "00:20",
+                        "transcript_fallback": {"transcript_fallback_success": True},
+                        "_transcript_material": {"segments": []},
+                    }
+                ],
+            }
+
+            with mock.patch("scripts.cli.resolve_with_youtube_connect_fallback", return_value=fallback_resolution) as fallback:
+                resolver = cli.make_resolver_for_source_file(source_file, resolver_func=fake_resolve)
+                resolved = resolver(str(source_file), allow_browser_auth=True)
+
+            self.assertEqual(resolved["source_kind"], "list")
+            self.assertEqual(resolved["videos"][0]["title"], "from safari fallback")
+            self.assertEqual(resolved["videos"][0]["resolver_debug"]["fallback_method"], "safari_yt_initial_data_transcript")
+            self.assertIs(fallback.call_args.args[1], original_error)
+            self.assertEqual(fallback.call_args.args[2].resolver_options["allow_browser_auth"], True)
+
+    def test_source_file_resolver_can_lock_current_item_without_expanding_resolved_lists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_file = root / "urls.txt"
+            source_file.write_text("https://www.bilibili.com/list/ml1?bvid=BVcurrent\n", encoding="utf-8")
+
+            def fake_resolve(url: str, **kwargs):
+                self.assertFalse(kwargs["allow_playlist_expansion"])
+                return {
+                    "source_kind": "list",
+                    "title": "multi-p should not expand in rerun mode",
+                    "videos": [
+                        {"title": "p1", "url": url + "&p=1", "duration": 10},
+                        {"title": "p2", "url": url + "&p=2", "duration": 20},
+                    ],
+                }
+
+            resolver = cli.make_resolver_for_source_file(source_file, resolver_func=fake_resolve)
+            resolved = resolver(str(source_file), allow_playlist_expansion=False)
+
+            self.assertEqual(resolved["source_kind"], "list")
+            self.assertEqual(len(resolved["videos"]), 1)
+            self.assertEqual(resolved["videos"][0]["title"], "p1")
+
     def run_cli_and_capture_deps(self, extra_args: list[str]):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -81,6 +140,37 @@ class CliTest(unittest.TestCase):
                 with mock.patch("scripts.cli.process_source", return_value={"source_kind": "single", "items": [], "failed_count": 0}) as process:
                     self.assertEqual(cli.main(), 0)
             return process.call_args.kwargs["deps"]
+
+    def test_auto_review_provider_prefers_codex_when_ready(self) -> None:
+        args = argparse.Namespace(
+            review_provider="auto",
+            enable_codex_review=False,
+            codex_home=None,
+            codex_home_root=None,
+            codex_account=None,
+        )
+        with mock.patch("scripts.cli.codex_review_preflight_ready", return_value=True):
+            with mock.patch("scripts.cli.read_current_watchbrief_codex_account", return_value="account-ready"):
+                cli.resolve_auto_review_provider(args)
+
+        self.assertEqual(args.review_provider, "codex-cli")
+        self.assertTrue(args.enable_codex_review)
+        self.assertEqual(args.codex_home_root, cli.DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT)
+        self.assertEqual(args.codex_account, "account-ready")
+
+    def test_auto_review_provider_falls_back_to_local_only_when_codex_is_not_ready(self) -> None:
+        args = argparse.Namespace(
+            review_provider="auto",
+            enable_codex_review=False,
+            codex_home=None,
+            codex_home_root=None,
+            codex_account=None,
+        )
+        with mock.patch("scripts.cli.codex_review_preflight_ready", return_value=False):
+            cli.resolve_auto_review_provider(args)
+
+        self.assertEqual(args.review_provider, "local")
+        self.assertFalse(args.enable_codex_review)
 
     def test_analysis_mode_defaults_to_standard_timeout(self) -> None:
         deps = self.run_cli_and_capture_deps([])
@@ -108,6 +198,11 @@ class CliTest(unittest.TestCase):
 
         self.assertEqual(deps.review_options["analysis_mode"], "fast")
         self.assertEqual(deps.local_extract_options["qwen_timeout"], 321)
+
+    def test_no_playlist_expansion_passes_to_resolver_options(self) -> None:
+        deps = self.run_cli_and_capture_deps(["--no-playlist-expansion"])
+
+        self.assertFalse(deps.resolver_options["allow_playlist_expansion"])
 
     def test_default_cookies_from_browser_attempts_chrome_then_safari(self) -> None:
         deps = self.run_cli_and_capture_deps([])
@@ -301,6 +396,64 @@ class CliTest(unittest.TestCase):
             self.assertIn("open -a 'Google Chrome'", output)
             self.assertIn(source_url, output)
             self.assertIn("yt-dlp --cookies-from-browser chrome --skip-download --list-subs", output)
+
+    def test_resolver_failed_with_nested_youtube_block_prints_manual_verification_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            mock_review = self.write_mock_review(root)
+            source_url = "https://www.youtube.com/watch?v=LSQgoNraoVo"
+            failed_manifest = {
+                "source_kind": "single",
+                "failed_count": 1,
+                "transcript_fallback_debug": {
+                    "resolver_failed": True,
+                    "transcript_fallback_provider": "youtube-connect",
+                    "transcript_fallback_success": False,
+                    "youtube_connect_error": "YouTube is blocking requests from your IP",
+                    "safari_error": "Safari transcript fallback returned no usable transcript segments",
+                },
+                "items": [
+                    {
+                        "status": "failed",
+                        "title": "Untitled Video",
+                        "url": source_url,
+                        "error": {
+                            "stage": "resolver",
+                            "reason_code": "resolver_failed",
+                            "error": "yt-dlp failed to resolve URL",
+                        },
+                        "transcript_fallback_debug": {
+                            "resolver_failed": True,
+                            "transcript_fallback_provider": "youtube-connect",
+                            "transcript_fallback_success": False,
+                            "safari_error": "Safari transcript fallback returned no usable transcript segments",
+                        },
+                    }
+                ],
+            }
+            argv = [
+                "cli.py",
+                "--source-url",
+                source_url,
+                "--output-dir",
+                str(root / "out"),
+                "--mock-review-response",
+                str(mock_review),
+            ]
+            stdout = io.StringIO()
+            with mock.patch.object(sys, "argv", argv):
+                with mock.patch("scripts.cli.process_source", return_value=failed_manifest):
+                    with contextlib.redirect_stdout(stdout):
+                        self.assertEqual(cli.main(), 0)
+
+            output = stdout.getvalue()
+            self.assertIn("stage=resolver reason=resolver_failed message=yt-dlp failed to resolve URL", output)
+            self.assertIn("manual_verification_required", output)
+            self.assertIn(f"manual_verification_open: open -a 'Google Chrome' '{source_url}'", output)
+            self.assertIn(
+                f"manual_verification_probe: yt-dlp --cookies-from-browser chrome --skip-download --list-subs '{source_url}'",
+                output,
+            )
 
     def test_timeout_defaults_to_qwen_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

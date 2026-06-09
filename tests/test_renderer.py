@@ -30,7 +30,7 @@ class RendererTest(unittest.TestCase):
         self.assertIn("class=\"panel section section-chain col-12\"", html)
         self.assertIn("section-watch", html)
         self.assertIn("视频到底讲了什么？", html)
-        self.assertIn("如果要看，只看哪里？", html)
+        self.assertIn("如果要补原片，先看哪里？", html)
 
     def test_render_non_watch_target_uses_target_sections(self) -> None:
         html = render_single_video_html(self.target_payload())
@@ -39,7 +39,7 @@ class RendererTest(unittest.TestCase):
         self.assertIn('data-report-target="knowledge_notes"', html)
         self.assertIn("核心概念", html)
         self.assertIn("心流来自目标、反馈和挑战之间的配合。", html)
-        self.assertNotIn("如果要看，只看哪里？", html)
+        self.assertNotIn("如果要补原片，先看哪里？", html)
 
     def test_render_charm_matches_golden_html(self) -> None:
         payload = load_golden("sample_payload_charm.json")
@@ -81,6 +81,7 @@ class RendererTest(unittest.TestCase):
         self.assertEqual(payload, original)
         self.assertIn(payload["final_conclusion"], html)
         self.assertIn("看报告基本够，原视频只建议跳看 10:51 - 15:08", html)
+        self.assertIn("<strong>补看入口：</strong>", html)
         self.assertIn(payload["one_line_brief"], html)
         self.assertNotIn("结论：结论：", html)
 
@@ -93,7 +94,8 @@ class RendererTest(unittest.TestCase):
             'class="panel section section-chain col-12"',
             'class="panel section section-watch col-12"',
             "视频到底讲了什么？",
-            "如果要看，只看哪里？",
+            "如果要补原片，先看哪里？",
+            "内容价值偏低",
             "纠偏反馈",
             "评分标高了",
             "评分标低了",

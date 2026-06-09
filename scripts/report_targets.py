@@ -15,7 +15,7 @@ REPORT_TARGETS = (
 )
 
 REPORT_TARGET_LABELS = {
-    DEFAULT_REPORT_TARGET: "观看决策",
+    DEFAULT_REPORT_TARGET: "内容导读",
     "text_structure": "文本结构分析",
     "knowledge_notes": "知识笔记",
     "viewpoint_breakdown": "观点拆解",
@@ -23,7 +23,7 @@ REPORT_TARGET_LABELS = {
 }
 
 REPORT_TARGET_DESCRIPTIONS = {
-    DEFAULT_REPORT_TARGET: "判断报告能否替代原视频、原视频是否还值得看，以及应该看哪一段。",
+    DEFAULT_REPORT_TARGET: "提炼视频主要内容、读者最需要了解的信息，以及如果要补看原片应先跳到哪一段。",
     "text_structure": "分析内容如何开场、推进、转折和收束，适合学习文本组织方式。",
     "knowledge_notes": "整理概念、事实、方法和边界，适合沉淀可复习的知识笔记。",
     "viewpoint_breakdown": "拆开主张、前提、论据和争议点，适合判断观点是否站得住。",

@@ -10,6 +10,7 @@ PLATFORM_RESTRICTION = "platform_restriction"
 RESOLVER_FAILED = "resolver_failed"
 SUBTITLE_UNAVAILABLE = "subtitle_unavailable"
 AUDIO_DOWNLOAD_FAILED = "audio_download_failed"
+AUDIO_DOWNLOAD_TIMEOUT = "audio_download_timeout"
 AUDIO_DOWNLOAD_BLOCKED = "audio_download_blocked"
 TRANSCRIBE_FAILED = "transcribe_failed"
 TRANSCRIBER_UNAVAILABLE = "transcriber_unavailable"
@@ -111,8 +112,14 @@ class BilibiliSubtitleError(AcquisitionError):
 
 
 class AudioDownloadError(AcquisitionError):
-    def __init__(self, message: str, command: Optional[list[str]] = None, stderr: str = "") -> None:
-        super().__init__("audio_downloader", AUDIO_DOWNLOAD_FAILED, message, command, stderr)
+    def __init__(
+        self,
+        message: str,
+        command: Optional[list[str]] = None,
+        stderr: str = "",
+        reason_code: str = AUDIO_DOWNLOAD_FAILED,
+    ) -> None:
+        super().__init__("audio_downloader", reason_code, message, command, stderr)
 
 
 class BilibiliAudioDownloadError(AcquisitionError):
@@ -161,6 +168,12 @@ def is_platform_restriction(stderr: str) -> bool:
         "http error 403",
         "this video is unavailable",
         "permission",
+        "not a bot",
+        "bot check",
+        "blocking requests from your ip",
+        "confirm you are not a bot",
+        "confirm you're not a bot",
+        "confirm you’re not a bot",
     )
     return any(marker in text for marker in markers)
 

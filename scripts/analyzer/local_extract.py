@@ -611,7 +611,12 @@ def normalize_json_like_text(text: str) -> str:
     def replace_bare_arrow(match: re.Match[str]) -> str:
         return json.dumps(f"{match.group(1)} -> {match.group(2)}", ensure_ascii=False)
 
-    return re.sub(r'"([^"\n]+)"\s*→\s*"([^"\n]+)"', replace_bare_arrow, str(text or ""))
+    normalized = re.sub(r'"([^"\n]+)"\s*→\s*"([^"\n]+)"', replace_bare_arrow, str(text or ""))
+    # Qwen occasionally emits adjacent JSON array strings without a comma, e.g.
+    # ["第一句"\n"第二句"].  Repair only the narrow string-string boundary; this
+    # preserves valid JSON and fixes the observed local_qwen_invalid_response case.
+    normalized = re.sub(r'("(?:[^"\\]|\\.)*")\s+(?=")', r'\1, ', normalized)
+    return normalized
 
 
 def is_strict_json_object_text(raw_text: str) -> bool:
@@ -883,6 +888,80 @@ def call_qwen_local_extract(
     return normalized
 
 
+def _dedupe_strings(values: list[Any], *, limit: int = 12) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = clean_text(value)
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        deduped.append(cleaned)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def build_deterministic_chunk_reduce_fallback(
+    reduce_seed: dict[str, Any],
+    chunk_summaries: list[dict[str, Any]],
+    *,
+    selected_model: str,
+) -> dict[str, Any]:
+    """Merge completed chunk summaries without another model call.
+
+    The chunk stage has already paid the expensive Qwen analysis cost.  If the
+    final reduce call stalls, failing the whole item wastes good chunk evidence.
+    This fallback preserves the intermediate local_extract contract so Codex can
+    still make the final WatchBrief judgment from the available evidence.
+    """
+    transcript = reduce_seed.get("transcript") if isinstance(reduce_seed.get("transcript"), dict) else {}
+    useful_points: list[Any] = []
+    skippable: list[Any] = []
+    candidate_segments: list[Any] = []
+    scoring_evidence: list[Any] = []
+    terms: list[Any] = []
+    corrections: list[Any] = []
+    themes: list[Any] = []
+    quality_notes: list[Any] = []
+    for summary in chunk_summaries:
+        if not isinstance(summary, dict):
+            continue
+        themes.append(summary.get("core_theme"))
+        useful_points.extend(summary.get("useful_points") or [])
+        skippable.extend(summary.get("skippable_content") or [])
+        candidate_segments.extend(summary.get("candidate_watch_segments") or [])
+        scoring_evidence.extend(summary.get("scoring_evidence") or [])
+        terms.extend(summary.get("important_terms") or [])
+        corrections.extend(summary.get("corrected_terms") or [])
+        quality_notes.append(summary.get("transcript_quality_note"))
+
+    core_claims = _dedupe_strings(themes + useful_points, limit=10)
+    methods = _dedupe_strings(useful_points + candidate_segments, limit=10)
+    evidence = _dedupe_strings(scoring_evidence + candidate_segments, limit=10)
+    caveats = _dedupe_strings(skippable, limit=8)
+    payload = {
+        "cleaned_understanding": "；".join(core_claims[:4]) or "已基于分块转写完成局部提炼，最终判断应以分块证据为准。",
+        "main_axis": core_claims[0] if core_claims else "分块证据归并后的主题轴线。",
+        "core_claims": core_claims,
+        "conditions": evidence[:6],
+        "methods": methods,
+        "examples": evidence[:6],
+        "caveats": caveats,
+        "original_quotes": [],
+        "refined_quotes": _dedupe_strings(useful_points, limit=8),
+        "transcript_quality_note": "；".join(_dedupe_strings(quality_notes, limit=4)) or "分块转写可读；reduce 阶段使用确定性归并兜底。",
+        "language": transcript.get("language") or "unknown",
+        "important_terms": _dedupe_strings(terms, limit=20),
+        "corrected_terms": _dedupe_strings(corrections, limit=20),
+    }
+    normalized = validate_qwen_extract(payload)
+    normalized["_qwen_model"] = selected_model
+    normalized["_local_extract_mode"] = "chunked_fallback"
+    normalized["_fallback_reason"] = "chunk_reduce_model_call_failed"
+    return normalized
+
+
 def call_qwen_chunked_local_extract(
     local_extract_seed: dict[str, Any],
     normalized_segments: list[dict[str, str]],
@@ -1030,9 +1109,24 @@ def call_qwen_chunked_local_extract(
             )
         reduced = validate_qwen_extract(parsed_reduce)
     except LocalQwenError as exc:
-        chunk_debug["reduce"] = {"status": "failed", "reason_code": exc.reason_code, "error": exc.message}
+        reduced = build_deterministic_chunk_reduce_fallback(
+            reduce_seed,
+            chunk_summaries,
+            selected_model=selected_model,
+        )
+        reduced["_chunk_count"] = len(chunks)
+        reduced["_successful_chunk_count"] = int(chunk_debug["successful_chunk_count"])
+        reduced["_failed_chunk_count"] = int(chunk_debug["failed_chunk_count"])
+        chunk_debug["reduce"] = {
+            "status": "fallback_completed",
+            "reason_code": exc.reason_code,
+            "error": exc.message,
+        }
+        if debug_root:
+            write_debug_json(debug_root / "local_extract_chunked_reduce_fallback.json", reduced)
         write_plan()
-        raise
+        reduced["_chunked_local_extract"] = copy.deepcopy(chunk_debug)
+        return reduced
     except LocalExtractError as exc:
         chunk_debug["reduce"] = {"status": "failed", "reason_code": exc.reason_code, "error": exc.message}
         write_plan()

@@ -1,5 +1,66 @@
 # 工作日志
 
+### 06:39 CST · WatchBrief content-guide semantics / X.PIN report correction
+
+- 背景：复查 B 站视频《我主动走进楚门的世界生活了7天，结果完全不想出来【X.PIN】》时发现，旧报告虽然能给分和推荐片段，但首屏没有足够直观地告诉用户“视频主要讲什么、这个像手表的东西是什么、通过什么路径达到什么效果”；片段选择也过度偏向高信息密度的后段隐私/部署，而不是理解入口。
+- 产品语义调整：
+  - 默认 `watch_decision` 兼容枚举保留，但显示/说明改为“内容导读”：报告负责提炼主要内容、内容综合评分和补看入口，不替用户做最终观看决定。
+  - `replacement_score` 明确为视频内容综合评分，来自内容质量、内容可信度/论据质量、信息密度、独创性、表达与时间成本等维度；不是观看决定分。
+  - `watch_verdict` 改为内容导读与入口导航：可以给出补看片段，但语义必须是“如果用户要补看，从这里进入”，不能替用户决定要不要看。
+  - 按用户要求，Codex CLI / validator 的 `watch_verdict` 原 v5 硬契约不改：仍保持“管道时间段或 no-watch decision”等 schema 兼容规则；本轮只调整生成语义和展示口径，不新增禁词式硬拦截。
+- 片段选择修复：
+  - `scripts/analyzer/local_review.py` 新增理解入口候选：优先定位能同时回答“对象是什么 / 问题是什么 / 通过什么机制或路径产生什么效果”的段落。
+  - 对 X.PIN 样本，候选从旧的 `13:42 | 15:30` 隐私部署优先，修正为 `11:28 | 14:03` 核心逻辑入口；`00:50 | 01:36` 作为“这个东西是什么”补充，`13:42 | 15:30` 作为隐私/部署备选。
+- 报告输出修复：
+  - `scripts/analyzer/prompts.py` / `scripts/analyzer/codex_review.py`：Codex Review v5 prompt 强制内容导读视角，并要求 primary 是理解入口片段。
+  - `scripts/renderer.py` / `references/video_report_v5.html`：页面主文案从“总判定 / 如果要看”调整为“主要内容与补看入口 / 如果要补原片”；旧推荐 tag 在页面显示为中性内容价值档位。
+  - 重新生成报告：`/Users/apple/Documents/Codex/2026-06-10/7-x-pin-https-www-bilibili/outputs/codex-review/watchbrief-xpin-codex-review-v3.html`。
+- Codex skill 同步要求：本轮修复需同步到 `/Users/apple/.codex-accounts/accounts/default/codex-home/skills/watchbrief_v5`，避免后续 Codex skill 继续使用旧“观看决策/剩余观看价值”口径。
+- 兼容性修复：全量测试暴露 `scripts/resolver.py` 的 `datetime.UTC` 在当前 Python 环境不可用，已改为 `datetime.timezone.utc`。
+- 回归测试：
+  - `python3 -m unittest discover -s tests -p 'test_analyzer_codex_review.py'`
+  - `python3 -m unittest discover -s tests -p 'test_analyzer_prompts.py'`
+  - `python3 -m unittest discover -s tests -p 'test_renderer.py'`
+  - `python3 -m unittest discover -s tests -p 'test_template_sources.py'`
+  - `python3 -m unittest discover -s tests -p 'test_validator.py'`
+  - `python3 -m unittest discover -s tests -p 'test_scoring.py'`
+  - `python3 -m unittest discover -s tests -p 'test_cli.py'`
+  - `python3 -m unittest discover -s tests -p 'test_video_pipeline.py'`
+  - 全量 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过：Ran 483 tests, OK, skipped=3。
+
+
+### 22:06 CST · ALI failure rerun triage / subtitle mismatch hardening
+
+- 背景：复查 ALI 列表 `ml3624289410` 的失败项与风险项，目标索引为 02、03、06、08、23、40、47、69；原始证据来自 `/var/folders/gl/lclzd2wx0312kb4xllx6nc340000gp/T/watchbrief_v5_debug_vgc5v3vv/manifest.json`。
+- 代码修复已落地并通过回归：
+  - `scripts/transcript_quality.py`：B 站平台字幕 `subtitle_bcc` 使用更保守的 0.60 覆盖率门槛；新增标题-字幕一致性检查，标题关键词与字幕正文完全不匹配时标记 `title_transcript_mismatch`。
+  - `scripts/video_pipeline.py`：平台字幕低质量/标题错配会记录 `transcript_quality:fallback_to_audio` 并重新进入 audio downloader；fallback 转写后重新构造 `local_input` 与 transcript quality，不再沿用被拒字幕的失败状态。
+  - `scripts/audio_downloader.py` / `scripts/acquisition_errors.py`：B 站 playurl/audio fallback 增强浏览器 cookie header 路径；`yt-dlp` timeout 分类为 `audio_download_timeout`。
+  - `scripts/report_cache.py` / `scripts/analyzer/codex_review.py` / `scripts/video_pipeline.py`：report cache identity 增加 `source_url`、`source_title`、`bvid/cid`、`transcript_source`，降低旧正文套新标题的假成功风险。
+  - `scripts/analyzer/codex_review.py`：`arrow_chain maxLength` schema retry 增加定向提示，要求每个节点 18 个中文字以内。
+  - `scripts/validator.py`：`one_line_brief` 不再因普通“评分/分数”字样误杀，只拦截明确评分建议/时间段/观看建议混入。
+- 回归测试：
+  - 新增 `tests/test_transcript_quality.py`。
+  - 更新 `tests/test_video_pipeline.py`、`tests/test_acquisition_audio_downloader.py`、`tests/test_analyzer_codex_review.py`、`tests/test_validator.py`。
+  - 全量命令 `python3 -m unittest discover -s tests -p 'test_*.py'` 通过：Ran 455 tests, OK, skipped=3。
+- 真实重跑：
+  - 原先用 `--source-file /tmp/watchbrief_rerun_indices_02_03_06_08_23_40_47_69.txt` 会把 B 站多 P/列表自动展开成 47 条，已主动 kill，避免污染结果。
+  - 改用逐条 `--source-url` 脚本 `/tmp/watchbrief_rerun_8_targets.sh`，输出 `/Users/apple/Desktop/ALI-rerun-fix-20260508`，debug `/Users/apple/Desktop/ALI-rerun-fix-20260508-debug`。
+  - 02：single，1/1 completed；本次未复现“蔡徐坤/品牌代言”错配，字幕为 `subtitle_bcc` 且 coverage gate 通过。
+  - 03：single，1/1 completed；原 `bilibili_412_blocked` 项恢复成功。
+  - 06：被解析为 35 个分 P list；1 completed、34 failed，失败均为 `subtitle_fetcher/login_required_for_subtitle`，说明复测粒度被多 P 展开放大，且这些分 P 当前 Chrome 登录态不足以获取字幕。
+  - 08：single，1/1 completed；原 `local_qwen_timeout` 项恢复成功。
+  - 23：single，1/1 completed；原 `arrow_chain maxLength schema_invalid` 项恢复成功。
+  - 40：被解析为 6 个分 P list；5 completed、1 failed。第 1 个分 P 失败为 `validator_failed: $: legacy module label is not allowed`；其余 5 个 completed。输出 Watch Order：`/Users/apple/Desktop/ALI-rerun-fix-20260508/40/00-watch-order.html`。
+  - 47：single，0 completed、1 failed；失败 `subtitle_fetcher/login_required_for_subtitle`，未走到原 schema 场景。
+  - 69：single，0 completed、1 failed；失败 `subtitle_fetcher/login_required_for_subtitle`，未走到原 validator 场景。
+- 结论：
+  - 已验证可避免/已恢复的类型：03 的 B 站 412/audio 链路、08 的 local Qwen timeout 重跑、23 的 `arrow_chain` schema retry。
+  - 第 02 条旧“蔡徐坤/品牌代言”不是本地模型纯幻觉，而是上游 B 站 AI 字幕/缓存链路导致的标题-正文错配假成功；新代码已增加标题-字幕一致性门禁与 cache source identity，降低同类复发。
+  - 尚未完成闭环验证的类型：47/69 因当前字幕登录态失败，没有跑到 schema/validator 阶段；40 暴露新的 legacy module label validator 问题。
+  - 新增后续修复项：复测模式需要支持“锁定当前 item / 禁止多 P 自动展开”，否则单 URL 复测会被 06、40 这类 B 站多 P 放大成列表任务。
+- 敏感信息处理：未记录、展示或保存 cookie/header/token/xsec/signed URL。
+
 ## 2026-05-07
 
 ### 12:35 CST · WebUI report target multi-select / GitHub release update
@@ -4694,3 +4755,28 @@ python3 watchbrief_v5/scripts/cli.py \
 - 边界：未改变观看决策默认报告的 required 字段、评分公式、validator 语义和旧 HTML 分支；非观看目标使用 `target_summary` + 固定 key 的 `target_sections` 渲染。
 - 验证：`py_compile` 通过；`test_cli.py`、`test_webui.py`、`test_validator.py`、`test_renderer.py`、`test_analyzer_prompts.py`、`test_analyzer_codex_review.py`、`test_video_pipeline.py` 均通过。
 - 全量：`python3 -m unittest discover -s tests -p 'test_*.py' -v` 跑到 448 tests，失败 1 个既有 B 站音频下载分类断言：期望 `bilibili_audio_url_not_found`，实际 `bilibili_audio_download_failed`；本次未改 `scripts/audio_downloader.py`。
+
+## 2026-05-08 23:03 CST — ALI 定向修复补齐：字幕登录 fallback / 多 P 锁定 / legacy label
+
+- 背景：上一轮 ALI 定向重跑后，核心错配与 412/timeout/schema 问题已修，但仍残留三类阻塞：B 站字幕登录态失败未进入音频 fallback、`--source-file` / 单 URL 复测会展开多 P 导致粒度失真、Codex 输出旧模块标签导致 validator 拒绝。
+- 修复：
+  - `scripts/bilibili_content_provider.py`：`login_required_for_subtitle`、无字幕和字幕 API/下载失败统一标记 `audio_fallback_allowed=true`，让 pipeline 进入 audio_downloader + ASR，再走正常 transcript quality gate。
+  - `scripts/resolver.py` / `scripts/cli.py`：新增 `--no-playlist-expansion`，resolver 传 `--no-playlist`，并禁用 B 站 list / entries 自动展开；source-file wrapper 在该模式下只取当前 resolver item，支持失败项精确复测。
+  - `scripts/analyzer/codex_review.py`：schema retry prompt 增加 `legacy module label targeted correction`，明确删除 `要点提炼 / 可执行动作清单 / 完整笔记 / 关键洞察 / 行动建议` 等旧标签；保留 arrow_chain maxLength 定向修复提示。
+- 回归测试：
+  - `test_bilibili_content_provider.py`：登录态字幕错误允许音频 fallback。
+  - `test_video_pipeline.py`：`login_required_for_subtitle` 会进入 audio_downloader 并完成；字幕标题正文错配仍会转音频 fallback。
+  - `test_cli.py`：`--no-playlist-expansion` 下 source-file 不展开多 P/list。
+  - `test_acquisition_resolver.py`：禁用展开时 yt-dlp 使用 `--no-playlist` 并返回单条。
+  - `test_analyzer_codex_review.py`：legacy module label retry prompt 定向提示。
+- 验证：
+  - `python3 -m unittest discover -s tests -p 'test_bilibili_content_provider.py'`：14 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_video_pipeline.py'`：52 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_cli.py'`：32 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_acquisition_resolver.py'`：39 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_analyzer_codex_review.py'`：51 tests OK。
+  - `python3 -m unittest discover -s tests -p 'test_*.py'`：459 tests OK，skipped=3。
+- 边界：
+  - 本次没有重跑真实 ALI 47/69/06/40；当前闭环是代码和单测级验证。
+  - 下一步真实定向复测应使用 `--no-playlist-expansion`，再核对 manifest 的 `total_count` 等于输入 URL 数。
+  - 未保存、打印、展示 cookies / token / signed URL。

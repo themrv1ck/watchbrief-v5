@@ -251,6 +251,21 @@ class WebUITest(unittest.TestCase):
         self.assertIn("--enable-codex-review", command)
         self.assertIn("--codex-model", command)
 
+    def test_codex_review_provider_uses_watchbrief_current_account(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "accountA").mkdir()
+            (root / "accountA" / "auth.json").write_text("{}", encoding="utf-8")
+            (root / "accountA" / "config.toml").write_text("", encoding="utf-8")
+            (root / "current").write_text("accountA\n", encoding="utf-8")
+            with patch.object(webui, "codex_cli_status", return_value={"gpt55_ready": True}):
+                command = webui.build_cli_command({"source_url": "https://example.com/v", "codex_home_root": str(root)})
+
+        self.assertIn("--codex-home-root", command)
+        self.assertIn(str(root), command)
+        self.assertIn("--codex-account", command)
+        self.assertIn("accountA", command)
+
     def test_local_review_provider_is_only_default_when_codex_is_not_ready(self) -> None:
         with patch.object(webui, "codex_cli_status", return_value={"gpt55_ready": False}):
             command = webui.build_cli_command({"source_url": "https://example.com/v"})
@@ -757,13 +772,14 @@ class WebUITest(unittest.TestCase):
             )
 
     def test_codex_extract_uses_codex_account_group_without_codex_review(self) -> None:
-        command = webui.build_cli_command(
-            {
-                "source_url": "https://example.com/v",
-                "extract_provider": "codex-cli-extract",
-                "review_provider": "local",
-            }
-        )
+        with patch.object(webui, "read_current_watchbrief_codex_account", return_value="active-test-account"):
+            command = webui.build_cli_command(
+                {
+                    "source_url": "https://example.com/v",
+                    "extract_provider": "codex-cli-extract",
+                    "review_provider": "local",
+                }
+            )
 
         self.assertIn("--extract-provider", command)
         self.assertIn("codex-cli-extract", command)
@@ -772,7 +788,7 @@ class WebUITest(unittest.TestCase):
         self.assertIn("--codex-home-root", command)
         self.assertIn("~/.watchbrief_codex", command)
         self.assertIn("--codex-account", command)
-        self.assertIn("account2", command)
+        self.assertIn("active-test-account", command)
         self.assertNotIn("--enable-codex-review", command)
 
     def test_unsupported_provider_and_renderer_fail_clearly(self) -> None:

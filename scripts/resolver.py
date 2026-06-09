@@ -94,6 +94,10 @@ PUBLISH_METADATA_FIELDS = ("date", "publish_date", "release_date", "upload_date"
 BILIBILI_PUBLISH_TIME_FIELDS = ("pubdate", "pubtime", "ctime")
 
 
+def stderr_summary(stderr: str, *, limit: int = 1000) -> str:
+    return re.sub(r"\s+", " ", str(stderr or "")).strip()[:limit]
+
+
 def classify_bilibili_resolver_failure(stderr: str) -> str:
     text = str(stderr or "").lower()
     if "412" in text or "precondition failed" in text:
@@ -210,7 +214,7 @@ def format_unix_ms_date(value: Any) -> str:
         return ""
     if number > 10_000_000_000:
         number = number / 1000.0
-    return datetime.datetime.fromtimestamp(number, datetime.UTC).strftime("%Y%m%d")
+    return datetime.datetime.fromtimestamp(number, datetime.timezone.utc).strftime("%Y%m%d")
 
 
 def fetch_netease_json(url: str, *, headers: dict[str, str], urlopen_func: Any, timeout: int) -> dict[str, Any]:
@@ -2081,6 +2085,7 @@ def resolve_url(
     urlopen_func: Any = urllib.request.urlopen,
     browser_cookie_loader: Any = None,
     xiaohongshu_dom_fallback_func: Any = xiaohongshu_dom_board_notes,
+    allow_playlist_expansion: bool = True,
 ) -> dict[str, Any]:
     source_url = str(url or "").strip()
     if not source_url.startswith(("http://", "https://")):
@@ -2143,9 +2148,12 @@ def resolve_url(
         "yt-dlp",
         "--dump-single-json",
         "--skip-download",
-        "--flat-playlist",
         "--no-warnings",
     ]
+    if allow_playlist_expansion:
+        base_command.append("--flat-playlist")
+    else:
+        base_command.append("--no-playlist")
     if is_bilibili_url(source_url):
         base_command = add_bilibili_resolver_headers(base_command)
 
@@ -2220,6 +2228,7 @@ def resolve_url(
                 "fallback_method": "",
                 "fallback_success": False,
                 "reason_code": "platform_restriction" if is_platform_restriction(last_stderr) else "resolver_failed",
+                "stderr_summary": stderr_summary(last_stderr),
                 "is_412": False,
             }
             if is_platform_restriction(last_stderr):
@@ -2234,7 +2243,7 @@ def resolve_url(
 
     if payload is None:
         if is_bilibili_url(source_url):
-            if bilibili_list_id:
+            if bilibili_list_id and allow_playlist_expansion:
                 return resolve_bilibili_list_from_page_or_api(
                     source_url,
                     list_id=bilibili_list_id,
@@ -2282,7 +2291,7 @@ def resolve_url(
             )
         payload = _run_json_command(last_command, runner=runner, timeout=timeout)
 
-    if bilibili_list_id:
+    if bilibili_list_id and allow_playlist_expansion:
         return build_bilibili_list_resolution_from_ytdlp(
             source_url,
             payload,
@@ -2296,7 +2305,7 @@ def resolve_url(
         )
 
     entries = payload.get("entries")
-    if isinstance(entries, list) and entries:
+    if allow_playlist_expansion and isinstance(entries, list) and entries:
         videos = [normalize_video_entry(entry, index) for index, entry in enumerate(entries) if isinstance(entry, dict)]
         if is_bilibili_url(source_url):
             videos = enrich_bilibili_multipart_videos(

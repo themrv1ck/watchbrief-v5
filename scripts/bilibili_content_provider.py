@@ -635,6 +635,22 @@ def provider_debug(
     }
 
 
+def subtitle_error_allows_audio_fallback(reason_code: str) -> bool:
+    """Return whether a Bilibili subtitle-layer failure may continue via audio ASR.
+
+    Login-required subtitle metadata means the subtitle API cannot give us text,
+    not that the video audio is unavailable. Treat it like a missing subtitle so
+    the pipeline can try the already-authorized audio/playurl path and then run
+    the normal transcript quality gate on the ASR result.
+    """
+    return reason_code in {
+        LOGIN_REQUIRED_FOR_SUBTITLE,
+        NO_SUBTITLE_AVAILABLE,
+        BILIBILI_SUBTITLE_API_FAILED,
+        BILIBILI_SUBTITLE_DOWNLOAD_FAILED,
+    }
+
+
 def safe_file_part(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "")).strip("-") or "bilibili"
 
@@ -684,7 +700,7 @@ def fetch_bilibili_subtitle(
                 track_debug=exc.debug,
                 cookies_source=cookies_source,
                 fetch_reason=exc.reason_code,
-                audio_fallback_allowed=False,
+                audio_fallback_allowed=subtitle_error_allows_audio_fallback(exc.reason_code),
             ))
         raise
     track = choose_track(tracks, languages)

@@ -446,6 +446,46 @@ class AnalyzerLocalExtractTest(unittest.TestCase):
 
         self.assertEqual(parsed, {"corrected_terms": ["Marcus Aurelius -> 马可·奥勒留"]})
 
+    def test_qwen_prompt_json_repairs_missing_commas_between_array_strings(self) -> None:
+        def urlopen_func(request, timeout):
+            return MockHTTPResponse(qwen_chat_response('{"refined_quotes": ["第一句"\n"第二句"]}'))
+
+        parsed = call_qwen_prompt_json(
+            "输出 JSON",
+            selected_model="qwen-test",
+            api_base="http://127.0.0.1:1234/v1",
+            urlopen_func=urlopen_func,
+            timeout=5,
+        )
+
+        self.assertEqual(parsed, {"refined_quotes": ["第一句", "第二句"]})
+
+    def test_chunk_reduce_timeout_falls_back_to_deterministic_merge(self) -> None:
+        mock = self.load_mock()
+
+        def extractor(seed: dict) -> dict:
+            if seed.get("local_extract_mode") == "chunk":
+                return fake_chunk_summary(seed)
+            if seed.get("local_extract_mode") == "chunk_reduce":
+                raise LocalQwenError("local_qwen_timeout", "mock reduce timeout")
+            return fake_qwen_extract(seed)
+
+        payload = build_local_extract_payload(
+            mock["metadata"],
+            make_long_segments(),
+            transcript_language="en",
+            qwen_extractor=extractor,
+            chunked_char_threshold=200,
+            chunked_request_bytes_threshold=999_999,
+            chunked_segment_threshold=999_999,
+            chunk_target_chars=650,
+            chunk_overlap_chars=120,
+        )
+
+        self.assertEqual(payload["chunked_local_extract"]["reduce"]["status"], "fallback_completed")
+        self.assertEqual(payload["qwen_extract"]["_local_extract_mode"], "chunked_fallback")
+        self.assertGreater(len(payload["qwen_extract"]["core_claims"]), 0)
+
     def test_qwen_invalid_intermediate_output_returns_local_extract_invalid_output(self) -> None:
         mock = self.load_mock()
         response = {

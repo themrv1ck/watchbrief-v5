@@ -468,6 +468,26 @@ class AcquisitionResolverTest(unittest.TestCase):
 
         self.assertEqual(context.exception.reason_code, BILIBILI_LIST_EXPANSION_FAILED)
 
+    def test_no_playlist_expansion_uses_ytdlp_no_playlist_and_returns_single(self) -> None:
+        payload = {
+            "id": "BV1single",
+            "title": "当前视频",
+            "webpage_url": "https://www.bilibili.com/video/BV1single",
+            "duration": 120,
+        }
+        seen_command: list[str] = []
+
+        def run(command, capture_output, text, timeout):
+            seen_command.extend(command)
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
+
+        resolved = resolve_url("https://www.bilibili.com/video/BV1single?p=2", runner=run, allow_playlist_expansion=False)
+
+        self.assertIn("--no-playlist", seen_command)
+        self.assertNotIn("--flat-playlist", seen_command)
+        self.assertEqual(resolved["source_kind"], "single")
+        self.assertEqual(resolved["title"], "当前视频")
+
     def test_xiaohongshu_board_url_is_identified_without_ytdlp(self) -> None:
         url = "https://www.xiaohongshu.com/user/profile/abc/board/69e0e0930000000016034f8a?source=web_user_page"
 
@@ -726,6 +746,21 @@ class AcquisitionResolverTest(unittest.TestCase):
         with self.assertRaises(PlatformRestrictionError) as context:
             resolve_url("https://example.com/private", runner=run)
         self.assertEqual(context.exception.reason_code, "platform_restriction")
+
+    def test_youtube_ip_block_is_platform_restriction_with_debug_summary(self) -> None:
+        def run(command, capture_output, text, timeout):
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                stdout="",
+                stderr="ERROR: YouTube is blocking requests from your IP. Sign in to confirm you're not a bot.",
+            )
+
+        with self.assertRaises(PlatformRestrictionError) as context:
+            resolve_url("https://www.youtube.com/watch?v=LSQgoNraoVo", runner=run)
+        self.assertEqual(context.exception.reason_code, "platform_restriction")
+        self.assertEqual(context.exception.debug["reason_code"], "platform_restriction")
+        self.assertIn("blocking requests from your IP", context.exception.debug["stderr_summary"])
 
     def test_bilibili_cookies_from_browser_is_passed_to_metadata_ytdlp(self) -> None:
         seen_command: list[str] = []

@@ -85,6 +85,21 @@ def score_band(report: dict[str, Any]) -> str:
     return score_band_from_replacement_score(report["replacement_score"])
 
 
+def display_tag(report: dict[str, Any]) -> str:
+    """Render legacy recommendation tags as neutral content-value bands."""
+    tag = str(report.get("tag") or "")
+    neutral = {
+        "报告足够替代": "内容提炼较完整",
+        "报告基本可替代": "内容提炼基本完整",
+        "只建议跳看": "内容价值一般",
+        "值得补看": "内容价值较高",
+        "建议完整看": "内容价值很高",
+        "不推荐观看": "内容价值偏低",
+        "解析不足": "解析不足",
+    }
+    return neutral.get(tag, tag)
+
+
 def score_styles(report: dict[str, Any]) -> tuple[str, str, str, str, str]:
     cfg = band_config(score_band(report))
     score_num = (
@@ -244,7 +259,7 @@ def render_single_video_html(payload: dict[str, Any]) -> str:
 </head>
 <body>
 <main>
-  <div class="eyebrow">视频速览 · 总判定与一句话总结版</div>
+  <div class="eyebrow">视频速览 · 主要内容与补看入口</div>
 
   <section class="hero score-{report_band}" data-score-band="{report_band}">
     <div class="panel hero-main">
@@ -267,8 +282,8 @@ def render_single_video_html(payload: dict[str, Any]) -> str:
         <div class="score-label">video value score</div>
         {score_num}
       </div>
-      <div class="tag" {tag_style}>{esc(report["tag"])}</div>
-      <p class="side-verdict" {side_verdict_style}><strong>总判定：</strong>{esc(display_natural_time_ranges(report["watch_verdict"]))}</p>
+      <div class="tag" {tag_style}>{esc(display_tag(report))}</div>
+      <p class="side-verdict" {side_verdict_style}><strong>补看入口：</strong>{esc(display_natural_time_ranges(report["watch_verdict"]))}</p>
     </aside>
   </section>
 
@@ -303,8 +318,8 @@ def render_single_video_html(payload: dict[str, Any]) -> str:
     </div>
 
     <div class="panel section section-watch col-12">
-      <div class="section-note">where to watch if needed</div>
-      <h2>如果要看，只看哪里？</h2>
+      <div class="section-note">where to jump for source context</div>
+      <h2>如果要补原片，先看哪里？</h2>
       <div class="watch-list">
         {render_watch_segments(report)}
       </div>

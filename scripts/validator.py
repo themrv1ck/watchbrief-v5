@@ -27,7 +27,7 @@ VALID_TAGS = (
 )
 WATCHBRIEF_VERSION = "watchbrief_v5"
 QWEN_LOCAL_EXTRACT_PROMPT_VERSION = "watchbrief_v5.qwen_local_extract_prompt.v2"
-CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v4"
+CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v5"
 
 PATH_TABLE_KEYS = ("problem", "mechanism", "turning_point", "landing")
 WATCH_SEGMENT_PRIORITY_ORDER = ("primary", "optional", "backup")
@@ -135,9 +135,8 @@ ONE_LINE_FORBIDDEN_MARKERS = (
     "不用看",
     "无需看",
     "建议看",
-    "评分",
-    "分数",
 )
+ONE_LINE_SCORE_ADVICE_RE = re.compile(r"(?:评分|分数)\s*(?:为|是|[:：])?\s*\d+(?:\.\d+)?\s*分?|\d+(?:\.\d+)?\s*分\s*(?:视频|原片|原视频|观看|建议)")
 
 WATCH_VERDICT_REPORT_MARKERS = ("报告", "看报告")
 WATCH_VERDICT_DECISION_MARKERS = (
@@ -285,7 +284,7 @@ def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any
     one_line = text(payload.get("one_line_brief"))
     if not one_line.startswith("这期视频主要讲："):
         issues.append(ValidationIssue("one_line_brief", "must start with 这期视频主要讲：", "one_line_prefix"))
-    if ANY_TIME_RE.search(one_line) or any(marker in one_line for marker in ONE_LINE_FORBIDDEN_MARKERS):
+    if ANY_TIME_RE.search(one_line) or any(marker in one_line for marker in ONE_LINE_FORBIDDEN_MARKERS) or ONE_LINE_SCORE_ADVICE_RE.search(one_line):
         issues.append(ValidationIssue("one_line_brief", "must not contain viewing advice, score reasons, or time ranges", "one_line_scope"))
 
     watch_verdict = text(payload.get("watch_verdict"))

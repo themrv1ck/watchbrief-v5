@@ -11,12 +11,14 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from .local_review import build_watch_segments
     from ..report_targets import DEFAULT_REPORT_TARGET, normalize_report_target, report_target_contract
     from ..validator import REQUIRED_REPORT_FIELDS, VALID_TAGS
 except ImportError:  # pragma: no cover - direct script execution
     SCRIPTS_DIR = Path(__file__).resolve().parents[1]
     if str(SCRIPTS_DIR) not in sys.path:
         sys.path.insert(0, str(SCRIPTS_DIR))
+    from local_review import build_watch_segments
     from report_targets import DEFAULT_REPORT_TARGET, normalize_report_target, report_target_contract
     from validator import REQUIRED_REPORT_FIELDS, VALID_TAGS
 
@@ -33,14 +35,14 @@ TERM_LOCALIZATION_RULES = """中文化与专有名词规则：
 - 示例：personal system product -> 个人方法系统产品；education product -> 教育型产品 / 知识产品；big burning problem -> 强痛点 / 核心痛点；desired outcome -> 目标结果；time frame -> 实现周期；offer -> 产品承诺 / 销售主张；landing page -> 落地页；social proof -> 信任背书 / 社会证明；CTA -> 行动号召 / 行动按钮；features and benefits -> 功能与收益；cohort -> 共学营 / 训练营；e-book -> 电子书；software -> 软件产品。
 """
 
-ANALYZER_SYSTEM_PROMPT = """你是 WatchBrief V5 的视频观看决策分析器。
+ANALYZER_SYSTEM_PROMPT = """你是 WatchBrief V5 的视频内容导读分析器。
 
 你的任务不是普通摘要，也不是下载器。你只能基于输入里的原始语言转写证据，生成一个 normalized_report_payload。
 
 硬规则：
 1. 最终报告必须是中文。
 2. 不要整篇翻译后再分析；先理解原始语言内容，再输出中文判断。
-3. replacement_score 只表示：这个视频本身的整体价值评分，不是“看完报告后原视频还剩多少观看价值”。
+3. replacement_score 只表示：视频内容综合评分，来自内容质量、内容可信度/论据质量、信息密度、独创性、表达与时间成本等维度，不是“看完报告后原视频还剩多少观看价值”，也不是替用户做观看决定。
 4. topic 不能直接影响 replacement_score；只能根据视频内容证据、表达、论证和实际价值评分。
 5. tag 只能从固定推荐/替代标签里选，不能写主题词。
 6. one_line_brief 只讲视频主要讲了什么，必须以“这期视频主要讲：”开头。
@@ -54,17 +56,21 @@ ANALYZER_SYSTEM_PROMPT = """你是 WatchBrief V5 的视频观看决策分析器�
 14. 不要重新引入“要点提炼 / 可执行动作清单 / 完整笔记”。
 15. 最终报告必须以中文为主，领域术语要自然中文化；保留英文只限标题、频道名、品牌名、产品名、人名、工具名或确实无法自然翻译的原词。
 16. 如果保留英文术语有必要，第一次写成“中文（English）”，后续只用中文。
+17. 报告的默认视角是“内容导读”，不是替用户做“看/不看”的最终决定。先讲清视频主要讲什么、读者最需要了解什么，再给补看入口。
+18. watch_segments 的 primary 必须选“理解入口片段”：读者看这一段后，应能知道视频主要对象是什么、它解决什么问题、通过什么路径/机制达到什么效果。不要只选信息密度最高但不能作为入口的细分段落；隐私、部署、限制、商业化等后段信息通常只能作为 optional/backup，除非它同时讲清对象、路径和效果。
+19. watch_verdict 和 only_one_segment 只提供“补看入口”。可以给出片段入口，但不能把话说成系统替用户决定要不要看；如果使用“建议看”一类表述，语义只能是“如果用户要补看，建议从这段进入”，不是“你应该观看/不观看”。
 """ + "\n" + TERM_LOCALIZATION_RULES
 
 
 SCORING_RUBRIC = """replacement_score / structured_assessment 评分标尺：
-- 这个分数是“视频整体价值评分”，不是“读完报告后原视频还剩多少观看价值”。
+- 这个分数是“视频内容综合评分”，由内容质量、内容可信度/论据质量、信息密度、独创性、表达与时间成本等维度综合得出。
+- 这个分数不是观看决定；系统不能替用户决定看不看。最终报告只负责把主要内容、关键信息和补看入口讲清楚，决策权留给用户。
 - 最终 replacement_score 会由 structured_assessment 四项确定性加权计算；你必须认真校准四项，不要把所有普通视频都压到 0-3。
 - 四项含义：
-  1. 信息密度：原视频单位时间内提供的有效观点、方法、例子、机制和可迁移判断的密度。
-  2. 论据质量：原视频是否给出清楚证据、例子、推理链、反例、边界或可验证依据。
-  3. 独创性：原视频是否有非模板化的新角度、新组合、少见经验、具体框架或独特表达；不是“世界首创”才给高分。
-  4. 观看性价比：原视频作为音视频作品本身的表达/观看/聆听价值；包括表达感染力、叙事节奏、演示、案例细节、上下文、情绪张力、视觉/操作过程、声音质感和原作者口吻。
+  1. 信息密度：单位时间内提供的有效观点、方法、例子、机制和可迁移判断的密度。
+  2. 论据质量：也就是内容可信度，是否给出清楚证据、例子、推理链、反例、边界或可验证依据。
+  3. 独创性：内容质量中的新意部分，是否有非模板化的新角度、新组合、少见经验、具体框架或独特表达；不是“世界首创”才给高分。
+  4. 观看性价比：表达质量与时间成本，包括表达感染力、叙事节奏、演示、案例细节、上下文、情绪张力、视觉/操作过程、声音质感和原作者口吻。
 - 0-10 锚点：
   - 0-2：视频整体价值很低；内容空泛、证据不足、重复严重，或转写/内容不足以支持判断。
   - 3-4：整体价值偏低；有少量信息，但多数是常识、铺垫、重复或表达价值弱。
@@ -182,11 +188,184 @@ def build_target_report_prompt(report_target: str) -> str:
     )
 
 
+REVIEW_QWEN_EXTRACT_FIELDS = (
+    "cleaned_understanding",
+    "main_axis",
+    "core_claims",
+    "conditions",
+    "methods",
+    "examples",
+    "caveats",
+    "quotes",
+    "original_quotes",
+    "refined_quotes",
+    "transcript_quality_note",
+    "language",
+    "important_terms",
+    "corrected_terms",
+    "_qwen_model",
+)
+
+REVIEW_TRANSCRIPT_SUMMARY_FIELDS = (
+    "language",
+    "quality",
+    "source",
+    "segment_count",
+    "char_count",
+    "has_timestamps",
+    "video_duration_seconds",
+    "first_start",
+    "last_end",
+    "covered_duration",
+    "coverage_ratio",
+    "plain_text_char_count",
+)
+
+REVIEW_CHUNKED_SUMMARY_FIELDS = (
+    "chunk_count",
+    "successful_chunk_count",
+    "failed_chunk_count",
+    "success_coverage",
+    "min_success_coverage",
+    "trigger_reason",
+    "request_bytes",
+    "total_chars",
+)
+
+
+def _compact_text(value: Any, *, limit: int = 1200) -> str:
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + f"…[truncated {len(text) - limit} chars]"
+
+
+def _compact_string_list(values: Any, *, item_limit: int = 24, text_limit: int = 800) -> list[Any]:
+    if not isinstance(values, list):
+        return []
+    compacted: list[Any] = []
+    for item in values[:item_limit]:
+        if isinstance(item, str):
+            compacted.append(_compact_text(item, limit=text_limit))
+        else:
+            compacted.append(item)
+    if len(values) > item_limit:
+        compacted.append(f"[truncated {len(values) - item_limit} items]")
+    return compacted
+
+
+def _compact_time_windows(windows: Any, *, limit: int = 12) -> list[dict[str, Any]]:
+    if not isinstance(windows, list):
+        return []
+    compacted: list[dict[str, Any]] = []
+    for window in windows[:limit]:
+        if not isinstance(window, dict):
+            continue
+        item: dict[str, Any] = {}
+        for key in ("start", "end", "label", "title", "summary"):
+            if key in window:
+                item[key] = window[key]
+        if "excerpt" in window:
+            item["excerpt_preview"] = _compact_text(window.get("excerpt"), limit=500)
+        compacted.append(item)
+    if len(windows) > limit:
+        compacted.append({"truncated_window_count": len(windows) - limit})
+    return compacted
+
+
+def _chunk_status_summary(chunks: Any) -> dict[str, int]:
+    if not isinstance(chunks, list):
+        return {}
+    summary: dict[str, int] = {}
+    for chunk in chunks:
+        status = "unknown"
+        if isinstance(chunk, dict):
+            status = str(chunk.get("status") or "unknown")
+        summary[status] = summary.get(status, 0) + 1
+    return summary
+
+
+def build_compact_review_payload(local_extract_payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the bounded payload used by final review prompts.
+
+    local_extract payloads may contain thousands of transcript segments and full
+    chunk debug records. Final review only needs source metadata, transcript
+    quality/count metadata, Qwen's reduced understanding, boundary metadata, and
+    chunked extraction status. Raw segment/chunk arrays are intentionally omitted
+    to keep Codex CLI prompts inside context limits.
+    """
+    if not isinstance(local_extract_payload, dict):
+        return {}
+    transcript = local_extract_payload.get("transcript") if isinstance(local_extract_payload.get("transcript"), dict) else {}
+    compact_transcript = {key: transcript[key] for key in REVIEW_TRANSCRIPT_SUMMARY_FIELDS if key in transcript}
+    if "excerpt" in transcript:
+        compact_transcript["excerpt_preview"] = _compact_text(transcript.get("excerpt"), limit=1600)
+    if "segments" in transcript:
+        compact_transcript["segments_omitted"] = True
+        if "segment_count" not in compact_transcript and isinstance(transcript.get("segments"), list):
+            compact_transcript["segment_count"] = len(transcript["segments"])
+
+    qwen_extract = local_extract_payload.get("qwen_extract") if isinstance(local_extract_payload.get("qwen_extract"), dict) else {}
+    compact_qwen: dict[str, Any] = {}
+    for key in REVIEW_QWEN_EXTRACT_FIELDS:
+        if key not in qwen_extract:
+            continue
+        value = qwen_extract[key]
+        if isinstance(value, str):
+            compact_qwen[key] = _compact_text(value, limit=5000 if key == "cleaned_understanding" else 1800)
+        elif isinstance(value, list):
+            compact_qwen[key] = _compact_string_list(value)
+        else:
+            compact_qwen[key] = value
+
+    chunked = local_extract_payload.get("chunked_local_extract") if isinstance(local_extract_payload.get("chunked_local_extract"), dict) else {}
+    compact_chunked = {key: chunked[key] for key in REVIEW_CHUNKED_SUMMARY_FIELDS if key in chunked}
+    if "reduce" in chunked and isinstance(chunked.get("reduce"), dict):
+        compact_chunked["reduce"] = {
+            key: value
+            for key, value in chunked["reduce"].items()
+            if key in {"status", "reason_code", "error"}
+        }
+    if "chunks" in chunked:
+        compact_chunked["chunks_omitted"] = True
+        compact_chunked["chunk_status_summary"] = _chunk_status_summary(chunked.get("chunks"))
+
+    compact_payload: dict[str, Any] = {}
+    for key in ("extract_version", "transcript_hash"):
+        if key in local_extract_payload:
+            compact_payload[key] = local_extract_payload[key]
+    compact_payload["metadata"] = local_extract_payload.get("metadata", {}) if isinstance(local_extract_payload.get("metadata"), dict) else {}
+    compact_payload["transcript"] = compact_transcript
+    if local_extract_payload.get("time_windows"):
+        compact_payload["time_windows"] = _compact_time_windows(local_extract_payload.get("time_windows"))
+    try:
+        candidates = build_watch_segments(
+            local_extract_payload,
+            qwen_extract,
+            compact_payload["metadata"] if isinstance(compact_payload["metadata"], dict) else {},
+        )
+    except Exception:
+        candidates = []
+    if candidates:
+        compact_payload["watch_segment_candidates"] = candidates
+    compact_payload["qwen_extract"] = compact_qwen
+    compact_payload["analysis_boundary"] = local_extract_payload.get("analysis_boundary", {}) if isinstance(local_extract_payload.get("analysis_boundary"), dict) else {}
+    if compact_chunked:
+        compact_payload["chunked_local_extract"] = compact_chunked
+    return compact_payload
+
+
 def build_review_user_prompt(local_extract_payload: dict[str, Any], *, report_target: str = DEFAULT_REPORT_TARGET) -> str:
     """Build the user prompt for a future model call without executing it."""
+    review_payload = build_compact_review_payload(local_extract_payload)
     prompt = (
-        "请根据下面的 local_extract_payload 生成一个 normalized_report_payload。\n"
+        "请根据下面的 compact local_extract_payload 生成一个 normalized_report_payload。\n"
+        "输入已为 review 阶段压缩：完整 transcript.segments、超长 transcript.excerpt、chunked_local_extract.chunks 等原文/调试大数组已省略；请基于 metadata、transcript summary、qwen_extract 与 chunked status 进行最终判断，不要要求完整原文。\n"
         "输入里可能包含 qwen_extract，这是本地 Qwen 对转写内容的中间提炼；你可以参考其中 core_claims、methods、caveats、quotes、important_terms、corrected_terms，但最终字段仍必须遵守 V5 schema 和 validator。\n"
+        "默认报告视角：你不是替用户决定原视频要不要看，而是提炼出用户判断前最需要知道的信息。先让读者明白视频主要讲什么、核心逻辑是什么、哪些信息足以支撑自己的判断；补看建议只是入口导航。\n"
+        "watch_verdict 写法：必须是内容导读和入口导航。可以给出补看片段，但不要替用户决定要不要看；如果使用“建议看”一类表述，必须限定为“如果用户要补看，建议从这段进入”。推荐写法：报告已提炼出产品对象、核心路径和边界；如果用户要补看原片，入口是 11:28 | 14:03。\n"
+        "如果输入里有 watch_segment_candidates，它们是从完整转写中按“理解入口、对象定义、核心路径、机制解释、效果说明、边界补充”等信号预筛出的候选片段；watch_segments 应优先从这些候选里选择，不要因为 transcript excerpt 从 00:00 开始就默认选择开头。\n"
+        "片段选择规则：primary 必须回答“看哪一段最容易知道这个视频主要讲的是什么”。产品/技术/原理/观点类视频优先选能同时覆盖对象/产品是什么、它解决什么问题、通过什么路径或机制产生什么效果的段落。开头钩子、悬念、寒暄、体验引子通常不能作为 primary；隐私、部署、限制等细分段落通常作为 optional/backup，除非它同时承担完整理解入口。\n"
         "专名、人名、书名和工具名必须优先使用 qwen_extract.important_terms 与 qwen_extract.corrected_terms；不要自己重新猜人名。不确定就写“疑似某某”。\n"
         f"{TERM_LOCALIZATION_RULES}\n"
         "中文字段包括 topic、one_line_brief、watch_verdict、highest_compression、path_table、arrow_chain、final_conclusion、content_caveat、watch_segments、score_basis、confidence_note，都必须优先使用自然中文表达。\n"
@@ -194,7 +373,7 @@ def build_review_user_prompt(local_extract_payload: dict[str, Any], *, report_ta
         "只能输出 JSON 对象，不要输出 Markdown，不要添加解释。\n\n"
         "normalized_report_payload 契约：\n"
         f"{json.dumps(NORMALIZED_PAYLOAD_CONTRACT, ensure_ascii=False, indent=2)}\n\n"
-        "local_extract_payload：\n"
-        f"{json.dumps(local_extract_payload, ensure_ascii=False, indent=2)}"
+        "compact_local_extract_payload：\n"
+        f"{json.dumps(review_payload, ensure_ascii=False, indent=2)}"
     )
     return prompt + build_target_report_prompt(report_target)
