@@ -4780,3 +4780,21 @@ python3 watchbrief_v5/scripts/cli.py \
   - 本次没有重跑真实 ALI 47/69/06/40；当前闭环是代码和单测级验证。
   - 下一步真实定向复测应使用 `--no-playlist-expansion`，再核对 manifest 的 `total_count` 等于输入 URL 数。
   - 未保存、打印、展示 cookies / token / signed URL。
+
+## 2026-06-10 — 同步 Codex skill 副本与 Codex token 状态检查
+
+- 关联 Codex 会话：`019eae69-d53c-76d3-b73d-1ae4332b0647`（修复 YouTube 拦截）。
+- 检查目录：`/Users/apple/Documents/Codex/2026-06-10/7-x-pin-https-www-bilibili`。
+- 目录性质：该目录是一次 X.PIN / B 站任务输出包，包含 HTML、Codex review JSON 和 debug 产物；未发现 `WORKLOG.md`、Markdown 日志或 WatchBrief 源码副本。
+- 产物证据：`outputs/codex-review/watchbrief-xpin-codex-review-v2.json` 和 `watchbrief-xpin-codex-review-v3.json` 均记录 `codex_model=gpt-5.5`、`watchbrief_version=watchbrief_v5`。
+- 同步目标：`/Users/apple/.codex-accounts/accounts/default/codex-home/skills/watchbrief_v5`。
+- 同步范围：从独立项目目录 `/Users/apple/Documents/New project/watchbrief_v5` 同步到 Codex skill 副本，排除 `.git/`、`.pytest_cache/`、`__pycache__/`、`.DS_Store`、`.venv/`、`.venv-mlx/`、`rollback/` 和临时批跑脚本。
+- 关键补齐：
+  - 新增 `scripts/providers/youtube_safari_provider.py` 到 Codex skill 副本。
+  - 更新 `scripts/video_pipeline.py`，补齐 YouTube Connect 失败后的 Chrome / Safari DOM transcript fallback。
+  - 更新 `scripts/acquisition_errors.py`、`scripts/transcript_quality.py`、`scripts/watchbrief_codex_status.py` 及相关测试。
+- Codex token 状态：`python3 scripts/watchbrief_codex_status.py` 在 Codex skill 副本中返回 `ready=true`，当前账号为 `account2`；未打印 token、cookies 或 auth 内容。
+- 验证：
+  - `rsync --dry-run --itemize-changes ...`：受控同步范围内无剩余差异。
+  - `python3 -m py_compile scripts/video_pipeline.py scripts/providers/youtube_safari_provider.py scripts/acquisition_errors.py scripts/transcript_quality.py scripts/watchbrief_codex_status.py`：通过。
+  - `env PYTHONPATH=tests python3 -m unittest tests.test_video_pipeline tests.test_transcript_quality`：57 tests OK。

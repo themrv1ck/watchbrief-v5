@@ -37,6 +37,8 @@ REQUIRED_SCRIPTS = [
     "scripts/renderer.py",
     "scripts/watch_order.py",
     "scripts/webui.py",
+    "scripts/watchbrief_codex_state.py",
+    "scripts/watchbrief_codex_status.py",
     "scripts/bilibili_content_provider.py",
     "scripts/analyzer/codex_review.py",
     "scripts/analyzer/cloud_review.py",
