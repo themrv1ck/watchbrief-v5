@@ -29,6 +29,7 @@ FINAL_REPORT_FIELDS_BLOCKED_IN_TRANSCRIPT_MATERIAL = {
     "final_conclusion",
     "content_caveat",
     "watch_segments",
+    "long_content_breakdown",
     "only_one_segment",
     "score_basis",
     "confidence_note",

@@ -165,3 +165,5 @@ python3 scripts/cli.py \
 - `date` 必须来自视频发布日期，优先使用 `publish_date`、`release_date`、`upload_date`、`timestamp` 或平台明确发布时间字段；不得用报告生成时间、当前系统时间或文件时间。
 - `duration` 必须来自视频真实时长，统一显示为中文自然格式，例如 `44分58秒`、`1小时02分03秒`。
 - metadata 缺失时才显示 `未知`，并在 `item_manifest.json` 的 metadata step 记录 `publish_date_missing` / `publish_date_source` 和 `duration_missing` / `duration_source`。
+- 如果视频超过 45 分钟，且属于播客、访谈、演讲、讲座、课程、公开课、研讨会、工作坊、培训或类似需要按阶段理解的长内容，最终 `normalized_payload` 必须包含 `long_content_breakdown`。
+- `long_content_breakdown` 是全片阶段拆分，不是补看入口；每项必须包含 `start`、`end`、`title`、`summary`，按时间顺序说明每一阶段具体讲了什么。

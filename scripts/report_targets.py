@@ -10,6 +10,7 @@ REPORT_TARGETS = (
     DEFAULT_REPORT_TARGET,
     "text_structure",
     "knowledge_notes",
+    "content_brief",
     "viewpoint_breakdown",
     "creation_review",
 )
@@ -18,6 +19,7 @@ REPORT_TARGET_LABELS = {
     DEFAULT_REPORT_TARGET: "内容导读",
     "text_structure": "文本结构分析",
     "knowledge_notes": "知识笔记",
+    "content_brief": "内容简报",
     "viewpoint_breakdown": "观点拆解",
     "creation_review": "创作复盘",
 }
@@ -26,6 +28,7 @@ REPORT_TARGET_DESCRIPTIONS = {
     DEFAULT_REPORT_TARGET: "提炼视频主要内容、读者最需要了解的信息，以及如果要补看原片应先跳到哪一段。",
     "text_structure": "分析内容如何开场、推进、转折和收束，适合学习文本组织方式。",
     "knowledge_notes": "整理概念、事实、方法和边界，适合沉淀可复习的知识笔记。",
+    "content_brief": "直接陈述视频已经给出的观点、内容和可执行建议，适合清单式重点视频和讲书类视频。",
     "viewpoint_breakdown": "拆开主张、前提、论据和争议点，适合判断观点是否站得住。",
     "creation_review": "复盘选题、钩子、节奏、素材组织和可复用创作经验。",
 }
@@ -42,6 +45,12 @@ REPORT_TARGET_SECTION_SPECS = {
         ("key_facts", "关键知识"),
         ("methods", "方法与步骤"),
         ("caveats", "边界提醒"),
+    ),
+    "content_brief": (
+        ("direct_statements", "直接结论"),
+        ("key_points", "具体观点"),
+        ("practical_takeaways", "可直接采用"),
+        ("boundaries", "注意边界"),
     ),
     "viewpoint_breakdown": (
         ("claims", "主要观点"),

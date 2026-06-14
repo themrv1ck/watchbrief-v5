@@ -491,6 +491,10 @@ Field rules:
 - watch_segments primary must be the best understanding-entry segment, not merely the densest or latest segment. After watching primary, a reader should know what the video is mainly about, what object/product/idea is being discussed, what problem it addresses, and what path/mechanism creates the claimed effect.
 - For product/technology/explainer/opinion videos, prefer a segment that combines object definition + core path/mechanism + effect. Intro suspense, greeting, cold open, and anecdotal setup are usually not primary. Privacy, deployment, limitations, commercialization, or risk-only segments are usually optional/backup unless they also explain the object, path, and effect.
 - If compact_local_extract_payload includes watch_segment_candidates, choose primary/optional/backup from those candidates unless you have a stronger exact timestamp from the input. Do not ignore understanding-entry candidates and default to either 00:00 or a high-density late segment.
+- long_content_breakdown: optional array. It is required only when duration is longer than 45 minutes and the content is a podcast/interview/lecture/talk/course/workshop/seminar/training or similar long-form educational/speech content.
+- long_content_breakdown is a whole-video phase breakdown, not a watch recommendation and not a replacement for watch_segments.
+- long_content_breakdown items must contain start, end, title, summary. Use original MM:SS or H:MM:SS timestamps, keep phases ordered and non-overlapping, and write concrete Chinese summaries of what each phase explains.
+- Do not output long_content_breakdown for short videos or videos that are not long-form podcast/speech/course-like content.
 - only_one_segment: string. It must match the primary start/end. Example: 只选一段：00:00 | 00:05。这一段已经覆盖全片核心。
 - score_basis: object with four string fields: information_density, evidence_quality, originality, watch_value.
 - score_basis values must be strings. Never output numbers, objects, arrays, or omit these fields.
@@ -528,6 +532,7 @@ def build_codex_cli_retry_prompt(
     errors = "\n".join(f"- {error}" for error in schema_errors)
     watch_verdict_hint = ""
     arrow_chain_hint = ""
+    long_breakdown_hint = ""
     if any("arrow_chain" in error and "maxLength" in error for error in schema_errors):
         arrow_chain_hint = (
             "\narrow_chain targeted correction:\n"
@@ -552,6 +557,13 @@ def build_codex_cli_retry_prompt(
             "- Do not write a vague phrase such as “首选片段” without the actual `start | end` time range.\n"
             "- Do not use `start - end`, `start 到 end`, or `start 至 end`.\n"
         )
+    if any("long_content_breakdown" in error or "long_breakdown" in error for error in schema_errors):
+        long_breakdown_hint = (
+            "\nlong_content_breakdown targeted correction:\n"
+            "- If the video is longer than 45 minutes and is a podcast/interview/lecture/course/workshop/seminar/training, output long_content_breakdown.\n"
+            "- Each phase must be an object with start, end, title, summary.\n"
+            "- Keep phases ordered and non-overlapping. Do not use this field for short videos.\n"
+        )
     return (
         f"{system}\n\n"
         "Your previous JSON did not pass the WatchBrief V5 schema.\n"
@@ -575,6 +587,7 @@ def build_codex_cli_retry_prompt(
         f"{watch_verdict_hint}\n"
         f"{arrow_chain_hint}\n"
         f"{legacy_label_hint}\n"
+        f"{long_breakdown_hint}\n"
         f"{CODEX_CLI_JSON_CONTRACT}\n"
         f"{review_request.get('target_payload_contract_text') or ''}\n"
         "Previous JSON:\n"

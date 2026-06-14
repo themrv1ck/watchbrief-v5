@@ -84,12 +84,13 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertIn("flow", prompt)
 
     def test_build_review_request_carries_report_target_contract(self) -> None:
-        request = build_review_request(self.build_local_extract(), report_target="creation_review")
+        request = build_review_request(self.build_local_extract(), report_target="content_brief")
 
-        self.assertEqual(request["report_target"], "creation_review")
-        self.assertEqual(request["stability_metadata"]["report_target"], "creation_review")
+        self.assertEqual(request["report_target"], "content_brief")
+        self.assertEqual(request["stability_metadata"]["report_target"], "content_brief")
         self.assertIn("report_target_contract", request["contract"])
-        self.assertIn("creation_review", request["messages"][1]["content"])
+        self.assertIn("content_brief", request["messages"][1]["content"])
+        self.assertIn("direct_statements", request["messages"][1]["content"])
 
     def test_review_prompt_includes_structured_assessment_rubric(self) -> None:
         request = build_review_request(self.build_local_extract())
@@ -452,6 +453,13 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertEqual(response["watch_segments"][0]["priority"], "primary")
         self.assertEqual(response["codex_model"], LOCAL_REVIEW_MODEL_ID)
 
+    def test_build_local_review_response_supports_content_brief_target(self) -> None:
+        response = build_local_review_response(self.build_local_extract(), report_target="content_brief")
+
+        self.assertEqual(response["report_target"], "content_brief")
+        self.assertIn("direct_statements", response["target_sections"])
+        self.assertIn("key_points", response["target_sections"])
+
     def test_local_review_ranks_high_value_segments_instead_of_opening_hook(self) -> None:
         extract = self.build_local_extract()
         extract["metadata"]["duration"] = "16分20秒"
@@ -515,6 +523,45 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertIn("核心逻辑入口", primary["title"])
         self.assertIn(f"{primary['start']} | {primary['end']}", parsed["watch_verdict"])
         self.assertIn(f"{primary['start']} | {primary['end']}", parsed["only_one_segment"])
+
+    def test_local_review_adds_phase_breakdown_for_long_course(self) -> None:
+        extract = self.build_local_extract()
+        extract["metadata"]["title"] = "一小时课程：如何设计任务系统"
+        extract["metadata"]["duration"] = "1小时00分00秒"
+        segments = []
+        topics = [
+            "开场介绍课程目标，说明为什么心流不是单纯意志力问题。",
+            "第一阶段讲目标设定，解释清楚目标如何降低启动阻力。",
+            "第二阶段讲即时反馈，说明反馈节点如何帮助持续推进。",
+            "第三阶段讲挑战难度，解释太简单和太难都会破坏心流。",
+            "第四阶段讲任务拆分，用写作和学习任务举例说明小入口。",
+            "结尾总结适用边界，提醒没有反馈的任务要先重做任务结构。",
+        ]
+        for index, text in enumerate(topics):
+            segments.append({
+                "start": f"{index * 10:02d}:00",
+                "end": f"{(index + 1) * 10:02d}:00",
+                "text": text,
+            })
+        extract["transcript"]["segments"] = segments
+        extract["transcript"]["segment_count"] = len(segments)
+        extract["transcript"]["char_count"] = sum(len(item["text"]) for item in segments)
+        extract["qwen_extract"].update({
+            "main_axis": "这是一门课程，系统讲解如何把任务设计成更容易进入心流的结构。",
+            "cleaned_understanding": "课程按目标、反馈、挑战、拆分和边界逐步讲解任务设计。",
+            "core_claims": ["心流更依赖任务结构，而不是单纯意志力。"],
+            "important_terms": ["课程", "心流", "任务系统"],
+        })
+
+        parsed = parse_review_response(
+            build_local_review_response(extract),
+            stability_metadata={**build_review_request(extract)["stability_metadata"], "codex_model": LOCAL_REVIEW_MODEL_ID},
+        )
+
+        self.assertIn("long_content_breakdown", parsed)
+        self.assertGreaterEqual(len(parsed["long_content_breakdown"]), 2)
+        self.assertEqual(parsed["long_content_breakdown"][0]["start"], "00:00")
+        self.assertIn("转写内容集中在", parsed["long_content_breakdown"][0]["summary"])
 
     def test_local_review_scores_vary_with_extract_evidence(self) -> None:
         sparse = self.build_local_extract()

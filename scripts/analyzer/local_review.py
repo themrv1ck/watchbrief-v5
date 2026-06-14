@@ -116,6 +116,27 @@ TOPIC_BOUNDARY_MARKERS: tuple[str, ...] = (
     "上市",
 )
 
+LONG_CONTENT_MARKERS: tuple[str, ...] = (
+    "播客",
+    "podcast",
+    "访谈",
+    "长访谈",
+    "interview",
+    "演讲",
+    "讲座",
+    "lecture",
+    "keynote",
+    "课程",
+    "公开课",
+    "course",
+    "masterclass",
+    "seminar",
+    "workshop",
+    "培训",
+    "训练营",
+)
+LONG_CONTENT_DURATION_THRESHOLD_SECONDS = 45 * 60
+
 
 def clean_text(value: Any) -> str:
     return " ".join(str(value or "").split())
@@ -620,6 +641,136 @@ def parse_duration_seconds(value: Any) -> int:
     return 0
 
 
+def long_content_breakdown_applies(metadata: dict[str, Any], qwen_extract: dict[str, Any]) -> bool:
+    duration_seconds = parse_duration_seconds(metadata.get("duration"))
+    if duration_seconds <= LONG_CONTENT_DURATION_THRESHOLD_SECONDS:
+        return False
+    fields: list[str] = [
+        clean_text(metadata.get("title")),
+        clean_text(metadata.get("channel")),
+        clean_text(qwen_extract.get("main_axis")),
+        clean_text(qwen_extract.get("cleaned_understanding")),
+    ]
+    fields.extend(text_list(qwen_extract.get("important_terms")))
+    fields.extend(text_list(qwen_extract.get("core_claims"))[:4])
+    haystack = " ".join(fields).lower()
+    return any(marker.lower() in haystack for marker in LONG_CONTENT_MARKERS)
+
+
+def normalize_phase_outline_item(item: Any, index: int) -> dict[str, str] | None:
+    if isinstance(item, dict):
+        start = clean_text(item.get("start") or item.get("begin"))
+        end = clean_text(item.get("end") or item.get("finish"))
+        summary = clean_text(item.get("summary") or item.get("content") or item.get("description") or item.get("reason"))
+        title = clean_text(item.get("title") or item.get("phase") or item.get("label"))
+    else:
+        raw = clean_text(item)
+        match = re.search(
+            r"(?P<start>\d{1,2}:\d{2}(?::\d{2})?)\s*(?:\||-|—|–|－|~|～|至|到)\s*"
+            r"(?P<end>\d{1,2}:\d{2}(?::\d{2})?)(?:\s*[：:]\s*(?P<summary>.*))?",
+            raw,
+        )
+        if not match:
+            return None
+        start = match.group("start")
+        end = match.group("end")
+        summary = clean_text(match.group("summary") or raw)
+        title = ""
+    if not start or not end or not summary:
+        return None
+    if not title:
+        title = f"第{index}阶段：{short_node(summary, '阶段内容')}"
+    return {
+        "start": start,
+        "end": end,
+        "title": title,
+        "summary": sentence(summary, "这一阶段讲解原文中的一个独立部分"),
+    }
+
+
+def phase_times_are_ordered(phases: list[dict[str, str]]) -> bool:
+    previous_end = -1
+    for phase in phases:
+        start = parse_timecode_seconds(phase.get("start"))
+        end = parse_timecode_seconds(phase.get("end"))
+        if end <= start or start < previous_end:
+            return False
+        previous_end = end
+    return True
+
+
+def phase_title(index: int, text_blob: str) -> str:
+    cleaned = clean_text(text_blob)
+    return f"第{index}阶段：{short_node(cleaned, '阶段内容')}"
+
+
+def build_transcript_phase_breakdown(
+    local_extract_payload: dict[str, Any],
+    metadata: dict[str, Any],
+) -> list[dict[str, str]]:
+    normalized = normalized_transcript_segments(local_extract_payload)
+    if len(normalized) < 2:
+        return []
+    duration_seconds = parse_duration_seconds(metadata.get("duration"))
+    if duration_seconds >= 2 * 3600:
+        target_seconds = 15 * 60
+    elif duration_seconds >= 3600:
+        target_seconds = 10 * 60
+    else:
+        target_seconds = 8 * 60
+
+    groups: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    current_start = int(normalized[0]["start_seconds"])
+    for segment in normalized:
+        if current and int(segment["start_seconds"]) - current_start >= target_seconds:
+            groups.append(current)
+            current = []
+            current_start = int(segment["start_seconds"])
+        current.append(segment)
+    if current:
+        groups.append(current)
+
+    if len(groups) < 2:
+        midpoint = max(1, len(normalized) // 2)
+        groups = [normalized[:midpoint], normalized[midpoint:]]
+
+    phases: list[dict[str, str]] = []
+    for index, group in enumerate(groups[:24], start=1):
+        if not group:
+            continue
+        text_blob = clean_text(" ".join(str(item.get("text") or "") for item in group))
+        if not text_blob:
+            continue
+        summary = f"这一阶段的转写内容集中在：{text_blob[:220]}"
+        phases.append({
+            "start": clean_text(group[0].get("start")),
+            "end": clean_text(group[-1].get("end")),
+            "title": phase_title(index, text_blob),
+            "summary": sentence(summary, "这一阶段讲解原文中的一个独立部分"),
+        })
+    return phases if len(phases) >= 2 else []
+
+
+def build_long_content_breakdown(
+    local_extract_payload: dict[str, Any],
+    qwen_extract: dict[str, Any],
+    metadata: dict[str, Any],
+) -> list[dict[str, str]]:
+    if not long_content_breakdown_applies(metadata, qwen_extract):
+        return []
+    outline = qwen_extract.get("phase_outline")
+    phases: list[dict[str, str]] = []
+    if isinstance(outline, list):
+        for index, item in enumerate(outline, start=1):
+            phase = normalize_phase_outline_item(item, index)
+            if phase:
+                phases.append(phase)
+    if len(phases) >= 2 and phase_times_are_ordered(phases):
+        return phases[:24]
+    return build_transcript_phase_breakdown(local_extract_payload, metadata)
+
+
 def local_structured_assessment(
     qwen_extract: dict[str, Any],
     metadata: dict[str, Any],
@@ -736,6 +887,12 @@ def local_target_sections(report_target: str, qwen_extract: dict[str, Any], *, m
             "methods": first_items(methods, fallback="原文没有明确步骤，只能保留主轴判断。"),
             "caveats": first_items(caveats, fallback="没有明确边界时，不补充原文之外的限制。"),
         },
+        "content_brief": {
+            "direct_statements": first_items(qwen_extract.get("main_axis"), claims, fallback=main_axis),
+            "key_points": first_items(claims, examples, fallback=cleaned),
+            "practical_takeaways": first_items(methods, fallback="原文没有明确可照做部分，只能保留内容观点。"),
+            "boundaries": first_items(caveats, fallback="没有明确边界时，不补充原文之外的限制。"),
+        },
         "viewpoint_breakdown": {
             "claims": first_items(claims, fallback=main_axis),
             "assumptions": first_items(qwen_extract.get("conditions"), fallback="该观点默认听众接受视频给出的背景和前提。"),
@@ -781,6 +938,7 @@ def build_local_review_response(local_extract_payload: dict[str, Any], *, report
 
     structured_assessment = local_structured_assessment(qwen_extract, metadata, payload)
     watch_segments = build_watch_segments(payload, qwen_extract, metadata)
+    long_content_breakdown = build_long_content_breakdown(payload, qwen_extract, metadata)
     primary = watch_segments[0]
     primary_range = f"{primary['start']} | {primary['end']}"
     if len(watch_segments) > 1:
@@ -840,6 +998,8 @@ def build_local_review_response(local_extract_payload: dict[str, Any], *, report
         "watchbrief_version": WATCHBRIEF_VERSION,
         "confidence_note": "本地模式已生成可读报告，但未调用 Codex review；适合无 Codex 账号的本机使用场景。",
     }
+    if long_content_breakdown:
+        report["long_content_breakdown"] = long_content_breakdown
     if target != DEFAULT_REPORT_TARGET:
         report["report_target"] = target
         report["target_summary"] = sentence(cleaned, main_axis)

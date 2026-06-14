@@ -31,6 +31,22 @@ class ValidatorTest(unittest.TestCase):
         self.assertEqual(validated["report_target"], "knowledge_notes")
         self.assertIn("core_concepts", validated["target_sections"])
 
+    def test_content_brief_report_target_payload_passes(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["report_target"] = "content_brief"
+        payload["target_summary"] = "这是一份直接陈述内容观点的中文简报。"
+        payload["target_sections"] = {
+            "direct_statements": ["心流来自目标、反馈和挑战之间的配合。"],
+            "key_points": ["视频把心流解释为任务结构问题，而不是单纯意志力问题。"],
+            "practical_takeaways": ["把任务拆小，并让反馈更及时。"],
+            "boundaries": ["转写内容只支持对视频内部观点做整理。"],
+        }
+
+        validated = validate_normalized_report_payload(payload)
+
+        self.assertEqual(validated["report_target"], "content_brief")
+        self.assertIn("direct_statements", validated["target_sections"])
+
     def test_watch_decision_rejects_target_sections(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
         payload["report_target"] = "watch_decision"

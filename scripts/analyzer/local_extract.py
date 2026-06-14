@@ -108,6 +108,7 @@ FINAL_REPORT_FIELDS_BLOCKED_IN_LOCAL_EXTRACT = {
     "final_conclusion",
     "content_caveat",
     "watch_segments",
+    "long_content_breakdown",
     "only_one_segment",
     "score_basis",
     "confidence_note",
@@ -415,7 +416,7 @@ def build_qwen_chunk_extract_user_prompt(chunk_seed: dict[str, Any]) -> str:
         "请根据下面的转写 chunk 输出轻量 chunk_summary JSON。\n"
         "只能输出 JSON 对象，不要 Markdown，不要解释。\n"
         "这是 local_extract 的分块中间结果，不是最终 WatchBrief V5 报告。\n"
-        "不得输出 replacement_score、tag、watch_verdict、final_conclusion、watch_segments 或 HTML。\n"
+        "不得输出 replacement_score、tag、watch_verdict、final_conclusion、watch_segments、long_content_breakdown 或 HTML。\n"
         "保留原始时间码，候选观看片段必须写清 start | end。\n"
         f"{TERM_LOCALIZATION_RULES}\n"
         f"{language_note}\n"
@@ -457,7 +458,7 @@ def build_qwen_chunk_reduce_user_prompt(reduce_seed: dict[str, Any]) -> str:
         "请把下面所有 chunk_summary 归并成一个 Qwen local_extract intermediate JSON。\n"
         "只能输出 JSON 对象，不要 Markdown，不要解释。\n"
         "这是中间提炼结果，不是最终 WatchBrief V5 报告。\n"
-        "不得输出 replacement_score、tag、watch_verdict、final_conclusion、watch_segments 或 HTML。\n"
+        "不得输出 replacement_score、tag、watch_verdict、final_conclusion、watch_segments、long_content_breakdown 或 HTML。\n"
         "不要按 chunk 机械拼接，要归并重复观点，保留能帮助最终评分和片段选择的证据。\n"
         f"{TERM_LOCALIZATION_RULES}\n"
         f"{language_note}\n"

@@ -54,6 +54,13 @@ def display_style_patch() -> str:
 }
 .report-note strong{color:var(--ink);font-weight:800}
 .watch-time .time-sep{display:block;color:inherit}
+.phase-list{display:grid;gap:14px}
+.phase-item{display:grid;grid-template-columns:132px minmax(0,1fr);gap:16px;align-items:start;padding:14px 0;border-top:1px solid var(--line)}
+.phase-item:first-child{border-top:0}
+.phase-time{font-family:var(--mono);font-weight:800;color:var(--accent);line-height:1.5}
+.phase-copy h3{margin:0 0 6px;font-size:16px}
+.phase-copy p{margin:0;color:var(--muted);line-height:1.75}
+@media(max-width:760px){.phase-item{grid-template-columns:1fr}.phase-time{font-size:13px}}
 """.strip()
 
 
@@ -166,6 +173,32 @@ def render_watch_segments(report: dict[str, Any]) -> str:
             '</div>'
         )
     return "\n        ".join(rows)
+
+
+def render_long_content_breakdown(report: dict[str, Any]) -> str:
+    phases = report.get("long_content_breakdown")
+    if not isinstance(phases, list) or not phases:
+        return ""
+    rows = []
+    for phase in phases:
+        rows.append(
+            '<div class="phase-item">'
+            f'<div class="phase-time">{esc(phase["start"])} - {esc(phase["end"])}</div>'
+            '<div class="phase-copy">'
+            f'<h3>{esc(phase["title"])}</h3>'
+            f'<p>{esc(phase["summary"])}</p>'
+            '</div>'
+            '</div>'
+        )
+    return f"""
+    <div class="panel section section-phases col-12">
+      <div class="section-note">long-form phase map</div>
+      <h2>长内容阶段拆分</h2>
+      <div class="phase-list">
+        {"".join(rows)}
+      </div>
+    </div>
+"""
 
 
 def render_report_note(report: dict[str, Any]) -> str:
@@ -316,6 +349,8 @@ def render_single_video_html(payload: dict[str, Any]) -> str:
       <div class="mini-arrow-chain">{render_arrow_chain(report)}</div>
       <div class="final-conclusion"><strong>结论：</strong>{esc(report["final_conclusion"])}</div>
     </div>
+
+    {render_long_content_breakdown(report)}
 
     <div class="panel section section-watch col-12">
       <div class="section-note">where to jump for source context</div>

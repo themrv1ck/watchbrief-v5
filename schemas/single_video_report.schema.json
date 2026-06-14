@@ -43,6 +43,7 @@
         "watch_decision",
         "text_structure",
         "knowledge_notes",
+        "content_brief",
         "viewpoint_breakdown",
         "creation_review"
       ]
@@ -102,6 +103,22 @@
           "end": { "type": "string", "minLength": 1 },
           "title": { "type": "string", "minLength": 1 },
           "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "long_content_breakdown": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start", "end", "title", "summary"],
+        "properties": {
+          "start": { "type": "string", "minLength": 1 },
+          "end": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string", "minLength": 1 }
         }
       }
     },

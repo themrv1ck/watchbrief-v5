@@ -356,6 +356,10 @@ Required fields:
 - `watchbrief_version`
 - `confidence_note`
 
+Conditional fields:
+
+- `long_content_breakdown`: required when a video is longer than 45 minutes and is a podcast, interview, lecture, talk, course, workshop, seminar, training, or similar long-form content that needs phase-by-phase understanding. Each item must contain `start`, `end`, `title`, and `summary`.
+
 ## Non-Negotiable Rules
 
 - `replacement_score` means remaining value in watching the original video after reading the report.
@@ -391,6 +395,7 @@ Required fields:
 - `watch_segments` has one `primary`, at most one `optional`, and optional `backup`.
 - `only_one_segment` must match the `primary` time range.
 - `watch_segments` time cards use a vertical separator layout: `start`, `|`, `end`.
+- Long podcasts, interviews, lectures, talks, courses, workshops, seminars, trainings, and similar videos longer than 45 minutes must include `long_content_breakdown` as an ordered whole-video phase map. This field must not replace `watch_segments`.
 - natural Chinese sentences such as `watch_verdict` and `only_one_segment` may render `start - end` for readability without changing the normalized payload.
 - `content_caveat` must not render as a hero-side verdict banner; if shown, render it as a low-priority report note.
 - renderer must not create, repair, or derive content fields.

@@ -36,6 +36,27 @@ WATCH_SEGMENT_TITLE_PREFIX = {
     "optional": "可选补看：",
     "backup": "备选：",
 }
+LONG_CONTENT_BREAKDOWN_FIELD = "long_content_breakdown"
+LONG_CONTENT_DURATION_THRESHOLD_SECONDS = 45 * 60
+LONG_CONTENT_TYPE_MARKERS = (
+    "播客",
+    "podcast",
+    "访谈",
+    "长访谈",
+    "interview",
+    "演讲",
+    "讲座",
+    "lecture",
+    "keynote",
+    "课程",
+    "公开课",
+    "course",
+    "masterclass",
+    "seminar",
+    "workshop",
+    "培训",
+    "训练营",
+)
 SCORE_BASIS_KEYS = (
     "information_density",
     "evidence_quality",
@@ -239,6 +260,97 @@ def has_non_pipe_range(value: Any) -> bool:
     return bool(NON_PIPE_TIME_RANGE_RE.search(text(value)))
 
 
+def parse_time_point_seconds(value: Any) -> Optional[int]:
+    raw = text(value)
+    if not raw:
+        return None
+    parts = raw.split(":")
+    if len(parts) == 2 and all(part.isdigit() for part in parts):
+        return int(parts[0]) * 60 + int(parts[1])
+    if len(parts) == 3 and all(part.isdigit() for part in parts):
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    return None
+
+
+def parse_duration_seconds(value: Any) -> int:
+    raw = text(value)
+    if not raw or raw == "未知":
+        return 0
+    total = 0
+    hour_match = re.search(r"(\d+)\s*小时", raw)
+    minute_match = re.search(r"(\d+)\s*分", raw)
+    second_match = re.search(r"(\d+)\s*秒", raw)
+    if hour_match:
+        total += int(hour_match.group(1)) * 3600
+    if minute_match:
+        total += int(minute_match.group(1)) * 60
+    if second_match:
+        total += int(second_match.group(1))
+    if total:
+        return total
+    parsed_time = parse_time_point_seconds(raw)
+    return int(parsed_time or 0)
+
+
+def requires_long_content_breakdown(payload: dict[str, Any]) -> bool:
+    if parse_duration_seconds(payload.get("duration")) <= LONG_CONTENT_DURATION_THRESHOLD_SECONDS:
+        return False
+    haystack = " ".join(
+        text(payload.get(field))
+        for field in (
+            "title",
+            "channel",
+            "topic",
+            "one_line_brief",
+            "highest_compression",
+            "final_conclusion",
+        )
+    ).lower()
+    return any(marker.lower() in haystack for marker in LONG_CONTENT_TYPE_MARKERS)
+
+
+def _validate_long_content_breakdown(payload: dict[str, Any], issues: list[ValidationIssue]) -> None:
+    field = LONG_CONTENT_BREAKDOWN_FIELD
+    required = requires_long_content_breakdown(payload)
+    if field not in payload:
+        if required:
+            issues.append(ValidationIssue(field, "long podcast/lecture/course reports must include phase breakdown", "long_breakdown_required"))
+        return
+
+    duration_seconds = parse_duration_seconds(payload.get("duration"))
+    if duration_seconds <= LONG_CONTENT_DURATION_THRESHOLD_SECONDS:
+        issues.append(ValidationIssue(field, "only videos longer than 45 minutes may include long content breakdown", "long_breakdown_scope"))
+
+    phases = payload.get(field)
+    if not isinstance(phases, list):
+        issues.append(ValidationIssue(field, "must be a list", "long_breakdown_type"))
+        return
+    if not 2 <= len(phases) <= 24:
+        issues.append(ValidationIssue(field, "must contain 2 to 24 phases", "long_breakdown_length"))
+
+    previous_end: Optional[int] = None
+    for index, phase in enumerate(phases):
+        path = f"{field}[{index}]"
+        if not isinstance(phase, dict):
+            issues.append(ValidationIssue(path, "phase must be an object", "long_breakdown_phase_type"))
+            continue
+        for key in ("start", "end", "title", "summary"):
+            if not text(phase.get(key)):
+                issues.append(ValidationIssue(f"{path}.{key}", "required phase field is missing", "long_breakdown_required_field"))
+        start = parse_time_point_seconds(phase.get("start"))
+        end = parse_time_point_seconds(phase.get("end"))
+        if start is None or end is None:
+            issues.append(ValidationIssue(path, "phase start/end must be MM:SS or H:MM:SS", "long_breakdown_time"))
+            continue
+        if end <= start:
+            issues.append(ValidationIssue(path, "phase end must be after start", "long_breakdown_time_order"))
+        if previous_end is not None and start < previous_end:
+            issues.append(ValidationIssue(path, "phases must be ordered and non-overlapping", "long_breakdown_overlap"))
+        previous_end = max(previous_end or 0, end)
+        if len(text(phase.get("summary"))) < 8:
+            issues.append(ValidationIssue(f"{path}.summary", "phase summary must describe the concrete content", "long_breakdown_summary"))
+
+
 def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any]:
     issues: list[ValidationIssue] = []
 
@@ -386,6 +498,8 @@ def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any
         actual = first_pipe_range(only_one)
         if actual != expected:
             issues.append(ValidationIssue("only_one_segment", "must match primary start/end exactly", "only_one_match"))
+
+    _validate_long_content_breakdown(payload, issues)
 
     score_basis = payload.get("score_basis")
     if not isinstance(score_basis, dict):

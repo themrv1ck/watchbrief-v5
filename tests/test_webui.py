@@ -310,10 +310,10 @@ class WebUITest(unittest.TestCase):
             webui.build_cli_command({"source_url": "https://example.com/v", "analysis_mode": "legacy"})
 
     def test_report_target_maps_to_cli_flag(self) -> None:
-        command = webui.build_cli_command({"source_url": "https://example.com/v", "report_target": "viewpoint_breakdown"})
+        command = webui.build_cli_command({"source_url": "https://example.com/v", "report_target": "content_brief"})
 
         self.assertIn("--report-target", command)
-        self.assertIn("viewpoint_breakdown", command)
+        self.assertIn("content_brief", command)
 
         with self.assertRaisesRegex(ValueError, "报告目标"):
             webui.build_cli_command({"source_url": "https://example.com/v", "report_target": "legacy"})
@@ -321,17 +321,18 @@ class WebUITest(unittest.TestCase):
     def test_multi_report_targets_expand_to_multiple_preview_commands(self) -> None:
         payload = {
             "source_url": "https://example.com/v",
-            "report_targets": ["watch_decision", "knowledge_notes", "creation_review"],
+            "report_targets": ["watch_decision", "knowledge_notes", "content_brief", "creation_review"],
         }
 
-        self.assertEqual(webui.parse_report_targets(payload), ["watch_decision", "knowledge_notes", "creation_review"])
+        self.assertEqual(webui.parse_report_targets(payload), ["watch_decision", "knowledge_notes", "content_brief", "creation_review"])
         preview = webui.command_preview(payload)
 
-        self.assertEqual(preview["report_targets"], ["watch_decision", "knowledge_notes", "creation_review"])
-        self.assertEqual(len(preview["commands"]), 3)
+        self.assertEqual(preview["report_targets"], ["watch_decision", "knowledge_notes", "content_brief", "creation_review"])
+        self.assertEqual(len(preview["commands"]), 4)
         self.assertIn("watch_decision", preview["commands"][0])
         self.assertIn("knowledge_notes", preview["commands"][1])
-        self.assertIn("creation_review", preview["commands"][2])
+        self.assertIn("content_brief", preview["commands"][2])
+        self.assertIn("creation_review", preview["commands"][3])
 
     def test_scoring_profile_maps_to_cli_with_first_class_analysis_flag(self) -> None:
         command = webui.build_cli_command({"source_url": "https://example.com/v", "scoring_profile": "evidence-first"})

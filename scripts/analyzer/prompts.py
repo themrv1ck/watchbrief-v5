@@ -35,6 +35,15 @@ TERM_LOCALIZATION_RULES = """中文化与专有名词规则：
 - 示例：personal system product -> 个人方法系统产品；education product -> 教育型产品 / 知识产品；big burning problem -> 强痛点 / 核心痛点；desired outcome -> 目标结果；time frame -> 实现周期；offer -> 产品承诺 / 销售主张；landing page -> 落地页；social proof -> 信任背书 / 社会证明；CTA -> 行动号召 / 行动按钮；features and benefits -> 功能与收益；cohort -> 共学营 / 训练营；e-book -> 电子书；software -> 软件产品。
 """
 
+LONG_CONTENT_BREAKDOWN_RULES = """长内容阶段拆分规则：
+- 适用范围：视频时长超过 45 分钟，并且内容类型是播客、访谈、演讲、讲座、课程、公开课、研讨会、工作坊、培训或类似需要按阶段理解的长内容。
+- 最终 normalized_report_payload 适用时必须输出 long_content_breakdown；Qwen local_extract 中间结果适用时输出 phase_outline，并且不得输出 long_content_breakdown。
+- long_content_breakdown 是全片阶段拆分，不是补看入口，不得替代 watch_segments。
+- long_content_breakdown / phase_outline 每项必须包含 start、end、title、summary；start/end 使用 MM:SS 或 H:MM:SS 原始时间码。
+- 每个阶段应按时间顺序覆盖一个相对独立的讲解部分，summary 要具体说明这一部分讲了什么、展开了哪些对象/观点/方法/案例/边界。
+- 最终报告不适用时不要输出 long_content_breakdown；中间提炼不适用时 phase_outline 输出空数组。
+"""
+
 ANALYZER_SYSTEM_PROMPT = """你是 WatchBrief V5 的视频内容导读分析器。
 
 你的任务不是普通摘要，也不是下载器。你只能基于输入里的原始语言转写证据，生成一个 normalized_report_payload。
@@ -59,7 +68,8 @@ ANALYZER_SYSTEM_PROMPT = """你是 WatchBrief V5 的视频内容导读分析器�
 17. 报告的默认视角是“内容导读”，不是替用户做“看/不看”的最终决定。先讲清视频主要讲什么、读者最需要了解什么，再给补看入口。
 18. watch_segments 的 primary 必须选“理解入口片段”：读者看这一段后，应能知道视频主要对象是什么、它解决什么问题、通过什么路径/机制达到什么效果。不要只选信息密度最高但不能作为入口的细分段落；隐私、部署、限制、商业化等后段信息通常只能作为 optional/backup，除非它同时讲清对象、路径和效果。
 19. watch_verdict 和 only_one_segment 只提供“补看入口”。可以给出片段入口，但不能把话说成系统替用户决定要不要看；如果使用“建议看”一类表述，语义只能是“如果用户要补看，建议从这段进入”，不是“你应该观看/不观看”。
-""" + "\n" + TERM_LOCALIZATION_RULES
+20. 长播客、访谈、演讲、课程等超过 45 分钟的视频必须额外按阶段拆分到 long_content_breakdown。
+""" + "\n" + TERM_LOCALIZATION_RULES + "\n" + LONG_CONTENT_BREAKDOWN_RULES
 
 
 SCORING_RUBRIC = """replacement_score / structured_assessment 评分标尺：
@@ -85,6 +95,9 @@ SCORING_RUBRIC = """replacement_score / structured_assessment 评分标尺：
 
 NORMALIZED_PAYLOAD_CONTRACT = {
     "required_fields": list(REQUIRED_REPORT_FIELDS),
+    "optional_fields": {
+        "long_content_breakdown": "仅在视频超过 45 分钟且属于播客、访谈、演讲、课程或类似长内容时输出；数组项包含 start、end、title、summary。",
+    },
     "tag_enum": list(VALID_TAGS),
     "path_table_keys": ["problem", "mechanism", "turning_point", "landing"],
     "score_basis_keys": ["information_density", "evidence_quality", "originality", "watch_value"],
@@ -107,6 +120,7 @@ QWEN_LOCAL_EXTRACT_FIELDS = {
     "language": "zh / en / mixed / unknown。",
     "important_terms": "关键专名、产品名、人名、工具名数组，保留原文；普通领域术语不要裸露英文，优先写中文译名或 中文（English）一次。",
     "corrected_terms": "疑似 ASR 错误的专名纠错数组；每项写成 原词 -> 修正词；不确定时写 疑似某某。",
+    "phase_outline": "如果视频超过 45 分钟且是播客、访谈、演讲、课程或类似长内容，输出阶段拆分数组；每项包含 start、end、title、summary。不适用时输出空数组。",
 }
 
 
@@ -142,8 +156,9 @@ QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT = """你现在要充当“视频转写内容提
 - 输出 final_conclusion
 - 输出 watch_verdict
 - 输出 replacement_score
+- 输出 long_content_breakdown
 - 输出最终 HTML
-""" + "\n" + TERM_LOCALIZATION_RULES
+""" + "\n" + TERM_LOCALIZATION_RULES + "\n" + LONG_CONTENT_BREAKDOWN_RULES
 
 
 def build_qwen_local_extract_user_prompt(local_extract_seed: dict[str, Any]) -> str:
@@ -162,7 +177,7 @@ def build_qwen_local_extract_user_prompt(local_extract_seed: dict[str, Any]) -> 
         "请根据下面的转写材料输出 Qwen local_extract intermediate JSON。\n"
         "只能输出 JSON 对象，不要 Markdown，不要解释。\n"
         "这是中间提炼结果，不是最终 WatchBrief V5 报告。\n"
-        "不得输出 replacement_score、tag、watch_verdict、final_conclusion、watch_segments 或 HTML。\n"
+        "不得输出 replacement_score、tag、watch_verdict、final_conclusion、watch_segments、long_content_breakdown 或 HTML。\n"
         "important_terms 必须保留关键专名；corrected_terms 必须记录疑似 ASR 专名纠错，没有就输出空数组。\n"
         f"{TERM_LOCALIZATION_RULES}\n"
         f"{language_note}\n"
@@ -203,6 +218,7 @@ REVIEW_QWEN_EXTRACT_FIELDS = (
     "language",
     "important_terms",
     "corrected_terms",
+    "phase_outline",
     "_qwen_model",
 )
 
@@ -361,14 +377,15 @@ def build_review_user_prompt(local_extract_payload: dict[str, Any], *, report_ta
     prompt = (
         "请根据下面的 compact local_extract_payload 生成一个 normalized_report_payload。\n"
         "输入已为 review 阶段压缩：完整 transcript.segments、超长 transcript.excerpt、chunked_local_extract.chunks 等原文/调试大数组已省略；请基于 metadata、transcript summary、qwen_extract 与 chunked status 进行最终判断，不要要求完整原文。\n"
-        "输入里可能包含 qwen_extract，这是本地 Qwen 对转写内容的中间提炼；你可以参考其中 core_claims、methods、caveats、quotes、important_terms、corrected_terms，但最终字段仍必须遵守 V5 schema 和 validator。\n"
+        "输入里可能包含 qwen_extract，这是本地 Qwen 对转写内容的中间提炼；你可以参考其中 core_claims、methods、caveats、quotes、important_terms、corrected_terms、phase_outline，但最终字段仍必须遵守 V5 schema 和 validator。\n"
         "默认报告视角：你不是替用户决定原视频要不要看，而是提炼出用户判断前最需要知道的信息。先让读者明白视频主要讲什么、核心逻辑是什么、哪些信息足以支撑自己的判断；补看建议只是入口导航。\n"
         "watch_verdict 写法：必须是内容导读和入口导航。可以给出补看片段，但不要替用户决定要不要看；如果使用“建议看”一类表述，必须限定为“如果用户要补看，建议从这段进入”。推荐写法：报告已提炼出产品对象、核心路径和边界；如果用户要补看原片，入口是 11:28 | 14:03。\n"
         "如果输入里有 watch_segment_candidates，它们是从完整转写中按“理解入口、对象定义、核心路径、机制解释、效果说明、边界补充”等信号预筛出的候选片段；watch_segments 应优先从这些候选里选择，不要因为 transcript excerpt 从 00:00 开始就默认选择开头。\n"
         "片段选择规则：primary 必须回答“看哪一段最容易知道这个视频主要讲的是什么”。产品/技术/原理/观点类视频优先选能同时覆盖对象/产品是什么、它解决什么问题、通过什么路径或机制产生什么效果的段落。开头钩子、悬念、寒暄、体验引子通常不能作为 primary；隐私、部署、限制等细分段落通常作为 optional/backup，除非它同时承担完整理解入口。\n"
+        f"{LONG_CONTENT_BREAKDOWN_RULES}\n"
         "专名、人名、书名和工具名必须优先使用 qwen_extract.important_terms 与 qwen_extract.corrected_terms；不要自己重新猜人名。不确定就写“疑似某某”。\n"
         f"{TERM_LOCALIZATION_RULES}\n"
-        "中文字段包括 topic、one_line_brief、watch_verdict、highest_compression、path_table、arrow_chain、final_conclusion、content_caveat、watch_segments、score_basis、confidence_note，都必须优先使用自然中文表达。\n"
+        "中文字段包括 topic、one_line_brief、watch_verdict、highest_compression、path_table、arrow_chain、final_conclusion、content_caveat、watch_segments、long_content_breakdown、score_basis、confidence_note，都必须优先使用自然中文表达。\n"
         "英文视频标题、频道名、品牌名、产品名可按原文保留；普通营销 / 产品 / 创作者术语不得成串裸露英文。\n"
         "只能输出 JSON 对象，不要输出 Markdown，不要添加解释。\n\n"
         "normalized_report_payload 契约：\n"

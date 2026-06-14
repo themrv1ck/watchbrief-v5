@@ -71,6 +71,7 @@ SUPPORTED_TRANSCRIBERS = {"recommended", "auto", "mlx_audio", "whisper"}
 SUPPORTED_OUTPUT_MODES = {"default", "custom", "diagnostic"}
 SUPPORTED_ANALYSIS_MODES = {"fast", "standard", "deep"}
 SUPPORTED_REPORT_TARGETS = set(REPORT_TARGETS)
+SUPPORTED_REPORT_TARGETS_TEXT = "/".join(REPORT_TARGETS)
 SUPPORTED_SCORING_PROFILES = {"standard", "information-first", "evidence-first", "originality-first", "watch-value-first", "custom"}
 ANALYSIS_MODE_DEFAULTS = {
     "fast": {
@@ -563,7 +564,7 @@ def parse_report_targets(payload: dict[str, Any]) -> list[str]:
         if not value:
             continue
         if value not in SUPPORTED_REPORT_TARGETS:
-            raise ValueError("报告目标只支持 watch_decision/text_structure/knowledge_notes/viewpoint_breakdown/creation_review")
+            raise ValueError(f"报告目标只支持 {SUPPORTED_REPORT_TARGETS_TEXT}")
         if value not in targets:
             targets.append(value)
     return targets or [DEFAULT_REPORT_TARGET]
@@ -582,7 +583,7 @@ def build_cli_command(payload: dict[str, Any], *, report_target_override: str | 
     selected_targets = parse_report_targets(payload)
     report_target = report_target_override or selected_targets[0]
     if report_target not in SUPPORTED_REPORT_TARGETS:
-        raise ValueError("报告目标只支持 watch_decision/text_structure/knowledge_notes/viewpoint_breakdown/creation_review")
+        raise ValueError(f"报告目标只支持 {SUPPORTED_REPORT_TARGETS_TEXT}")
 
     report_format = _clean_text(payload.get("report_format")) or "html"
     if report_format not in SUPPORTED_REPORT_FORMATS:

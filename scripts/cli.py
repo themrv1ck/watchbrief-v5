@@ -426,7 +426,7 @@ def parse_args() -> argparse.Namespace:
         "--report-target",
         choices=REPORT_TARGETS,
         default=DEFAULT_REPORT_TARGET,
-        help="report target mode: watch_decision, text_structure, knowledge_notes, viewpoint_breakdown, or creation_review",
+        help=f"report target mode: {', '.join(REPORT_TARGETS)}",
     )
     parser.add_argument("--timeout", type=int, help="model/review timeout seconds. Defaults to the selected --analysis-mode preset")
     parser.add_argument("--transcriber", choices=("auto", "mlx_audio", "whisper"), default="auto", help="transcriber provider. auto means MLX-Audio only.")

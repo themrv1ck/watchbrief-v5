@@ -38,6 +38,7 @@ class AnalyzerPromptsTest(unittest.TestCase):
         self.assertIn("final_conclusion", NORMALIZED_PAYLOAD_CONTRACT["required_fields"])
         self.assertIn("watch_segments", NORMALIZED_PAYLOAD_CONTRACT["required_fields"])
         self.assertIn("score_trace", NORMALIZED_PAYLOAD_CONTRACT["required_fields"])
+        self.assertIn("long_content_breakdown", NORMALIZED_PAYLOAD_CONTRACT["optional_fields"])
         self.assertIn("报告基本可替代", NORMALIZED_PAYLOAD_CONTRACT["tag_enum"])
 
     def test_qwen_prompt_contains_video_transcript_editor_rules(self) -> None:
@@ -46,6 +47,17 @@ class AnalyzerPromptsTest(unittest.TestCase):
         self.assertIn("定义 / 观点 / 条件 / 方法 / 例子 / 提醒", QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT)
         self.assertIn("叔本华 / Schopenhauer", QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT)
         self.assertIn("输出 final_conclusion", QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT)
+        self.assertIn("phase_outline", QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT)
+
+    def test_prompts_contain_long_content_breakdown_rule(self) -> None:
+        mock = json.loads((ROOT / "golden" / "mock_transcript_heartflow.json").read_text(encoding="utf-8"))
+        local_extract = build_local_extract_payload(mock["metadata"], mock["transcript_segments"], qwen_extractor=fake_qwen_extract)
+        prompt = build_review_user_prompt(local_extract)
+
+        self.assertIn("长内容阶段拆分规则", ANALYZER_SYSTEM_PROMPT)
+        self.assertIn("视频时长超过 45 分钟", ANALYZER_SYSTEM_PROMPT)
+        self.assertIn("long_content_breakdown", prompt)
+        self.assertIn("不是补看入口", prompt)
 
     def test_build_review_user_prompt_embeds_qwen_extract(self) -> None:
         mock = json.loads((ROOT / "golden" / "mock_transcript_heartflow.json").read_text(encoding="utf-8"))

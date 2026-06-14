@@ -41,6 +41,23 @@ class RendererTest(unittest.TestCase):
         self.assertIn("心流来自目标、反馈和挑战之间的配合。", html)
         self.assertNotIn("如果要补原片，先看哪里？", html)
 
+    def test_render_content_brief_target_uses_direct_sections(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["report_target"] = "content_brief"
+        payload["target_summary"] = "这是一份直接陈述内容观点的中文简报。"
+        payload["target_sections"] = {
+            "direct_statements": ["心流来自目标、反馈和挑战之间的配合。"],
+            "key_points": ["视频把心流解释为任务结构问题。"],
+            "practical_takeaways": ["把任务拆小，并让反馈更及时。"],
+            "boundaries": ["转写内容只支持对视频内部观点做整理。"],
+        }
+        html = render_single_video_html(payload)
+
+        self.assertIn("内容简报", html)
+        self.assertIn('data-report-target="content_brief"', html)
+        self.assertIn("直接结论", html)
+        self.assertIn("心流来自目标、反馈和挑战之间的配合。", html)
+
     def test_render_charm_matches_golden_html(self) -> None:
         payload = load_golden("sample_payload_charm.json")
         expected = (ROOT / "golden" / "sample_charm.html").read_text(encoding="utf-8")
