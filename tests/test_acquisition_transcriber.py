@@ -15,22 +15,18 @@ from scripts.transcriber import transcribe_audio_to_material
 
 
 class AcquisitionTranscriberTest(unittest.TestCase):
-    def test_mlx_audio_candidates_include_project_root_venv_before_system_python(self) -> None:
+    def test_mlx_audio_candidates_use_mimo_runtime_before_system_python(self) -> None:
         candidates = transcriber.mlx_audio_python_candidates()
         project_venv_python = ROOT / ".venv-mlx" / "bin" / "python"
         canonical_venv_python = Path("/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python")
         mimo_venv_python = Path("/Users/apple/Documents/MiMo-V2.5-ASR-MLX/.venv/bin/python")
 
         self.assertIn(mimo_venv_python, candidates)
-        self.assertIn(project_venv_python, candidates)
-        self.assertIn(canonical_venv_python, candidates)
+        self.assertNotIn(project_venv_python, candidates)
+        self.assertNotIn(canonical_venv_python, candidates)
         self.assertFalse(any("v1deodownload" in str(candidate) for candidate in candidates))
         self.assertLess(
             candidates.index(mimo_venv_python),
-            candidates.index(project_venv_python),
-        )
-        self.assertLess(
-            candidates.index(project_venv_python),
             candidates.index(Path(transcriber.sys.executable)),
         )
 

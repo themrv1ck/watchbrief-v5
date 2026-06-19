@@ -57,13 +57,7 @@ def mlx_audio_python_candidates() -> list[Path]:
     env_path = str(os.environ.get("WATCHBRIEF_MLX_AUDIO_PYTHON") or "").strip()
     if env_path:
         candidates.append(Path(env_path).expanduser())
-    skill_root = Path(__file__).resolve().parents[1]
-    project_root = Path(os.environ.get("WATCHBRIEF_PROJECT_ROOT") or DEFAULT_PROJECT_ROOT).expanduser()
     candidates.append(DEFAULT_MIMO_MLX_ROOT / ".venv" / "bin" / "python")
-    candidates.append(project_root / ".venv-mlx" / "bin" / "python")
-    candidates.append(skill_root / ".venv-mlx" / "bin" / "python")
-    candidates.append(skill_root.parent / ".venv-mlx" / "bin" / "python")
-    candidates.append(Path.home() / ".hermes" / "skills" / "openclaw-imports" / "watchbrief_v5" / ".venv-mlx" / "bin" / "python")
     candidates.append(Path(sys.executable))
 
     unique: list[Path] = []
@@ -130,7 +124,7 @@ def mlx_audio_unavailable_message(*, runner: Any = subprocess.run, timeout: int 
     )
     return (
         "MLX-Audio unavailable. Checked Python candidates: "
-        f"{details}. Set WATCHBRIEF_MLX_AUDIO_PYTHON or create .venv-mlx with mlx-audio."
+        f"{details}. Set WATCHBRIEF_MLX_AUDIO_PYTHON or install the local MiMo MLX runtime."
     )
 
 
