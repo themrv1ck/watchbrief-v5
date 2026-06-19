@@ -19,13 +19,29 @@ class AcquisitionTranscriberTest(unittest.TestCase):
         candidates = transcriber.mlx_audio_python_candidates()
         project_venv_python = ROOT / ".venv-mlx" / "bin" / "python"
         canonical_venv_python = Path("/Users/apple/Documents/New project/watchbrief_v5/.venv-mlx/bin/python")
+        mimo_venv_python = Path("/Users/apple/Documents/MiMo-V2.5-ASR-MLX/.venv/bin/python")
 
+        self.assertIn(mimo_venv_python, candidates)
         self.assertIn(project_venv_python, candidates)
         self.assertIn(canonical_venv_python, candidates)
         self.assertFalse(any("v1deodownload" in str(candidate) for candidate in candidates))
         self.assertLess(
+            candidates.index(mimo_venv_python),
+            candidates.index(project_venv_python),
+        )
+        self.assertLess(
             candidates.index(project_venv_python),
             candidates.index(Path(transcriber.sys.executable)),
+        )
+
+    def test_default_mlx_audio_model_is_local_mimo_4bit(self) -> None:
+        self.assertEqual(
+            transcriber.DEFAULT_MLX_AUDIO_MODEL,
+            "/Users/apple/Documents/MiMo-V2.5-ASR-MLX/models/MiMo-V2.5-ASR-MLX",
+        )
+        self.assertEqual(
+            transcriber.DEFAULT_MLX_AUDIO_TOKENIZER_DIR,
+            "/Users/apple/Documents/MiMo-V2.5-ASR-MLX/models/MiMo-Audio-Tokenizer",
         )
 
     def test_resolve_mlx_audio_python_uses_candidate_that_can_import_mlx_audio(self) -> None:
@@ -84,8 +100,12 @@ class AcquisitionTranscriberTest(unittest.TestCase):
             audio = root / "sample.wav"
             audio.write_bytes(b"RIFFmock")
             output_dir = root / "transcript"
+            seen_payload: dict[str, object] = {}
 
             def run(command, capture_output, text, timeout, **kwargs):
+                if command[1] == "-c" and command[2] == "import mlx_audio":
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                seen_payload.update(json.loads(command[3]))
                 output_dir.mkdir(parents=True, exist_ok=True)
                 (output_dir / "sample.json").write_text(
                     json.dumps({
@@ -101,8 +121,12 @@ class AcquisitionTranscriberTest(unittest.TestCase):
 
             result = transcribe_audio_to_material(audio, output_dir, language="zh", runner=run, mlx_available_func=lambda: True)
 
+            self.assertEqual(seen_payload["model"], transcriber.DEFAULT_MLX_AUDIO_MODEL)
+            self.assertEqual(seen_payload["audio_tokenizer_dir"], transcriber.DEFAULT_MLX_AUDIO_TOKENIZER_DIR)
             self.assertEqual(result.transcript_path.name, "sample.json")
             self.assertEqual(result.provider, "mlx_audio")
+            self.assertEqual(result.material["source"]["transcriber_model"], transcriber.DEFAULT_MLX_AUDIO_MODEL)
+            self.assertEqual(result.material["source"]["audio_tokenizer_dir"], transcriber.DEFAULT_MLX_AUDIO_TOKENIZER_DIR)
             self.assertEqual(result.material["material_version"], "watchbrief_v5.transcript_material.v1")
             self.assertEqual(result.material["segments"][0]["start"], "00:00")
             self.assertEqual(result.material["segments"][1]["end"], "00:04")

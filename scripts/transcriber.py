@@ -23,8 +23,13 @@ except ImportError:  # pragma: no cover
 
 SUPPORTED_TRANSCRIBERS = ("auto", "mlx_audio", "whisper")
 DEFAULT_WHISPER_MODEL = "base"
-DEFAULT_MLX_AUDIO_MODEL = os.environ.get("WATCHBRIEF_MLX_AUDIO_MODEL", "mlx-community/whisper-large-v3-turbo")
 DEFAULT_PROJECT_ROOT = Path("/Users/apple/Documents/New project/watchbrief_v5")
+DEFAULT_MIMO_MLX_ROOT = Path(os.environ.get("WATCHBRIEF_MIMO_MLX_ROOT", "/Users/apple/Documents/MiMo-V2.5-ASR-MLX")).expanduser()
+DEFAULT_MLX_AUDIO_MODEL = os.environ.get("WATCHBRIEF_MLX_AUDIO_MODEL", str(DEFAULT_MIMO_MLX_ROOT / "models" / "MiMo-V2.5-ASR-MLX"))
+DEFAULT_MLX_AUDIO_TOKENIZER_DIR = os.environ.get(
+    "WATCHBRIEF_MLX_AUDIO_TOKENIZER_DIR",
+    str(DEFAULT_MIMO_MLX_ROOT / "models" / "MiMo-Audio-Tokenizer"),
+)
 MLX_AUDIO_RUNNER_SCRIPT = """
 import json
 import sys
@@ -54,6 +59,7 @@ def mlx_audio_python_candidates() -> list[Path]:
         candidates.append(Path(env_path).expanduser())
     skill_root = Path(__file__).resolve().parents[1]
     project_root = Path(os.environ.get("WATCHBRIEF_PROJECT_ROOT") or DEFAULT_PROJECT_ROOT).expanduser()
+    candidates.append(DEFAULT_MIMO_MLX_ROOT / ".venv" / "bin" / "python")
     candidates.append(project_root / ".venv-mlx" / "bin" / "python")
     candidates.append(skill_root / ".venv-mlx" / "bin" / "python")
     candidates.append(skill_root.parent / ".venv-mlx" / "bin" / "python")
@@ -193,6 +199,7 @@ def run_mlx_audio(
     *,
     language: str,
     model: str,
+    audio_tokenizer_dir: str,
     runner: Any,
     timeout: int,
 ) -> tuple[Path, list[str]]:
@@ -207,6 +214,9 @@ def run_mlx_audio(
         "output_path": str(output_prefix),
         "format": "json",
     }
+    tokenizer_dir = str(audio_tokenizer_dir or "").strip()
+    if tokenizer_dir:
+        payload["audio_tokenizer_dir"] = tokenizer_dir
     if language and language != "unknown":
         payload["language"] = language
     command = [
@@ -248,6 +258,7 @@ def transcribe_audio_to_material(
     transcript_quality: str = "degraded",
     provider: str = "auto",
     model: str = DEFAULT_MLX_AUDIO_MODEL,
+    audio_tokenizer_dir: str = DEFAULT_MLX_AUDIO_TOKENIZER_DIR,
     whisper_model: str = DEFAULT_WHISPER_MODEL,
     allow_whisper_fallback: bool = False,
     runner: Any = subprocess.run,
@@ -279,6 +290,7 @@ def transcribe_audio_to_material(
                 output_dir,
                 language=language,
                 model=model,
+                audio_tokenizer_dir=audio_tokenizer_dir,
                 runner=runner,
                 timeout=timeout,
             )
@@ -312,6 +324,12 @@ def transcribe_audio_to_material(
         command=command,
     )
     material["source"]["transcriber"] = selected
+    if selected == "mlx_audio":
+        material["source"]["transcriber_model"] = model
+        if audio_tokenizer_dir:
+            material["source"]["audio_tokenizer_dir"] = audio_tokenizer_dir
+    else:
+        material["source"]["transcriber_model"] = whisper_model
     return TranscriptionResult(transcript_path=transcript_path, material=material, command=command, provider=selected)
 
 
@@ -323,6 +341,7 @@ def main() -> int:
     parser.add_argument("--transcript-quality", default="degraded")
     parser.add_argument("--transcriber", choices=SUPPORTED_TRANSCRIBERS, default="auto")
     parser.add_argument("--mlx-model", default=DEFAULT_MLX_AUDIO_MODEL)
+    parser.add_argument("--mlx-audio-tokenizer-dir", default=DEFAULT_MLX_AUDIO_TOKENIZER_DIR)
     parser.add_argument("--whisper-model", default=DEFAULT_WHISPER_MODEL)
     parser.add_argument("--allow-whisper-fallback", action="store_true")
     parser.add_argument("--material-output", required=True, type=Path)
@@ -334,6 +353,7 @@ def main() -> int:
         transcript_quality=args.transcript_quality,
         provider=args.transcriber,
         model=args.mlx_model,
+        audio_tokenizer_dir=args.mlx_audio_tokenizer_dir,
         whisper_model=args.whisper_model,
         allow_whisper_fallback=args.allow_whisper_fallback,
     )
