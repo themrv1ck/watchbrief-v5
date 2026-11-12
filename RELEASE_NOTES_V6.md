@@ -105,6 +105,7 @@ reason_code=transcript_coverage_too_low
 
 ## 已知限制
 
+- Hermès 表盘教程的完整视觉复测在第 15 帧失败：MiMo-VL 对细小的 Xcode 界面文字产生重复和错误识别，最终输出不是严格 JSON。v6 保留失败状态，不把该次自动画面分析当作已看完；需要操作时可核对原始帧，并明确人工核对的证据范围。
 - WatchBrief 与 Hermes 共用本机 LM Studio endpoint 时，不建议并发运行两个本地模型重任务。
 - 并发风险来自 Mac 统一内存和推理算力，不是端口冲突。
 - YouTube 登录态失效或 bot check 时，需要先手动在 Chrome 完成验证。
