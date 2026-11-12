@@ -7,6 +7,25 @@
   "required": ["job_name", "generated_at", "requested_count", "completed_count", "failed_count", "videos", "failures"],
   "properties": {
     "job_name": { "type": "string", "minLength": 1 },
+    "collection_summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["overview", "brief", "groups", "conclusion"],
+      "properties": {
+        "overview": {"type": "string", "minLength": 1},
+        "brief": {"type": "string", "minLength": 1},
+        "conclusion": {"type": "string", "minLength": 1},
+        "groups": {"type": "array", "minItems": 1, "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["start", "end", "title", "summary"],
+          "properties": {
+            "start": {"type": "integer", "minimum": 1},
+            "end": {"type": "integer", "minimum": 1},
+            "title": {"type": "string", "minLength": 1},
+            "summary": {"type": "string", "minLength": 1}
+          }
+        }}
+      }
+    },
     "playlist_title": { "type": "string" },
     "source_url": { "type": "string" },
     "source_kind": { "type": "string" },
@@ -70,12 +89,11 @@
           "structured_assessment": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["信息密度", "论据质量", "独创性", "观看性价比"],
+            "required": ["信息密度", "论据质量", "话题兴趣"],
             "properties": {
               "信息密度": { "type": "number", "minimum": 0, "maximum": 10 },
               "论据质量": { "type": "number", "minimum": 0, "maximum": 10 },
-              "独创性": { "type": "number", "minimum": 0, "maximum": 10 },
-              "观看性价比": { "type": "number", "minimum": 0, "maximum": 10 }
+              "话题兴趣": { "type": "number", "minimum": 0, "maximum": 10 }
             }
           },
           "watch_segments": { "type": "array" }

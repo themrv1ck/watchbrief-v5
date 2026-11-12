@@ -810,27 +810,10 @@ def local_structured_assessment(
         -0.1 if has_sponsor_noise else 0.0,
         maximum=8.2,
     )
-    originality = bounded_score(
-        5.15,
-        diminishing_count_bonus(len(terms), scale=0.55, cap=1.75),
-        diminishing_count_bonus(len(caveats), scale=0.25, cap=0.65),
-        diminishing_count_bonus(len(claims), scale=0.12, cap=0.45),
-        maximum=8.0,
-    )
-    watch_value = bounded_score(
-        5.45,
-        diminishing_count_bonus(window_count, scale=0.65, cap=1.5),
-        diminishing_count_bonus(len(examples), scale=0.36, cap=0.9),
-        0.75 if duration_minutes >= 15 else 0.25 if duration_minutes >= 5 else 0.0,
-        -0.35 if duration_seconds and duration_seconds < 180 else 0.0,
-        -0.05 if has_sponsor_noise else 0.0,
-        maximum=8.6,
-    )
     return {
         "信息密度": density,
         "论据质量": evidence,
-        "独创性": originality,
-        "观看性价比": watch_value,
+        "话题兴趣": 5.0,
     }
 
 def topic_from_extract(qwen_extract: dict[str, Any]) -> str:
@@ -868,7 +851,7 @@ def first_items(*values: Any, fallback: str) -> list[str]:
 def local_target_sections(report_target: str, qwen_extract: dict[str, Any], *, main_axis: str, cleaned: str) -> dict[str, list[str]]:
     target = normalize_report_target(report_target)
     if target == DEFAULT_REPORT_TARGET:
-        return {}
+        target = "content_brief"
     claims = qwen_extract.get("core_claims")
     methods = qwen_extract.get("methods")
     examples = qwen_extract.get("examples")
@@ -939,6 +922,9 @@ def build_local_review_response(local_extract_payload: dict[str, Any], *, report
     structured_assessment = local_structured_assessment(qwen_extract, metadata, payload)
     watch_segments = build_watch_segments(payload, qwen_extract, metadata)
     long_content_breakdown = build_long_content_breakdown(payload, qwen_extract, metadata)
+    reading_flow = qwen_extract.get("reading_flow")
+    if not isinstance(reading_flow, list) or not reading_flow:
+        raise ValueError("local review requires model-authored reading_flow from Qwen local_extract")
     primary = watch_segments[0]
     primary_range = f"{primary['start']} | {primary['end']}"
     if len(watch_segments) > 1:
@@ -967,20 +953,19 @@ def build_local_review_response(local_extract_payload: dict[str, Any], *, report
         "arrow_chain": arrow_chain_from_extract(qwen_extract),
         "final_conclusion": sentence(final_core, "这段内容真正想强调的是把核心观点落到可理解的判断里"),
         "content_caveat": f"本地模式只基于 Qwen local_extract 和确定性规则生成，适合没有 Codex 账号时使用；细腻判断会弱于 Codex review。{caveat_text}",
+        "reading_flow": copy.deepcopy(reading_flow),
         "watch_segments": watch_segments,
         "only_one_segment": f"只补一段：{primary_range}。这一段是本地规则从全量转写中定位到的理解入口片段。",
         "score_basis": {
             "information_density": "本地规则无法做复杂审稿，按 Qwen 中间提炼的主轴和方法数量给出保守估计。",
             "evidence_quality": "证据主要来自字幕或转写文本，未调用 Codex 做反例和论证强度复核。",
-            "originality": "只根据核心观点、方法和例子判断新意，不额外引入外部知识。",
-            "watch_value": "报告覆盖主轴后仍建议跳看核心段，保留原作者表达和上下文价值。",
+            "topic_interest": "本地模式没有接入 WatchBefore 内容兴趣画像，话题兴趣固定按中性分处理。",
         },
         "structured_assessment": structured_assessment,
         "score_trace": {
             "information_density": 0,
             "evidence_quality": 0,
-            "originality": 0,
-            "watch_value": 0,
+            "topic_interest": 0,
             "formula": SCORING_FORMULA,
             "computed_replacement_score": 0,
             "model_suggested_score": 4.6,
@@ -1000,8 +985,8 @@ def build_local_review_response(local_extract_payload: dict[str, Any], *, report
     }
     if long_content_breakdown:
         report["long_content_breakdown"] = long_content_breakdown
+    report["target_summary"] = sentence(cleaned, main_axis)
+    report["target_sections"] = local_target_sections(target, qwen_extract, main_axis=main_axis, cleaned=cleaned)
     if target != DEFAULT_REPORT_TARGET:
         report["report_target"] = target
-        report["target_summary"] = sentence(cleaned, main_axis)
-        report["target_sections"] = local_target_sections(target, qwen_extract, main_axis=main_axis, cleaned=cleaned)
     return report

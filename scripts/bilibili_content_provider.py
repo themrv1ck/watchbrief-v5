@@ -22,6 +22,7 @@ from typing import Any, Optional
 try:
     from .acquisition_errors import (
         BILIBILI_METADATA_NOT_FOUND,
+        BILIBILI_PAGE_NOT_FOUND,
         BILIBILI_SUBTITLE_API_FAILED,
         BILIBILI_SUBTITLE_DOWNLOAD_FAILED,
         BILIBILI_SUBTITLE_JSON_INVALID,
@@ -38,6 +39,7 @@ try:
 except ImportError:  # pragma: no cover
     from acquisition_errors import (
         BILIBILI_METADATA_NOT_FOUND,
+        BILIBILI_PAGE_NOT_FOUND,
         BILIBILI_SUBTITLE_API_FAILED,
         BILIBILI_SUBTITLE_DOWNLOAD_FAILED,
         BILIBILI_SUBTITLE_JSON_INVALID,
@@ -120,8 +122,10 @@ def requested_page_index(url: str) -> int:
     query = urllib.parse.parse_qs(urllib.parse.urlparse(str(url or "")).query)
     for key in ("p", "page"):
         raw = (query.get(key) or [""])[0]
-        if str(raw).isdigit() and int(raw) > 0:
-            return int(raw)
+        if raw:
+            if str(raw).isdigit() and int(raw) > 0:
+                return int(raw)
+            raise BilibiliSubtitleError(BILIBILI_PAGE_NOT_FOUND, "Bilibili page selector must be a positive integer", ["bilibili-content-provider", url])
     return 1
 
 
@@ -285,6 +289,7 @@ def metadata_api_url(source_url: str) -> str:
         return "https://api.bilibili.com/x/web-interface/view?" + urllib.parse.urlencode({"aid": aid})
     raise BilibiliSubtitleError(
         BILIBILI_METADATA_NOT_FOUND,
+        BILIBILI_PAGE_NOT_FOUND,
         "Bilibili URL does not contain a BV or AV id",
         ["bilibili-content-provider", source_url],
     )
@@ -309,22 +314,30 @@ def parse_pages(data: dict[str, Any]) -> list[BilibiliPage]:
 
 def choose_page(data: dict[str, Any], source_url: str) -> BilibiliPage:
     pages = parse_pages(data)
+    page_index = requested_page_index(source_url)
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(source_url).query)
     cid_hint = requested_cid(source_url)
     if cid_hint:
         for page in pages:
             if page.cid == cid_hint:
+                if any(key in query for key in ("p", "page")) and page.page != page_index:
+                    raise BilibiliSubtitleError(BILIBILI_PAGE_NOT_FOUND, "Conflicting Bilibili page and cid selectors", ["bilibili-content-provider", source_url])
                 return page
-    page_index = requested_page_index(source_url)
+        if str(data.get("cid") or "") != cid_hint:
+            raise BilibiliSubtitleError(BILIBILI_PAGE_NOT_FOUND, "Requested Bilibili cid is not present in this video", ["bilibili-content-provider", source_url])
     for page in pages:
         if page.page == page_index:
             return page
-    if pages:
+    if pages and not any(key in query for key in ("p", "page", "cid")):
         return pages[0]
+    if page_index != 1 or pages:
+        raise BilibiliSubtitleError(BILIBILI_PAGE_NOT_FOUND, f"Requested Bilibili page {page_index} is not present in this video", ["bilibili-content-provider", source_url])
     cid = str(data.get("cid") or "").strip()
     if cid:
         return BilibiliPage(page=1, cid=cid, title=str(data.get("title") or ""), duration=int(data.get("duration") or 0))
     raise BilibiliSubtitleError(
         BILIBILI_METADATA_NOT_FOUND,
+        BILIBILI_PAGE_NOT_FOUND,
         "Bilibili metadata does not contain cid/pages",
         ["bilibili-content-provider", source_url],
     )
@@ -334,6 +347,7 @@ def parse_metadata_payload(source_url: str, payload: dict[str, Any]) -> Bilibili
     if int(payload.get("code") or 0) != 0:
         raise BilibiliSubtitleError(
             BILIBILI_METADATA_NOT_FOUND,
+        BILIBILI_PAGE_NOT_FOUND,
             f"Bilibili metadata API returned code={payload.get('code')}",
             ["bilibili-content-provider", source_url],
         )
@@ -341,6 +355,7 @@ def parse_metadata_payload(source_url: str, payload: dict[str, Any]) -> Bilibili
     if not isinstance(data, dict):
         raise BilibiliSubtitleError(
             BILIBILI_METADATA_NOT_FOUND,
+        BILIBILI_PAGE_NOT_FOUND,
             "Bilibili metadata API returned no data object",
             ["bilibili-content-provider", source_url],
         )
@@ -353,7 +368,7 @@ def parse_metadata_payload(source_url: str, payload: dict[str, Any]) -> Bilibili
         cid=selected_page.cid,
         title=str(data.get("title") or ""),
         owner=str(owner.get("name") or ""),
-        duration=int(selected_page.duration or data.get("duration") or 0),
+        duration=int(selected_page.duration or (data.get("duration") if max(len(parse_pages(data)), int(data.get("videos") or 0)) <= 1 else 0) or 0),
         part_title=selected_page.title,
         page_index=int(selected_page.page or 1),
         pages=parse_pages(data),
@@ -373,6 +388,7 @@ def fetch_metadata(
     except Exception as exc:
         raise BilibiliSubtitleError(
             BILIBILI_METADATA_NOT_FOUND,
+        BILIBILI_PAGE_NOT_FOUND,
             "Bilibili metadata API request failed",
             ["bilibili-content-provider", source_url],
             str(exc),

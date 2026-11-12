@@ -16,7 +16,7 @@ REPORT_TARGETS = (
 )
 
 REPORT_TARGET_LABELS = {
-    DEFAULT_REPORT_TARGET: "内容导读",
+    DEFAULT_REPORT_TARGET: "内容总结",
     "text_structure": "文本结构分析",
     "knowledge_notes": "知识笔记",
     "content_brief": "内容简报",
@@ -25,7 +25,7 @@ REPORT_TARGET_LABELS = {
 }
 
 REPORT_TARGET_DESCRIPTIONS = {
-    DEFAULT_REPORT_TARGET: "提炼视频主要内容、读者最需要了解的信息，以及如果要补看原片应先跳到哪一段。",
+    DEFAULT_REPORT_TARGET: "总结视频实际讲述的对象、过程、观点、例子和结果，并提供可选的原片入口。",
     "text_structure": "分析内容如何开场、推进、转折和收束，适合学习文本组织方式。",
     "knowledge_notes": "整理概念、事实、方法和边界，适合沉淀可复习的知识笔记。",
     "content_brief": "直接陈述视频已经给出的观点、内容和可执行建议，适合清单式重点视频和讲书类视频。",
@@ -99,7 +99,8 @@ def report_target_contract(target: Any) -> dict[str, Any]:
         "report_target": normalized,
         "label": report_target_label(normalized),
         "description": report_target_description(normalized),
-        "target_summary": "string，中文，概括该目标模式下最重要的结论。",
+        "target_summary": "string，中文，开场总览；直接概括视频具体讲了什么和最终结果，不写目录或质量评价。",
+        "reading_flow": "array，2 到 5 段有时间锚的内容总结；每项含 start、end、heading、body，写清具体对象、过程或主张、例子与结果，必须由视频证据支持。",
         "target_sections": {
             key: f"array[string]，中文，{label}，1 到 6 条，每条必须来自视频内容证据。"
             for key, label in report_target_section_specs(normalized)

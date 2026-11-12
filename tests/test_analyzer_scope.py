@@ -58,7 +58,7 @@ class AnalyzerScopeTest(unittest.TestCase):
             self.assertNotIn(forbidden, source)
 
     def test_phase8_contract_keeps_live_review_explicit(self) -> None:
-        text = (ROOT / "CONTRACT_V5.md").read_text(encoding="utf-8")
+        text = (ROOT / "CONTRACT_V6.md").read_text(encoding="utf-8")
         self.assertIn("Phase 8 Boundary", text)
         self.assertIn("explicitly enabled", text)
         self.assertIn("mock/manual/local review path", text)

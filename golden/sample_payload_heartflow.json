@@ -5,7 +5,7 @@
   "duration": "16:42",
   "date": "2026-04-20",
   "topic": "效率 / 心流 / 任务设计 / 状态管理",
-  "replacement_score": 4.7,
+  "replacement_score": 4.9,
   "tag": "不推荐观看",
   "one_line_brief": "这期视频主要讲：心流更依赖任务结构设计，而不是单靠意志力硬撑注意力。",
   "watch_verdict": "看报告基本够，原视频只建议跳看 10:51 | 15:08；想补前置误区，再看 01:59 | 05:12。",
@@ -26,6 +26,39 @@
   ],
   "final_conclusion": "心流不是意志力硬拧出来的，而是把任务改造成清楚、有挑战、可反馈的系统。",
   "content_caveat": "视频更偏经验型方法说明，缺少实验数据和反例展开。",
+  "target_summary": "视频解释目标模糊、反馈太慢如何妨碍进入心流，并给出清理干扰、缩小任务入口、设置小挑战与即时反馈的做法。",
+  "reading_flow": [
+    {
+      "start": "00:00",
+      "end": "05:12",
+      "heading": "目标模糊和反馈太慢会增加启动阻力",
+      "body": "作者说，很多人以为心流取决于意志力；如果任务目标不清楚、反馈来得太慢，大脑会把它判断成高摩擦任务。视频因此提醒先检查任务入口是否过大。"
+    },
+    {
+      "start": "10:51",
+      "end": "15:08",
+      "heading": "清理干扰、缩小入口，再增加挑战与反馈",
+      "body": "作者给出三个做法：关闭桌面通知和无关窗口；把任务缩小，例如先写三行而不是整篇；设置略高于当前能力的小挑战，并让自己马上看到反馈。"
+    }
+  ],
+  "target_sections": {
+    "direct_statements": [
+      "心流更依赖任务结构设计，而不是单靠意志力维持注意力。",
+      "目标清楚、反馈及时、难度略高于当前能力，是视频给出的心流触发条件。"
+    ],
+    "key_points": [
+      "任务模糊和反馈太慢会让人难以进入稳定专注状态。",
+      "清理干扰、缩小任务入口、增加限时挑战，可以降低进入状态的门槛。"
+    ],
+    "practical_takeaways": [
+      "开始前先清理会打断注意力的干扰源。",
+      "把任务拆小，并给自己设置可立即看到反馈的完成标准。"
+    ],
+    "boundaries": [
+      "视频主要是经验型方法说明，缺少实验数据和反例展开。",
+      "这些方法适合改善任务设计，不能保证每次都稳定进入心流。"
+    ]
+  },
   "watch_segments": [
     {
       "priority": "primary",
@@ -46,35 +79,32 @@
   "score_basis": {
     "information_density": "核心方法集中在 10:51 | 15:08，其余内容更多是概念铺垫和重复解释。",
     "evidence_quality": "视频主要依靠经验性说明，没有展开反例、数据或更严谨的实验依据。",
-    "originality": "清理干扰、任务拆分、限时挑战都不是新方法，但组合成心流触发条件有实用性。",
-    "watch_value": "报告已经覆盖主要方法，原视频剩余价值集中在案例演示和作者表达节奏。"
+    "topic_interest": "样例报告未接入个人内容兴趣画像，话题兴趣固定按中性分处理。"
   },
   "structured_assessment": {
     "信息密度": 5.2,
     "论据质量": 4.5,
-    "独创性": 4.2,
-    "观看性价比": 4.8
-  },
-  "score_trace": {
-    "information_density": 5.2,
-    "evidence_quality": 4.5,
-    "originality": 4.2,
-    "watch_value": 4.8,
-    "formula": "information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3",
-    "computed_replacement_score": 4.7,
-    "model_suggested_score": 4.7,
-    "final_score_source": "deterministic_formula",
-    "score_semantics": "video_overall_value",
-    "warnings": []
+    "话题兴趣": 5.0
   },
   "transcript_hash": "fef9ed8077bc798ed8c143ae124dc99e9db44f385f57ad1803a582245914d4e5",
   "qwen_model_id": "mock-qwen",
-  "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v2",
+  "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v6",
   "qwen_prompt_fingerprint": "05a92c698f525918b21fa49089829cb083806fd0853a0d153258be135b3d2691",
   "codex_model": "gpt-5.4",
-  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v5",
+  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v10",
   "codex_prompt_fingerprint": "03f247e80432549f8771da24564509ebf537871963d110014e0cc04b523aac2a",
-  "scoring_formula_version": "watchbrief_v5.video_value_formula.v2",
-  "watchbrief_version": "watchbrief_v5",
-  "confidence_note": "字幕清晰，关键方法段有明确时间戳，判断置信度中高。"
+  "scoring_formula_version": "watchbrief_v5.topic_interest_formula.v2",
+  "watchbrief_version": "watchbrief_v6",
+  "confidence_note": "字幕清晰，关键方法段有明确时间戳，判断置信度中高。",
+  "score_trace": {
+    "information_density": 5.2,
+    "evidence_quality": 4.5,
+    "topic_interest": 5.0,
+    "formula": "information_density*0.35 + evidence_quality*0.35 + topic_interest*0.3",
+    "score_semantics": "content_quality_with_topic_interest",
+    "computed_replacement_score": 4.9,
+    "model_suggested_score": 4.8,
+    "final_score_source": "deterministic_formula",
+    "warnings": []
+  }
 }

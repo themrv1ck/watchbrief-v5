@@ -139,6 +139,23 @@ class BilibiliContentProviderTest(unittest.TestCase):
         self.assertEqual(metadata.part_title, "P2 标题")
         self.assertEqual(len(metadata.pages), 2)
 
+    def test_invalid_episode_never_silently_selects_first_page(self) -> None:
+        payload = metadata_payload(pages=[{"page": 1, "cid": 111, "part": "P1", "duration": 10}, {"page": 2, "cid": 222, "part": "P2", "duration": 20}])
+        for selector in ("p=13", "p=0", "p=bad", "cid=999", "p=2&cid=111"):
+            with self.subTest(selector=selector):
+                with self.assertRaises(BilibiliSubtitleError) as caught:
+                    parse_metadata_payload("https://www.bilibili.com/video/BV15qQwB4EZ9/?" + selector, payload)
+                self.assertEqual(caught.exception.reason_code, "bilibili_page_not_found")
+
+    def test_missing_episode_duration_does_not_use_container_total(self) -> None:
+        payload=metadata_payload(pages=[{"page":1,"cid":111,"part":"P1","duration":10},{"page":2,"cid":222,"part":"P2","duration":0}])
+        result=parse_metadata_payload("https://www.bilibili.com/video/BV15qQwB4EZ9?p=2",payload)
+        self.assertEqual(result.duration,0)
+        payload["data"]["pages"]=payload["data"]["pages"][:1]
+        payload["data"]["pages"][0]["duration"]=0
+        payload["data"]["videos"]=12
+        self.assertEqual(parse_metadata_payload("https://www.bilibili.com/video/BV15qQwB4EZ9?p=1",payload).duration,0)
+
     def test_fetches_wbi_subtitle_list_and_bcc_segments(self) -> None:
         seen: list[dict[str, Any]] = []
         with tempfile.TemporaryDirectory() as temp_dir:

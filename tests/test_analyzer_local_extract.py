@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import copy
 import os
 import tempfile
 import urllib.error
@@ -20,6 +21,7 @@ from scripts.analyzer.local_extract import (
     build_local_extract_payload,
     build_qwen_local_extract_user_prompt,
     call_qwen_prompt_json,
+    call_validated_qwen_extract,
     choose_qwen_model,
     configured_qwen_api_base,
     configured_qwen_model,
@@ -485,6 +487,82 @@ class AnalyzerLocalExtractTest(unittest.TestCase):
         self.assertEqual(payload["chunked_local_extract"]["reduce"]["status"], "fallback_completed")
         self.assertEqual(payload["qwen_extract"]["_local_extract_mode"], "chunked_fallback")
         self.assertGreater(len(payload["qwen_extract"]["core_claims"]), 0)
+
+    def test_reduce_separates_rounded_evidence_windows_from_story_boundaries(self) -> None:
+        from scripts.analyzer.local_extract import build_chunk_reduce_seed
+        seed = {"metadata": {}, "transcript": {k: "" for k in ("language", "quality", "source", "segment_count", "char_count", "has_timestamps", "excerpt")}, "time_windows": []}
+        summaries = [
+            {"chunk_start": "00:00", "chunk_end": "35:01"},
+            {"chunk_start": "35:00", "chunk_end": "50:15"},
+            {"chunk_start": "50:14", "chunk_end": "1:08:34"},
+        ]
+        original = copy.deepcopy(summaries)
+        debug = {"chunk_count": 3, "successful_chunk_count": 3, "failed_chunk_count": 0, "success_coverage": 1.0}
+        reduced = build_chunk_reduce_seed(seed, summaries, debug)
+        self.assertEqual(summaries, original)
+        self.assertEqual(reduced["chunk_summaries"], original)
+        self.assertEqual(reduced["reading_flow_boundary_hints"], [
+            {"start": "00:00", "end": "35:00"},
+            {"start": "35:00", "end": "50:14"},
+            {"start": "50:14", "end": "1:08:34"},
+        ])
+        prompt = build_qwen_chunk_reduce_user_prompt(reduced)
+        self.assertIn("证据范围", prompt)
+        self.assertIn("正文分界点", prompt)
+
+    def test_rejected_structured_request_does_not_use_unconstrained_fallback(self) -> None:
+        from scripts.analyzer.local_extract import call_qwen_prompt_text
+        error = urllib.error.HTTPError("http://localhost/chat/completions", 400, "rejected", {}, None)
+        with mock.patch("scripts.analyzer.local_extract.http_json", side_effect=LocalQwenError("local_qwen_unavailable", "HTTP 400")) as call:
+            call.side_effect.__cause__ = error
+            with self.assertRaises(LocalExtractError) as caught:
+                call_qwen_prompt_text("evidence", selected_model="qwen-test", api_base=None, urlopen_func=None, timeout=5, response_schema={"type": "object"})
+        self.assertEqual(caught.exception.reason_code, "local_extract_structured_request_rejected")
+        self.assertNotIsInstance(caught.exception, LocalQwenError)
+        self.assertEqual(call.call_count, 1)
+
+    def test_real_extract_request_constrains_story_count_during_generation(self) -> None:
+        payload = fake_qwen_extract({"transcript": {"language": "zh"}})
+        payload["reading_flow"] = [
+            {"start": "00:00", "end": "00:10", "heading": "问题", "body": "说明困难。"},
+            {"start": "00:10", "end": "00:20", "heading": "方法", "body": "说明做法。"},
+        ]
+        with mock.patch("scripts.analyzer.local_extract.call_qwen_prompt_json", return_value=payload) as call:
+            call_validated_qwen_extract("evidence", selected_model="qwen-test", api_base=None, urlopen_func=None, timeout=5, debug_root=None, debug_prefix="test")
+        schema = call.call_args.kwargs["response_schema"]
+        flow = schema["properties"]["reading_flow"]
+        self.assertEqual((flow["minItems"], flow["maxItems"]), (2, 5))
+        self.assertFalse(flow["items"]["additionalProperties"])
+        self.assertIn("reading_flow", schema["required"])
+
+    def test_invalid_reading_flow_is_regenerated_without_editing_model_evidence(self) -> None:
+        valid = fake_qwen_extract({"transcript": {"language": "zh"}})
+        valid["reading_flow"] = [
+            {"start": "00:00", "end": "00:10", "heading": "问题", "body": "说明实际困难。"},
+            {"start": "00:10", "end": "00:20", "heading": "方法", "body": "说明视频提出的方法。"},
+        ]
+        for mode in ("overlap", "too_many"):
+            invalid = copy.deepcopy(valid)
+            if mode == "overlap":
+                invalid["reading_flow"][1]["start"] = "00:09"
+            else:
+                invalid["reading_flow"] *= 3
+            original = copy.deepcopy(invalid)
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp_dir:
+                with mock.patch("scripts.analyzer.local_extract.call_qwen_prompt_json", side_effect=[invalid, valid]) as call:
+                    result = call_validated_qwen_extract("original evidence", selected_model="qwen-test", api_base=None, urlopen_func=None, timeout=5, debug_root=Path(temp_dir), debug_prefix="test")
+                self.assertEqual(invalid, original)
+                self.assertEqual(result["reading_flow"], valid["reading_flow"])
+                self.assertIn("original evidence", call.call_args_list[1].args[0])
+                self.assertIn("未通过严格校验", call.call_args_list[1].args[0])
+                if mode == "overlap":
+                    self.assertIn('"previous_end": "00:10"', call.call_args_list[1].args[0])
+                    self.assertIn('"current_start": "00:09"', call.call_args_list[1].args[0])
+                self.assertTrue((Path(temp_dir) / "test_validation_retries.json").exists())
+        with mock.patch("scripts.analyzer.local_extract.call_qwen_prompt_json", return_value=invalid) as call:
+            with self.assertRaises(LocalExtractError):
+                call_validated_qwen_extract("original evidence", selected_model="qwen-test", api_base=None, urlopen_func=None, timeout=5, debug_root=None, debug_prefix="test")
+            self.assertEqual(call.call_count, 3)
 
     def test_qwen_invalid_intermediate_output_returns_local_extract_invalid_output(self) -> None:
         mock = self.load_mock()

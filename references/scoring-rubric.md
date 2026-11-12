@@ -1,19 +1,39 @@
-# WatchBrief V5 Scoring Rubric
+# WatchBefore 当前评分标准
 
-`replacement_score` is not a generic content-quality score.
+核对日期：2026-11-03。实际实现为 `scripts/scoring.py`，模型评估标尺为 `scripts/analyzer/prompts.py::SCORING_RUBRIC`，兴趣匹配为 `scripts/preference_profile.py`。
 
-It means:
+分数表示视频内容质量与个人话题兴趣的综合评估；“读完报告后原片还剩多少观看价值”是已废弃的解释。报告摘要、补看入口和用户的观看决定各自独立，不以报告写得完整为理由压低内容分。
 
-> After reading this report, how much value remains in watching the original video?
+## 三项与权重
 
-Use only video-derived evidence:
+每项为 0–10 分：
 
-- information density
-- evidence quality
-- originality
-- remaining watch value
-- what the report already replaces
-- what expression, examples, or demonstrations the original video still adds
+| 项目 | 权重 | 判断依据 |
+| --- | --- | --- |
+| 信息密度 | 35% | 单位时间里的有效观点、方法、机制、例子及可迁移判断；重复和铺垫会降低密度。 |
+| 论据质量 | 35% | 是否有清楚证据、具体例子、推理链、反例、适用边界或可验证依据。并非只承认研究数据。 |
+| 话题兴趣 | 30% | 依据实际观看事实与内容报告建立的兴趣领域，匹配当前视频内容主题。 |
 
-Do not raise the score because the topic is important, morally positive, currently popular, or personally useful.
+最终分数 = 信息密度 × 0.35 + 论据质量 × 0.35 + 话题兴趣 × 0.3，保留一位小数。
 
+前两项由 review 模型根据视频证据评估并写出理由，具有判断误差；最终加权计算由本地代码执行。模型直接建议的总分只保留作比较，不能覆盖公式结果。
+
+## 兴趣分
+
+正式运行绑定用户的合法兴趣画像。兴趣领域来自真实观看历史及视频内容证据，不使用稍后再看、作者名或热度猜测偏好。
+
+当前实现按领域和细分关注点的文本匹配确定命中，使用命中领域的画像置信度映射：高置信 8.5、中置信 7.5、低置信 6.5。没有命中或证据不足时为中性 5.0，显示“暂时无法判断”，不等同于用户不喜欢。
+
+## 分数锚点与局限
+
+- 0–2：信息不足、空泛或重复严重，无法支持可靠判断。
+- 3–4：有效信息较少，铺垫、重复或常识性表达较多。
+- 5–6：有明确信息和部分例子，证据或兴趣匹配有限。
+- 7–8：信息、论证、案例密度或兴趣匹配较强。
+- 9–10：信息、证据及兴趣匹配均很强。
+
+同一公式保证计算方式一致，不能消除模型判断和转写质量带来的误差；一位小数不表示有对应精度的客观测量。
+
+## 列表排序
+
+列表页默认“原始顺序”，与原收藏夹/播放列表一致；用户可在排序菜单切换“评分从高到低”或“评分从低到高”。因此默认位置不是内容评分排名。显示与排序均使用实际计算后的分数。

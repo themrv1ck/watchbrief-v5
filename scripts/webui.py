@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local WebUI for WatchBrief V5.
+"""Local WebUI for WatchBefore V5.
 
 The server is standard-library only. It builds safe CLI commands and keeps the
 pipeline contract in scripts/cli.py as the single execution path.
@@ -30,6 +30,7 @@ import urllib.request
 try:
     from .report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, REPORT_TARGET_DESCRIPTIONS, REPORT_TARGET_LABELS
     from .transcriber import has_whisper_cli, mlx_audio_python_statuses
+    from .visual_analyzer import verify_mimo_vl_installation
     from .watchbrief_codex_state import (
         DEFAULT_WATCHBRIEF_CODEX_ACCOUNT,
         DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT,
@@ -39,6 +40,7 @@ try:
 except ImportError:  # pragma: no cover
     from report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, REPORT_TARGET_DESCRIPTIONS, REPORT_TARGET_LABELS
     from transcriber import has_whisper_cli, mlx_audio_python_statuses
+    from visual_analyzer import verify_mimo_vl_installation
     from watchbrief_codex_state import (
         DEFAULT_WATCHBRIEF_CODEX_ACCOUNT,
         DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT,
@@ -72,7 +74,8 @@ SUPPORTED_OUTPUT_MODES = {"default", "custom", "diagnostic"}
 SUPPORTED_ANALYSIS_MODES = {"fast", "standard", "deep"}
 SUPPORTED_REPORT_TARGETS = set(REPORT_TARGETS)
 SUPPORTED_REPORT_TARGETS_TEXT = "/".join(REPORT_TARGETS)
-SUPPORTED_SCORING_PROFILES = {"standard", "information-first", "evidence-first", "originality-first", "watch-value-first", "custom"}
+DEFAULT_SCORING_PROFILE = "personal-interest"
+SUPPORTED_SCORING_PROFILES = {"personal-interest", "custom"}
 ANALYSIS_MODE_DEFAULTS = {
     "fast": {
         "timeout": "600",
@@ -122,7 +125,7 @@ DEFAULT_API_BASES = {
 }
 CAPABILITY_CACHE_SECONDS = 8
 PDF_BROWSER_ENV = "WATCHBRIEF_PDF_BROWSER"
-DIRECTORY_PICKER_PROMPT = "选择 WatchBrief 输出目录"
+DIRECTORY_PICKER_PROMPT = "选择 WatchBefore 输出目录"
 URL_FILE_PICKER_PROMPT = "选择包含视频链接的 txt 文件"
 
 _CAPABILITY_CACHE: tuple[float, dict[str, Any]] | None = None
@@ -151,9 +154,22 @@ def _positive_int(value: Any, field_name: str) -> str:
     return text
 
 
+def _positive_float(value: Any, field_name: str) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    try:
+        number = float(text)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} 必须是正数") from exc
+    if not number > 0:
+        raise ValueError(f"{field_name} 必须是正数")
+    return text
+
+
 def _validate_qwen_model(model: str) -> None:
     if model and "qwen" not in model.lower():
-        raise ValueError("WatchBrief local_extract 只接受 Qwen-family 模型，模型名必须包含 qwen")
+        raise ValueError("WatchBefore local_extract 只接受 Qwen-family 模型，模型名必须包含 qwen")
 
 
 def _env_name(value: Any, field_name: str) -> str:
@@ -256,13 +272,13 @@ def transcriber_status() -> dict[str, Any]:
         mlx_statuses = [{"python": "", "status": f"check_failed: {exc}", "available": "false"}]
     mlx_available = [row for row in mlx_statuses if str(row.get("available")) == "true"]
     whisper_path = shutil.which("whisper")
-    recommended = "auto" if mlx_available else ("whisper" if whisper_path else "auto")
+    recommended = "auto"
     if mlx_available:
-        reason = "检测到 MLX-Audio，使用 CLI 默认 auto"
+        reason = "检测到本机 MiMo MLX，使用 CLI 默认 auto"
     elif whisper_path:
-        reason = "未检测到 MLX-Audio，WebUI 默认改用 Whisper"
+        reason = "未检测到本机 MiMo MLX；WebUI 保持 auto，不自动推荐 Whisper"
     else:
-        reason = "未检测到 MLX-Audio 或 Whisper；需要先安装转写工具"
+        reason = "未检测到本机 MiMo MLX；需要先配置 MiMo runtime"
     return {
         "mlx_audio": {
             "ok": bool(mlx_available),
@@ -272,6 +288,19 @@ def transcriber_status() -> dict[str, Any]:
         "whisper": {"ok": has_whisper_cli(), "path": whisper_path or ""},
         "recommended": recommended,
         "recommendation_reason": reason,
+    }
+
+
+def visual_analysis_status() -> dict[str, Any]:
+    status = verify_mimo_vl_installation()
+    return {
+        "ok": bool(status.get("ok")),
+        "provider": "mimo-vl-mlx",
+        "root": str(status.get("root") or ""),
+        "model": str(status.get("model") or ""),
+        "mlx_vlm_version": str(status.get("mlx_vlm_version") or ""),
+        "required_mlx_vlm_version": str(status.get("required_mlx_vlm_version") or ""),
+        "errors": list(status.get("errors") or []),
     }
 
 
@@ -509,6 +538,7 @@ def local_capabilities(*, force: bool = False) -> dict[str, Any]:
     capabilities = {
         "local_model": local_model_status(),
         "transcriber": transcriber_status(),
+        "visual_analysis": visual_analysis_status(),
         "review": {
             "codex_cli_ok": bool(codex_path),
             "codex_cli_path": codex_path or "",
@@ -571,7 +601,7 @@ def parse_report_targets(payload: dict[str, Any]) -> list[str]:
 
 
 def build_cli_command(payload: dict[str, Any], *, report_target_override: str | None = None) -> list[str]:
-    """Build a WatchBrief CLI command from WebUI form payload."""
+    """Build a WatchBefore CLI command from WebUI form payload."""
     source_url = _clean_text(payload.get("source_url"))
     source_file = _clean_text(payload.get("source_file"))
     if bool(source_url) == bool(source_file):
@@ -593,12 +623,12 @@ def build_cli_command(payload: dict[str, Any], *, report_target_override: str | 
         raise ValueError("当前只支持本地 HTML renderer；其他 renderer 尚未接入")
 
     command = [python_executable(), str(CLI_PATH), "--analysis-mode", analysis_mode, "--report-target", report_target]
-    scoring_profile = _clean_text(payload.get("scoring_profile")) or "standard"
+    scoring_profile = _clean_text(payload.get("scoring_profile")) or DEFAULT_SCORING_PROFILE
     if scoring_profile not in SUPPORTED_SCORING_PROFILES:
-        raise ValueError("评分规则只支持 standard/information-first/evidence-first/originality-first/watch-value-first/custom")
+        raise ValueError("评分规则只支持 personal-interest/custom")
     scoring_weights = _clean_text(payload.get("scoring_weights"))
     if scoring_profile == "custom" and not scoring_weights:
-        raise ValueError("选择自定义评分时，必须在高级选项填写四项评分权重")
+        raise ValueError("选择自定义评分时，必须在高级选项填写三项评分权重")
     if source_file:
         command.extend(["--source-file", source_file])
     else:
@@ -615,7 +645,7 @@ def build_cli_command(payload: dict[str, Any], *, report_target_override: str | 
 
     provider = _review_provider(payload)
     extract_provider = _extract_provider(payload)
-    if scoring_profile != "standard" or scoring_weights:
+    if scoring_profile != DEFAULT_SCORING_PROFILE or scoring_weights:
         command.extend(["--scoring-profile", scoring_profile])
     if scoring_weights:
         command.extend(["--scoring-weights", scoring_weights])
@@ -718,6 +748,26 @@ def build_cli_command(payload: dict[str, Any], *, report_target_override: str | 
         command.extend(["--whisper-model", whisper_model])
     if _truthy(payload.get("allow_whisper_fallback")):
         command.append("--allow-whisper-fallback")
+    visual_mode = _clean_text(payload.get("visual_analysis_mode")) or ("on" if _truthy(payload.get("visual_analysis")) else "auto")
+    if visual_mode not in {"auto", "on", "off"}:
+        raise ValueError("画面理解模式只支持 auto/on/off")
+    if visual_mode == "on":
+        command.append("--visual-analysis")
+    elif visual_mode == "off":
+        command.append("--no-visual-analysis")
+    if visual_mode != "off":
+        mimo_vl_root = _clean_text(payload.get("mimo_vl_root"))
+        if mimo_vl_root:
+            command.extend(["--mimo-vl-root", mimo_vl_root])
+        visual_gap = _positive_float(
+            payload.get("visual_max_frame_gap_seconds"),
+            "visual_max_frame_gap_seconds",
+        )
+        if visual_gap:
+            command.extend(["--visual-max-frame-gap-seconds", visual_gap])
+        visual_timeout = _positive_int(payload.get("visual_timeout"), "visual_timeout")
+        if visual_timeout:
+            command.extend(["--visual-timeout", visual_timeout])
 
     if _truthy(payload.get("force_reanalysis")) or (payload.get("force_reanalysis") is None and bool(mode_defaults["force_reanalysis"])):
         command.append("--force-reanalysis")
@@ -912,7 +962,7 @@ def clear_tasks() -> dict[str, Any]:
 
 SMOKE_MATRIX_SCENARIOS = [
     ("youtube-single-subtitles", "YouTube 单视频 / 有字幕", "验证字幕优先、无需音频下载、能完成 HTML。"),
-    ("youtube-single-no-subtitles", "YouTube 单视频 / 无字幕", "验证 audio_downloader + MLX/Whisper 转写 + coverage gate。"),
+    ("youtube-single-no-subtitles", "YouTube 单视频 / 无字幕", "验证 audio_downloader + MiMo MLX 转写 + coverage gate。"),
     ("bilibili-single", "B 站单视频", "验证 Chrome→Safari 登录态、B 站字幕/音频 fallback。"),
     ("bilibili-list", "B 站列表", "验证列表展开、原始顺序、00-watch-order.html。"),
     ("xiaohongshu-single-video", "小红书单视频 note", "验证 /explore 标准化、敏感参数不进正式 HTML。"),
@@ -1102,6 +1152,7 @@ def service_status() -> dict[str, Any]:
         "codex": {"ok": bool(review.get("codex_cli_ok")), "label": "Codex CLI"},
         "local_model": local_model,
         "transcriber": capabilities["transcriber"],
+        "visual_analysis": capabilities.get("visual_analysis", {}),
         "review": review,
         "report": capabilities["report"],
         "paths": capabilities["paths"],
@@ -1120,6 +1171,7 @@ def environment_diagnostics(*, force: bool = True) -> dict[str, Any]:
     capabilities = local_capabilities(force=force)
     local_model = capabilities.get("local_model", {})
     transcriber = capabilities.get("transcriber", {})
+    visual_analysis = capabilities.get("visual_analysis", {})
     review = capabilities.get("review", {})
     report = capabilities.get("report", {})
     picker = capabilities.get("directory_picker", {})
@@ -1144,11 +1196,30 @@ def environment_diagnostics(*, force: bool = True) -> dict[str, Any]:
         checks.append(_diagnostic_item("模型来源", "fail", "没有检测到本地 Qwen、Codex CLI 或云模型环境变量。", "先配置其中一种：LM Studio Qwen、Codex CLI 登录态，或 Gemini/Claude/Kimi/OpenAI-compatible API key 环境变量。"))
 
     if transcriber.get("mlx_audio", {}).get("ok"):
-        checks.append(_diagnostic_item("字幕 / 转写", "ok", "MLX-Audio 可用；有字幕时会优先用字幕，无字幕时可转写。"))
+        checks.append(_diagnostic_item("字幕 / 转写", "ok", "MiMo MLX 可用；有字幕时会优先用字幕，无字幕时可转写。"))
     elif transcriber.get("whisper", {}).get("ok"):
-        checks.append(_diagnostic_item("字幕 / 转写", "warn", "未检测到 MLX-Audio，但 Whisper 可用；WebUI 会推荐 Whisper。"))
+        checks.append(_diagnostic_item("字幕 / 转写", "warn", "未检测到 MiMo MLX；即使检测到 Whisper，WebUI 也保持默认 MiMo 路径。", "请先配置 /Users/apple/Documents/MiMo-V2.5-ASR-MLX/.venv/bin/python；Whisper 只作为手动显式选项。"))
     else:
-        checks.append(_diagnostic_item("字幕 / 转写", "warn", "未检测到 MLX-Audio 或 Whisper；有平台字幕的视频仍可能完成。", "若经常处理无字幕视频，请安装 MLX-Audio 或 Whisper。"))
+        checks.append(_diagnostic_item("字幕 / 转写", "warn", "未检测到 MiMo MLX；有平台字幕的视频仍可能完成。", "若经常处理无字幕视频，请配置本机 MiMo runtime。"))
+
+    if visual_analysis.get("ok"):
+        checks.append(
+            _diagnostic_item(
+                "MiMo 画面理解",
+                "ok",
+                "MiMo-VL 已就绪；自动模式会按每条视频的转写内容决定是否开启画面证据。",
+            )
+        )
+    else:
+        errors = "；".join(str(item) for item in visual_analysis.get("errors") or [])
+        checks.append(
+            _diagnostic_item(
+                "MiMo 画面理解",
+                "warn",
+                "MiMo-VL 未就绪；默认纯转写流程不受影响。",
+                errors or "请检查 /Users/apple/Documents/MiMo-VL-7B-RL-2508。",
+            )
+        )
 
     if review.get("codex_cli_ok"):
         codex_detail = "已检测到 codex 命令：" + str(review.get("codex_cli_path") or "")
@@ -1234,13 +1305,13 @@ def render_index_html() -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WatchBrief WebUI</title>
+  <title>WatchBefore WebUI</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">WB</span><div><strong>WatchBrief</strong><small>local report UI</small></div></div>
+      <div class="brand"><span class="brand-mark">WB</span><div><strong>WatchBefore</strong><small>local report UI</small></div></div>
       <nav>
         <button class="nav-item active" data-view="welcome"><span>01</span>欢迎说明</button>
         <button class="nav-item" data-view="run"><span>02</span>新建任务</button>
@@ -1262,17 +1333,17 @@ def render_index_html() -> str:
           <button class="primary" type="button" data-jump="run">开始新任务</button>
         </header>
         <div class="welcome-grid">
-          <div class="welcome-card"><span>1</span><strong>先登录浏览器</strong><p>打开 Chrome，登录 YouTube、Bilibili 或小红书。WatchBrief 只在你的电脑借用登录状态，不会把密码或 cookie 写进报告。</p></div>
+          <div class="welcome-card"><span>1</span><strong>先登录浏览器</strong><p>打开 Chrome，登录 YouTube、Bilibili 或小红书。WatchBefore 只在你的电脑借用登录状态，不会把密码或 cookie 写进报告。</p></div>
           <div class="welcome-card"><span>2</span><strong>粘贴链接</strong><p>在“新建任务”里粘贴单视频、播放列表或收藏页链接。不会用你的账号乱跑别的页面。</p></div>
           <div class="welcome-card"><span>3</span><strong>点开始运行</strong><p>默认生成桌面 HTML。选 PDF 时，会在 HTML 旁边再生成一个同名 PDF。</p></div>
         </div>
         <div class="starter-panel">
           <div class="step-title"><span>清单</span><strong>完全不懂代码也照着做</strong></div>
           <div class="kid-checklist">
-            <div><b>第一步</b><strong>浏览器先登录</strong><p>你平时在哪个平台看视频，就先在 Chrome 里登录那个平台。WatchBrief 不保存你的密码，不展示 cookie。</p></div>
+            <div><b>第一步</b><strong>浏览器先登录</strong><p>你平时在哪个平台看视频，就先在 Chrome 里登录那个平台。WatchBefore 不保存你的密码，不展示 cookie。</p></div>
             <div><b>第二步</b><strong>选内容理解模型</strong><p>它先读懂字幕/转写，整理核心观点、方法、例子和关键专名；不生成 HTML。</p></div>
             <div><b>第三步</b><strong>选观看判断模型</strong><p>它判断视频整体价值、报告能否辅助替代、如果要看应该看哪一段。</p></div>
-            <div><b>第四步</b><strong>选一个“耳朵”</strong><p>视频没字幕时才需要转写。检测到 MLX-Audio 就用 MLX-Audio；没有它但有 Whisper，就推荐 Whisper。</p></div>
+            <div><b>第四步</b><strong>选一个“耳朵”</strong><p>视频没字幕时才需要转写。默认只走本机 MiMo MLX；没检测到 MiMo 时会提示配置，不自动改用 Whisper。</p></div>
             <div><b>第五步</b><strong>选放哪里和格式</strong><p>不懂就留空。HTML 最稳；PDF 会从 HTML 再打印生成。单视频默认放桌面，列表默认放桌面文件夹。</p></div>
             <div><b>第六步</b><strong>不要填 token</strong><p>这个页面只填环境变量名字，比如 GEMINI_API_KEY，不粘贴 token 内容。你的密钥留在本机环境变量里。</p></div>
           </div>
@@ -1322,15 +1393,11 @@ def render_index_html() -> str:
             </div>
           </details>
           <details class="starter-panel compact scoring-panel advanced-block collapsed-choice-block">
-            <summary><span>04</span><strong>我的评分规则</strong><small>默认均衡，不懂就不用展开</small></summary>
-            <p class="plain-help">这里决定“视频整体价值评分”的算法权重。默认不用动；如果你更在意某种视频价值，可以改成自己的判定。</p>
+            <summary><span>04</span><strong>内容评分规则</strong><small>默认使用新公式</small></summary>
+            <p class="plain-help">这里决定报告分数怎样计算。默认公式是信息密度 35%、论据质量 35%、话题兴趣 30%。</p>
             <div class="mode-grid scoring-grid">
-              <label class="mode-card selected"><input type="radio" name="scoring_profile" value="standard" checked /><strong>默认均衡</strong><p>信息密度 20% / 论据质量 30% / 独创性 20% / 观看性价比 30%。</p></label>
-              <label class="mode-card"><input type="radio" name="scoring_profile" value="information-first" /><strong>更看重信息量</strong><p>适合知识教程：信息密度权重提高到 40%。</p></label>
-              <label class="mode-card"><input type="radio" name="scoring_profile" value="evidence-first" /><strong>更看重证据</strong><p>适合观点/科普：论据质量权重提高到 45%。</p></label>
-              <label class="mode-card"><input type="radio" name="scoring_profile" value="originality-first" /><strong>更看重新鲜感</strong><p>适合访谈/创意内容：独创性权重提高到 40%。</p></label>
-              <label class="mode-card"><input type="radio" name="scoring_profile" value="watch-value-first" /><strong>更看重原片体验</strong><p>适合演讲/纪录片：表达/观看体验权重提高到 50%。</p></label>
-              <label class="mode-card"><input type="radio" name="scoring_profile" value="custom" /><strong>自定义权重</strong><p>在高级选项里填写四项权重；系统会归一化后确定最终分。</p></label>
+              <label class="mode-card selected"><input type="radio" name="scoring_profile" value="personal-interest" checked /><strong>默认评分</strong><p>信息密度 35% / 论据质量 35% / 话题兴趣 30%。</p></label>
+              <label class="mode-card"><input type="radio" name="scoring_profile" value="custom" /><strong>自定义权重</strong><p>在高级选项里填写三项权重；系统会归一化后确定最终分。</p></label>
             </div>
           </details>
           <details class="starter-panel compact advanced-block">
@@ -1338,7 +1405,7 @@ def render_index_html() -> str:
             <div class="grid two">
               <label class="field">运行模式<select name="diagnostic_run"><option value="">正式任务</option><option value="true">诊断 / 复现</option></select></label>
               <label class="field">任务超时<select name="timeout">{_option("600", "600 秒")}{_option("900", "900 秒", selected=True)}{_option("1200", "1200 秒")}</select></label>
-              <label class="field span-two">自定义评分权重<input name="scoring_weights" placeholder="custom 时填写：information_density=0.2,evidence_quality=0.3,originality=0.2,watch_value=0.3" /></label>
+              <label class="field span-two">自定义评分权重<input name="scoring_weights" placeholder="custom 时填写：information_density=0.35,evidence_quality=0.35,topic_interest=0.3" /></label>
             </div>
             <div class="switch-grid">
               <label><input type="checkbox" name="force_reanalysis" value="true" /> 强制重新分析</label>
@@ -1361,9 +1428,10 @@ def render_index_html() -> str:
           <div class="capability-grid">
             <div class="cap-card"><strong>本地模型</strong><span id="modelHint">检测中</span></div>
             <div class="cap-card"><strong>转写工具</strong><span id="transcriberHint">检测中</span></div>
+            <div class="cap-card"><strong>画面理解</strong><span id="visualHint">检测中</span></div>
             <div class="cap-card"><strong>观看判断</strong><span id="reviewHint">检测中</span></div>
           </div>
-          <div class="notice explain-block"><strong>WatchBrief 不让模型直接写 HTML。</strong><br />内容理解模型先读字幕/转写，整理核心观点、方法、例子、限制和关键专名；观看判断模型再决定视频整体价值、报告能否辅助替代、建议看哪一段；最后由固定 HTML 模板生成报告。没有本地大模型时，可切到 Gemini、Claude、Kimi 或 OpenAI-compatible。</div>
+          <div class="notice explain-block"><strong>WatchBefore 不让模型直接写 HTML。</strong><br />内容理解模型先读字幕/转写，整理核心观点、方法、例子、限制和关键专名；观看判断模型再决定视频整体价值、报告能否辅助替代、建议看哪一段；最后由固定 HTML 模板生成报告。没有本地大模型时，可切到 Gemini、Claude、Kimi 或 OpenAI-compatible。</div>
           <div class="notice explain-block"><strong>小红书专辑会完整保留内容结构：</strong><br />1. 保留专辑标题和原始顺序；2. 每条 note 至少保留 note_id、标准 note_url、标题、作者和类型；3. 视频 note 进入单视频报告；4. 图文 note 标记为图文跳过，不算失败；5. raw metadata 只进 debug/manifest，不进正式 HTML。</div>
           <div class="grid two">
             <label class="field">内容理解模型<select name="extract_provider">
@@ -1386,11 +1454,18 @@ def render_index_html() -> str:
               <label class="field">内容理解 API endpoint<input name="extract_api_base" data-profiled="extract_api_base" placeholder="本地通用模型可留空，默认用 127.0.0.1:1234/v1" /></label>
               <label class="field span-two">内容理解 API key 环境变量<input name="extract_api_key_env" data-profiled="extract_api_key_env" placeholder="只填变量名，例如 GEMINI_API_KEY；不要填 token" /></label>
             </div>
-            <label class="field">转写器<select name="transcriber">{_option("recommended", "推荐：读取本机后自动选择", selected=True)}{_option("auto", "auto：MLX-Audio")}{_option("mlx_audio", "MLX-Audio")}{_option("whisper", "Whisper")}</select></label>
-            <label class="field">MLX-Audio 模型<input name="mlx_model" placeholder="默认 mlx-community/whisper-large-v3-turbo" /></label>
+            <label class="field">转写器<select name="transcriber">{_option("recommended", "推荐：使用本机 MiMo MLX", selected=True)}{_option("auto", "auto：MiMo MLX")}{_option("mlx_audio", "MiMo MLX")}{_option("whisper", "Whisper（手动）")}</select></label>
+            <label class="field">MiMo MLX 模型<input name="mlx_model" placeholder="默认 /Users/apple/Documents/MiMo-V2.5-ASR-MLX/models/MiMo-V2.5-ASR-MLX" /></label>
             <label class="field">Whisper 模型<input name="whisper_model" placeholder="base" /></label>
           </div>
-          <label class="inline-check"><input type="checkbox" name="allow_whisper_fallback" value="true" /> 允许 MLX-Audio 不可用时回退 Whisper</label>
+          <label class="inline-check"><input type="checkbox" name="allow_whisper_fallback" value="true" /> 手动允许 MiMo MLX 不可用时回退 Whisper</label>
+          <div class="notice explain-block"><strong>MiMo-VL 画面证据</strong><br />默认逐条自动判断：转写中有多处明确的画面依赖线索，且视频不超过 30 分钟时启用。也可以强制开启或关闭。只有直接可见的事实进入内容理解；启用后若视觉分析失败，该条会报错。</div>
+          <div class="grid two">
+            <label class="field span-two">画面理解模式<select name="visual_analysis_mode">{_option("auto", "自动判断，逐条启用", selected=True)}{_option("on", "强制开启，分析每条视频")}{_option("off", "关闭画面分析")}</select></label>
+            <label class="field">MiMo-VL 根目录<input name="mimo_vl_root" placeholder="默认 /Users/apple/Documents/MiMo-VL-7B-RL-2508" /></label>
+            <label class="field">最大抽帧间隔（秒）<input name="visual_max_frame_gap_seconds" value="10" /></label>
+            <label class="field">单批视觉超时（秒）<input name="visual_timeout" placeholder="默认跟随任务超时" /></label>
+          </div>
           <div class="grid two">
             <label class="field">观看判断模型<select name="review_provider">
               {_option("codex-cli", "Codex CLI 判断，推荐正式报告", selected=True)}
@@ -1426,10 +1501,10 @@ def render_index_html() -> str:
             <button class="settings-tab active" type="button" data-settings-view="output">输出与登录态</button>
           </div>
           <div class="grid two">
-            <label class="field">输出方式<select name="output_mode">{_option("default", "正式默认：单视频桌面 HTML / 列表桌面文件夹", selected=True)}{_option("custom", "自定义最终目录")}{_option("diagnostic", "诊断临时目录")}</select></label>
+            <label class="field">输出方式<select name="output_mode">{_option("default", "正式默认：单视频桌面 HTML / 列表桌面文件夹", selected=True)}{_option("custom", "自定义输出父目录")}{_option("diagnostic", "诊断临时目录")}</select></label>
             <label class="field">输出目录
               <span class="path-picker">
-                <input name="output_dir" placeholder="自定义时填写最终目录；正式默认可留空" />
+                <input name="output_dir" placeholder="自定义时填写输出父目录；正式默认可留空" />
                 <button type="button" id="chooseOutputDir">选择文件夹</button>
               </span>
             </label>
@@ -2457,7 +2532,7 @@ function applyScoringProfile(profile) {
     input.closest('.mode-card')?.classList.toggle('selected', input.value === profile);
   });
   if (profile === 'custom') {
-    toast('已切到自定义评分：请在高级选项里填写四项权重。');
+    toast('已切到自定义评分：请在高级选项里填写三项权重。');
   } else {
     toast('已切换评分规则：' + profile);
   }
@@ -2644,6 +2719,7 @@ function updatePreflight(status = LAST_STATUS || {}) {
   const localModel = status.local_model || {};
   const review = status.review || {};
   const transcriber = status.transcriber || {};
+  const visual = status.visual_analysis || {};
   const apiKeys = review.api_key_envs || {};
   const cloudReady = ['gemini', 'claude', 'kimi', 'openai_compatible'].filter((key) => apiKeys[key]?.configured).map((key) => apiKeys[key].env);
   if (localModel.qwen_ok) {
@@ -2739,7 +2815,7 @@ function taskActions(task) {
 function taskRow(task) {
   const status = task.status || 'unknown';
   const cls = status === 'failed' ? 'failed' : (status === 'running' ? 'running' : '');
-  const source = escapeHtml(task.source || task.title || 'WatchBrief task');
+  const source = escapeHtml(task.source || task.title || 'WatchBefore task');
   const time = new Date((task.created_at || Date.now() / 1000) * 1000).toLocaleString();
   const pdfs = Array.isArray(task.pdf_paths) && task.pdf_paths.length
     ? `<br><small>PDF：${task.pdf_paths.map(escapeHtml).join('；')}</small>`
@@ -2851,6 +2927,7 @@ async function loadStatus() {
     LAST_STATUS = status;
     const localModel = status.local_model || {};
     const transcriber = status.transcriber || {};
+    const visual = status.visual_analysis || {};
     const review = status.review || {};
     const apiKeys = review.api_key_envs || {};
     const paths = status.paths || {};
@@ -2863,9 +2940,12 @@ async function loadStatus() {
       ? `本地模式可用；Codex CLI 可选：${review.codex_cli_path}${cloudReady.length ? '；已配置：' + cloudReady.join(', ') : ''}`
       : `本地模式可用；${cloudReady.length ? '已配置：' + cloudReady.join(', ') : '未检测到云模型环境变量'}`;
     const codexLabel = review.codex_cli_ok ? (review.codex_cli_warning ? '需升级' : '可用') : '未检测到';
-    $('#systemStatus').textContent = `模型 ${(localModel.qwen_ok || localModel.ok || cloudReady.length) ? '可配置' : '未就绪'} · 转写 ${transcriber.recommended || 'auto'} · Codex ${codexLabel}`;
+    $('#systemStatus').textContent = `模型 ${(localModel.qwen_ok || localModel.ok || cloudReady.length) ? '可配置' : '未就绪'} · 转写 ${transcriber.recommended || 'auto'} · 画面 ${visual.ok ? '可用' : '未启用'} · Codex ${codexLabel}`;
     $('#modelHint').textContent = modelText;
     $('#transcriberHint').textContent = transcriberText;
+    $('#visualHint').textContent = visual.ok
+      ? `MiMo-VL ${visual.mlx_vlm_version || ''} 可用，默认逐条自动判断`
+      : `自动模式可能受阻；${(visual.errors || []).join('；') || '未检测到 MiMo-VL'}`;
     $('#reviewHint').textContent = reviewText;
     $('#summaryExtract').textContent = localModel.qwen_ok ? '本地 Qwen 可用；云模型可切换' : (localModel.ok ? '本地通用模型可选；云模型可切换' : '可配置 Gemini / Claude / Kimi / OpenAI-compatible');
     $('#summaryReview').textContent = review.codex_cli_ok ? '本地规则；Codex / 云模型可切换' : '本地规则；可配置云模型环境变量';
@@ -2990,7 +3070,7 @@ $('#taskForm').addEventListener('submit', async (event) => {
 
 applyAnalysisMode(document.querySelector('[name="analysis_mode"]:checked')?.value || 'standard');
 applyReportTargets();
-applyScoringProfile(document.querySelector('[name="scoring_profile"]:checked')?.value || 'standard');
+applyScoringProfile(document.querySelector('[name="scoring_profile"]:checked')?.value || 'personal-interest');
 applyEngineProfiles();
 updateOutputChoiceLabel();
 loadStatus();
@@ -3001,8 +3081,8 @@ setInterval(loadTasks, 5000);
 """
 
 
-class WatchBriefWebHandler(BaseHTTPRequestHandler):
-    server_version = "WatchBriefWebUI/1.0"
+class WatchBeforeWebHandler(BaseHTTPRequestHandler):
+    server_version = "WatchBeforeWebUI/1.0"
 
     def log_message(self, fmt: str, *args: Any) -> None:
         sys.stderr.write("[webui] " + fmt % args + "\n")
@@ -3118,7 +3198,7 @@ def summarize_task_failure(log_path: Path, exit_code: int) -> str:
     log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
     lowered = log_text.lower()
     if "transcriber_unavailable" in lowered or "mlx-audio" in lowered and "unavailable" in lowered:
-        return "转写工具不可用：请安装/配置 MLX-Audio，或在设置里选择 Whisper 并勾选允许回退。"
+        return "转写工具不可用：请配置本机 MiMo MLX runtime；Whisper 只作为高级设置里的手动显式选项。"
     if "local_qwen_timeout" in lowered or "qwen request timed out" in lowered:
         return "本地 Qwen 超时：请确认 LM Studio 模型已加载，或切到 Deep/增大 timeout 后重试。"
     if "connection refused" in lowered or "127.0.0.1:1234" in lowered and "refused" in lowered:
@@ -3126,7 +3206,7 @@ def summarize_task_failure(log_path: Path, exit_code: int) -> str:
     if "login_required" in lowered or "cookies" in lowered and "0 cookies" in lowered:
         return "平台登录态不可用：请先在浏览器登录目标平台，或在设置里切换 Chrome/Safari 登录态。"
     if "transcript_coverage_too_low" in lowered:
-        return "字幕/转写覆盖率太低：WatchBrief 已停止生成正式报告，避免产出不完整结论。"
+        return "字幕/转写覆盖率太低：WatchBefore 已停止生成正式报告，避免产出不完整结论。"
     tail = "\n".join(log_text.strip().splitlines()[-3:]).strip()
     return f"任务失败，退出码 {exit_code}。" + (f" 最近日志：{tail[:240]}" if tail else " 请打开日志查看原因。")
 
@@ -3236,13 +3316,13 @@ def start_task(payload: dict[str, Any], command: list[str]) -> dict[str, Any]:
 
 
 def run_server(host: str, port: int) -> None:
-    server = ThreadingHTTPServer((host, port), WatchBriefWebHandler)
-    print(f"WatchBrief WebUI: http://{host}:{port}")
+    server = ThreadingHTTPServer((host, port), WatchBeforeWebHandler)
+    print(f"WatchBefore WebUI: http://{host}:{port}")
     server.serve_forever()
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run WatchBrief V5 local WebUI")
+    parser = argparse.ArgumentParser(description="Run WatchBefore local WebUI")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     return parser.parse_args()

@@ -25,6 +25,7 @@ try:
         BILIBILI_METADATA_NOT_FOUND,
         BILIBILI_PLAYINFO_UNAVAILABLE,
         BilibiliResolverError,
+        BilibiliSubtitleError,
         PlatformRestrictionError,
         ResolverError,
         XIAOHONGSHU_BOARD_EMPTY,
@@ -57,6 +58,7 @@ except ImportError:  # pragma: no cover
         BILIBILI_METADATA_NOT_FOUND,
         BILIBILI_PLAYINFO_UNAVAILABLE,
         BilibiliResolverError,
+        BilibiliSubtitleError,
         PlatformRestrictionError,
         ResolverError,
         XIAOHONGSHU_BOARD_EMPTY,
@@ -181,6 +183,24 @@ def xiaohongshu_board_id_from_url(url: str) -> str:
 
 def is_xiaohongshu_board_url(url: str) -> bool:
     return bool(is_xiaohongshu_url(url) and xiaohongshu_board_id_from_url(url))
+
+
+def xiaohongshu_note_id_from_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(str(url or ""))
+    if not XIAOHONGSHU_HOST_RE.search(parsed.netloc.lower()):
+        return ""
+    parts = [urllib.parse.unquote(part) for part in parsed.path.split("/") if part]
+    for marker in ("explore", "discovery", "item"):
+        if marker not in parts:
+            continue
+        index = parts.index(marker)
+        if marker == "discovery":
+            if index + 2 < len(parts) and parts[index + 1] == "item":
+                return parts[index + 2].strip()
+            continue
+        if index + 1 < len(parts):
+            return parts[index + 1].strip()
+    return ""
 
 
 def is_netease_music_url(url: str) -> bool:
@@ -338,12 +358,10 @@ def sanitize_xiaohongshu_url_for_output(url: str) -> str:
     if not text:
         return ""
     parsed = urllib.parse.urlparse(text)
-    if XIAOHONGSHU_HOST_RE.search(parsed.netloc.lower()) and "/explore/" in parsed.path:
-        path_parts = [part for part in parsed.path.split("/") if part]
-        if "explore" in path_parts:
-            index = path_parts.index("explore")
-            if index + 1 < len(path_parts):
-                return xiaohongshu_canonical_note_url(path_parts[index + 1])
+    if XIAOHONGSHU_HOST_RE.search(parsed.netloc.lower()):
+        note_id = xiaohongshu_note_id_from_url(text)
+        if note_id:
+            return xiaohongshu_canonical_note_url(note_id)
     query = urllib.parse.parse_qs(parsed.query)
     if query and any(key in XIAOHONGSHU_SENSITIVE_QUERY_KEYS for key in query):
         return urllib.parse.urlunparse(parsed._replace(query="[redacted]"))
@@ -800,23 +818,36 @@ end run
 def refresh_xiaohongshu_media_url_from_browser(
     note_url: str,
     *,
-    browser: str = "safari",
+    browser: str = "",
     timeout: int = 30,
     runner: Any = subprocess.run,
 ) -> dict[str, Any]:
-    """Open/refresh a Xiaohongshu note page and return an in-memory media URL.
+    """Read a Xiaohongshu note's in-memory media URL from an explicit browser.
 
     The signed media URL is returned to the caller for immediate download, but
     debug fields intentionally contain only booleans/counts/types so manifests
-    and HTML do not persist tokenized URLs.
+    and HTML do not persist tokenized URLs. Arc only reads a matching existing
+    tab; it never creates, activates, reloads, or navigates a tab.
     """
-    requested_browser = str(browser or "safari").strip().lower()
+    requested_browser = str(browser or "").strip().lower()
     if requested_browser in {"google chrome", "chrome"}:
         browser_name = "chrome"
         provider = "chrome-performance"
-    else:
+    elif requested_browser == "arc":
+        browser_name = "arc"
+        provider = "arc-performance"
+    elif requested_browser == "safari":
         browser_name = "safari"
         provider = "safari-performance"
+    else:
+        return {
+            "media_url": "",
+            "provider": "",
+            "browser": requested_browser,
+            "media_url_available": False,
+            "reason_code": "unsupported_media_refresh_browser",
+            "error": "media refresh browser must be arc, chrome, or safari",
+        }
     js = r"""
 (function(){
   function isMedia(u){return /^https?:/i.test(String(u||'')) && /(sns-video|\.mp4|\.m3u8)/i.test(String(u||''));}
@@ -838,10 +869,27 @@ def refresh_xiaohongshu_media_url_from_browser(
     script = r'''
 on run argv
     set targetBrowser to item 1 of argv
-    set targetUrlFile to item 2 of argv
+    set targetReference to item 2 of argv
     set jsSource to item 3 of argv
-    set targetUrl to read POSIX file targetUrlFile as «class utf8»
-    if targetBrowser is "chrome" then
+    if targetBrowser is "arc" then
+        set targetNoteId to targetReference
+        if targetNoteId is "" then return "{\"media_url\":\"\",\"provider\":\"arc-performance\",\"browser\":\"arc\",\"media_url_available\":false,\"reason_code\":\"arc_note_id_unavailable\"}"
+        if application id "company.thebrowser.Browser" is not running then return "{\"media_url\":\"\",\"provider\":\"arc-performance\",\"browser\":\"arc\",\"media_url_available\":false,\"reason_code\":\"arc_not_running\"}"
+        tell application id "company.thebrowser.Browser"
+            repeat with wi from 1 to count of windows
+                repeat with ti from 1 to count of tabs of window wi
+                    try
+                        set tabRef to a reference to tab ti of window wi
+                        set tabUrl to URL of tabRef
+                        if (tabUrl contains ("/explore/" & targetNoteId)) or (tabUrl contains ("/discovery/item/" & targetNoteId)) then return execute tabRef javascript jsSource
+                    end try
+                end repeat
+            end repeat
+        end tell
+        return "{\"media_url\":\"\",\"provider\":\"arc-performance\",\"browser\":\"arc\",\"media_url_available\":false,\"reason_code\":\"arc_target_tab_unavailable\"}"
+    else
+        set targetUrl to read POSIX file targetReference as «class utf8»
+        if targetBrowser is "chrome" then
         tell application "Google Chrome"
             if (count of windows) = 0 then make new window
             set targetTab to missing value
@@ -862,7 +910,7 @@ on run argv
             delay 8
             return execute javascript jsSource in targetTab
         end tell
-    else
+        else
         tell application "Safari"
             activate
             if (count of windows) = 0 then make new document
@@ -871,15 +919,24 @@ on run argv
             delay 8
             return do JavaScript jsSource in targetTab
         end tell
+        end if
     end if
 end run
 '''
     temp_url_path = ""
+    target_reference = xiaohongshu_note_id_from_url(note_url) if browser_name == "arc" else ""
     try:
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", prefix="watchbrief_xhs_note_url_", delete=False) as handle:
-            handle.write(str(note_url or ""))
-            temp_url_path = handle.name
-        result = runner(["osascript", "-e", script, browser_name, temp_url_path, js], capture_output=True, text=True, timeout=min(timeout, 45))
+        if browser_name != "arc":
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", prefix="watchbrief_xhs_note_url_", delete=False) as handle:
+                handle.write(str(note_url or ""))
+                temp_url_path = handle.name
+            target_reference = temp_url_path
+        result = runner(
+            ["osascript", "-e", script, browser_name, target_reference, js],
+            capture_output=True,
+            text=True,
+            timeout=min(timeout, 45),
+        )
     except Exception as exc:
         if temp_url_path:
             try:
@@ -903,6 +960,8 @@ end run
         }
     try:
         payload = json.loads(str(result.stdout or "").strip())
+        if isinstance(payload, str):
+            payload = json.loads(payload)
     except json.JSONDecodeError:
         return {"media_url": "", "provider": provider, "browser": browser_name, "media_url_available": False, "reason_code": "media_url_refresh_invalid_json"}
     if not isinstance(payload, dict):
@@ -1707,50 +1766,61 @@ def bilibili_owner_from_video_data(video_data: dict[str, Any], initial_state: di
     return "未知"
 
 
+def selected_bilibili_page(video_data: dict[str, Any], url: str) -> dict[str, Any]:
+    try:
+        from .bilibili_content_provider import choose_page
+    except ImportError:
+        from bilibili_content_provider import choose_page
+    try:
+        page = choose_page(video_data, url)
+    except BilibiliSubtitleError as exc:
+        raise BilibiliResolverError(exc.reason_code, exc.message, ["bilibili-page-selection", url]) from exc
+    return {"page": page.page, "cid": page.cid, "part": page.title, "duration": page.duration}
+
+
 def build_bilibili_resolution_from_metadata(
     url: str,
     video_data: dict[str, Any],
     initial_state: dict[str, Any],
     debug: dict[str, Any],
+    *,
+    allow_playlist_expansion: bool = False,
 ) -> dict[str, Any]:
     bvid = str(video_data.get("bvid") or bilibili_bvid_from_url(url)).strip()
-    cid = bilibili_cid_from_video_data(video_data)
     if not bvid:
         raise BilibiliResolverError(BILIBILI_METADATA_NOT_FOUND, "Bilibili bvid was not found", ["bilibili-metadata-fallback", url], debug=debug)
-    if not cid:
-        raise BilibiliResolverError(BILIBILI_CID_NOT_FOUND, "Bilibili cid was not found", ["bilibili-metadata-fallback", url], debug=debug)
-
     title = str(video_data.get("title") or "Untitled Video")
-    duration = str(video_data.get("duration") or "")
     channel = bilibili_owner_from_video_data(video_data, initial_state)
     publish_metadata = publish_metadata_from_entry(video_data)
-    item = {
-        "title": title,
-        "url": url,
-        "id": bvid,
-        "bvid": bvid,
-        "cid": cid,
-        "duration": duration,
-        "channel": channel,
-        "resolver_debug": debug,
-    }
-    item.update(publish_metadata)
-    root_metadata = {
-        "duration": duration,
-        "channel": channel,
-        **publish_metadata,
-    }
+    pages = [p for p in video_data.get("pages", []) if isinstance(p, dict) and p.get("cid")]
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    page_count = max(len(pages), int(video_data.get("videos") or 0))
+    explicit_part = any(k in query for k in ("p", "page", "cid"))
+    if allow_playlist_expansion and not explicit_part and page_count > len(pages):
+        raise BilibiliResolverError(BILIBILI_LIST_EXPANSION_FAILED, "Multipart metadata is incomplete; refusing to omit episodes", ["bilibili-metadata-fallback", url], debug=debug)
+    expand = allow_playlist_expansion and len(pages) > 1 and not explicit_part
+    selected = pages if expand else [selected_bilibili_page(video_data, url)]
+    videos = []
+    for index, page in enumerate(selected, 1):
+        number = int(page.get("page") or index)
+        item_url = f"https://www.bilibili.com/video/{bvid}?p={number}" if len(pages) > 1 or any(k in query for k in ("p", "page", "cid")) else url
+        videos.append({
+            "title": str(page.get("part") or title) if len(pages) > 1 else title,
+            "series_title": title,
+            "url": item_url, "id": bvid, "bvid": bvid,
+            "cid": str(page["cid"]), "page_index": number, "page_count": page_count or 1,
+            "duration": int(page.get("duration") or (video_data.get("duration") if page_count <= 1 else 0) or 0),
+            "channel": channel, "resolver_debug": debug, **publish_metadata,
+        })
     return {
         "resolution_version": "watchbrief_v5.resolution.v1",
-        "source_kind": "single",
-        "url": url,
-        "title": title,
-        "id": bvid,
-        "bvid": bvid,
-        "cid": cid,
-        **root_metadata,
-        "videos": [item],
-        "resolver_debug": debug,
+        "source_kind": "list" if expand else "single",
+        "source_subkind": "bilibili_multipart" if len(pages) > 1 else "",
+        "url": url if expand else videos[0]["url"], "title": title if expand else videos[0]["title"], "id": bvid, "bvid": bvid,
+        "duration": str(video_data.get("duration") or "") if expand else str(videos[0]["duration"]),
+        "channel": channel, **publish_metadata,
+        **({} if expand else {"cid": videos[0]["cid"]}),
+        "video_count": len(videos), "videos": videos, "resolver_debug": debug,
     }
 
 
@@ -1763,6 +1833,7 @@ def resolve_bilibili_with_page_fallback(
     last_reason_code: str,
     urlopen_func: Any,
     timeout: int,
+    allow_playlist_expansion: bool = True,
 ) -> dict[str, Any]:
     debug = {
         "resolver_method": "bilibili_metadata_fallback",
@@ -1806,7 +1877,7 @@ def resolve_bilibili_with_page_fallback(
         debug["fallback_method"] = "bilibili_view_api"
         debug["fallback_success"] = True
         debug["reason_code"] = ""
-        return build_bilibili_resolution_from_metadata(url, video_data, {}, debug)
+        return build_bilibili_resolution_from_metadata(url, video_data, {}, debug, allow_playlist_expansion=allow_playlist_expansion)
 
     if isinstance(initial_state, dict):
         video_data = video_data_from_initial_state(initial_state)
@@ -1835,7 +1906,7 @@ def resolve_bilibili_with_page_fallback(
 
     debug["fallback_success"] = True
     debug["reason_code"] = ""
-    return build_bilibili_resolution_from_metadata(url, video_data, initial_state, debug)
+    return build_bilibili_resolution_from_metadata(url, video_data, initial_state, debug, allow_playlist_expansion=allow_playlist_expansion)
 
 
 def canonical_entry_url(entry: dict[str, Any]) -> str:
@@ -1856,6 +1927,8 @@ def normalize_video_entry(entry: dict[str, Any], index: int) -> dict[str, Any]:
     url = canonical_entry_url(entry)
     if not url:
         raise ResolverError(f"resolved list entry {index} does not contain a usable URL")
+    if is_xiaohongshu_url(url):
+        url = sanitize_xiaohongshu_url_for_output(url)
     normalized = {
         "title": str(entry.get("title") or f"Video {index + 1}"),
         "url": url,
@@ -1912,24 +1985,34 @@ def enrich_bilibili_multipart_videos(
     pages = video_data.get("pages") if isinstance(video_data, dict) else None
     if not isinstance(pages, list) or not pages:
         return videos
-    page_by_index = {idx: page for idx, page in enumerate(pages, 1) if isinstance(page, dict)}
     owner = video_data.get("owner") if isinstance(video_data.get("owner"), dict) else {}
     channel = str(owner.get("name") or "")
     publish_metadata = publish_metadata_from_entry(video_data)
     enriched: list[dict[str, Any]] = []
     for fallback_index, video in enumerate(videos, 1):
         current = dict(video)
-        page_index = bilibili_page_number_from_url(str(current.get("url") or ""), fallback_index)
-        page = page_by_index.get(page_index, {})
+        candidate_bvid = bilibili_bvid_from_url(str(current.get("url") or ""))
+        if candidate_bvid and candidate_bvid != bvid:
+            enriched.append(current)
+            continue
+        selection_url = str(current.get("url") or source_url)
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(selection_url).query)
+        if not any(key in query for key in ("p", "page", "cid")):
+            selection_url = f"https://www.bilibili.com/video/{bvid}?p={fallback_index}"
+        page = selected_bilibili_page(video_data, selection_url)
+        page_index = int(page["page"])
+        if len(pages) > 1 or any(key in query for key in ("p", "page", "cid")):
+            current["url"] = f"https://www.bilibili.com/video/{bvid}?p={page_index}"
         if page:
             part = str(page.get("part") or "").strip()
-            if part and (not current.get("title") or str(current.get("title")).startswith("Video ")):
+            if part and (len(pages) > 1 or not current.get("title") or str(current.get("title")).startswith("Video ")):
                 current["title"] = part
             if page.get("duration") not in (None, "", 0):
                 current["duration"] = page.get("duration")
             if page.get("cid") not in (None, ""):
                 current["cid"] = str(page.get("cid"))
             current["page_index"] = page_index
+            current["page_count"] = len(pages)
         current.setdefault("bvid", bvid)
         if channel and not current.get("channel"):
             current["channel"] = channel
@@ -2265,6 +2348,7 @@ def resolve_url(
                         last_reason_code=last_reason_code,
                         urlopen_func=urlopen_func,
                         timeout=timeout,
+                        allow_playlist_expansion=allow_playlist_expansion,
                     )
                 except BilibiliResolverError:
                     raise
@@ -2305,6 +2389,15 @@ def resolve_url(
         )
 
     entries = payload.get("entries")
+    selectors = urllib.parse.parse_qs(urllib.parse.urlparse(source_url).query)
+    if is_bilibili_url(source_url) and isinstance(entries, list) and entries and any(key in selectors for key in ("p", "page", "cid")):
+        # Some extractors ignore aliases such as page= or cid= and return every P.
+        view_data = fetch_bilibili_view_metadata(bilibili_bvid_from_url(source_url),
+            headers=request_headers(source_url, source_cookie_header(selected_source, cookie_file, cookie_header)),
+            urlopen_func=urlopen_func, timeout=min(timeout, 120))
+        if not view_data:
+            raise BilibiliResolverError(BILIBILI_METADATA_NOT_FOUND, "Cannot verify the requested Bilibili episode", last_command)
+        return build_bilibili_resolution_from_metadata(source_url, view_data, {}, payload.get("_resolver_debug", {}), allow_playlist_expansion=False)
     if allow_playlist_expansion and isinstance(entries, list) and entries:
         videos = [normalize_video_entry(entry, index) for index, entry in enumerate(entries) if isinstance(entry, dict)]
         if is_bilibili_url(source_url):
@@ -2329,15 +2422,27 @@ def resolve_url(
             "resolver_debug": payload.get("_resolver_debug", {}),
         }
     item = normalize_video_entry({**payload, "url": canonical_entry_url(payload) or source_url}, 0)
+    if is_xiaohongshu_url(source_url):
+        source_note_id = xiaohongshu_note_id_from_url(source_url)
+        resolved_note_id = xiaohongshu_note_id_from_url(str(item["url"]))
+        source_query = urllib.parse.parse_qs(urllib.parse.urlparse(source_url).query)
+        if source_note_id and source_note_id == resolved_note_id and source_query.get("xsec_token"):
+            # The share token is needed for media acquisition, but must stay out of reports and manifests.
+            item["_download_url"] = source_url
+    if is_bilibili_url(source_url):
+        item["url"] = source_url
+        item = enrich_bilibili_multipart_videos([item], source_url=source_url,
+            cookie_header=source_cookie_header(selected_source, cookie_file, cookie_header),
+            urlopen_func=urlopen_func, timeout=timeout)[0]
     item.setdefault("resolver_debug", payload.get("_resolver_debug", {}))  # type: ignore[arg-type]
     return {
         "resolution_version": "watchbrief_v5.resolution.v1",
         "source_kind": "single",
-        "url": canonical_entry_url(payload) or source_url,
-        "title": str(payload.get("title") or "Untitled Video"),
+        "url": item["url"],
+        "title": str(item["title"]),
         "id": str(payload.get("id") or ""),
-        "duration": str(payload.get("duration_string") or payload.get("duration") or ""),
-        "channel": str(payload.get("channel") or payload.get("uploader") or ""),
+        "duration": str(item["duration"]),
+        "channel": str(item["channel"]),
         "videos": [item],
         "resolver_debug": payload.get("_resolver_debug", {}),
     }

@@ -54,6 +54,25 @@ class AcquisitionAudioDownloaderTest(unittest.TestCase):
                     subtitle_available=True,
                 )
 
+    def test_explicit_force_audio_transcription_bypasses_subtitle_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            def run(command, capture_output, text, timeout):
+                (output_dir / "abc.wav").write_bytes(b"RIFFmock")
+                return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+            result = download_standard_audio(
+                "https://example.com/watch/abc",
+                output_dir,
+                subtitle_checked=False,
+                subtitle_available=True,
+                force_audio_transcription=True,
+                runner=run,
+            )
+
+            self.assertEqual(result.audio_path.name, "abc.wav")
+
     def test_download_standard_audio_success(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)

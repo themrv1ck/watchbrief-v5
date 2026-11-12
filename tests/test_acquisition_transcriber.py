@@ -57,6 +57,22 @@ class AcquisitionTranscriberTest(unittest.TestCase):
             with mock.patch("scripts.transcriber.mlx_audio_python_candidates", return_value=[missing, import_fails, import_ok]):
                 self.assertEqual(transcriber.resolve_mlx_audio_python(runner=run), import_ok)
 
+    def test_mlx_audio_probe_default_allows_launchd_startup_jitter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            candidate = Path(temp_dir) / "import-ok"
+            candidate.write_text("#!/bin/sh\n", encoding="utf-8")
+            observed: list[int] = []
+
+            def run(command, capture_output, text, timeout, **kwargs):
+                observed.append(timeout)
+                return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+            available, status = transcriber.check_mlx_audio_python(candidate, runner=run)
+
+        self.assertTrue(available)
+        self.assertEqual(status, "ok")
+        self.assertEqual(observed, [60])
+
     def test_mlx_audio_unavailable_message_lists_checked_python_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -83,7 +99,7 @@ class AcquisitionTranscriberTest(unittest.TestCase):
             with mock.patch("scripts.transcriber.resolve_mlx_audio_python", return_value=None):
                 with mock.patch(
                     "scripts.transcriber.mlx_audio_unavailable_message",
-                    return_value="MLX-Audio unavailable. Checked Python candidates: /tmp/venv/bin/python [missing].",
+                    return_value="MiMo MLX unavailable. Checked Python candidates: /tmp/venv/bin/python [missing].",
                 ):
                     with self.assertRaises(TranscriberUnavailableError) as context:
                         transcribe_audio_to_material(audio, Path(temp_dir) / "out", language="zh")
@@ -164,7 +180,7 @@ class AcquisitionTranscriberTest(unittest.TestCase):
                     mlx_available_func=lambda: False,
                 )
 
-    def test_invalid_transcript_json_conversion_is_classified(self) -> None:
+    def test_empty_transcript_remains_a_conversion_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             audio = root / "sample.wav"
@@ -179,6 +195,59 @@ class AcquisitionTranscriberTest(unittest.TestCase):
             with self.assertRaises(FormatConversionError) as context:
                 transcribe_audio_to_material(audio, output_dir, language="zh", provider="whisper", runner=run, mlx_available_func=lambda: False)
             self.assertEqual(context.exception.reason_code, "format_conversion_failed")
+
+    def test_long_mlx_audio_is_chunked_and_timestamps_are_merged(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            audio = root / "long.wav"
+            audio.write_bytes(b"RIFFmock")
+            output_dir = root / "out"
+            chunks = [root / "chunk-0000.wav", root / "chunk-0001.wav"]
+            for chunk in chunks:
+                chunk.write_bytes(b"RIFFmock")
+
+            def run(command, capture_output, text, timeout, **kwargs):
+                if len(command) < 4:
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                transcript_dir = Path(json.loads(command[3])["output_path"]).parent
+                transcript_dir.mkdir(parents=True, exist_ok=True)
+                stem = Path(json.loads(command[3])["audio"]).stem
+                index = 0 if stem.endswith("0000") else 1
+                (transcript_dir / f"{stem}.json").write_text(json.dumps({
+                    "text": f"第{index + 1}段",
+                    "segments": [{"start": 0.0, "end": 90.0, "text": f"第{index + 1}段"}],
+                }), encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+            with mock.patch("scripts.transcriber.probe_audio_duration_seconds", side_effect=[180.0, 90.0, 90.0]):
+                with mock.patch("scripts.transcriber.split_audio_for_mlx", return_value=chunks):
+                    result = transcribe_audio_to_material(
+                        audio, output_dir, language="zh", runner=run, mlx_available_func=lambda: True,
+                    )
+
+            self.assertEqual([item["text"] for item in result.material["segments"]], ["第1段", "第2段"])
+            self.assertEqual(result.material["segments"][1]["start"], "01:30")
+            self.assertEqual(result.material["segments"][1]["end"], "03:00")
+
+    def test_audio_split_escapes_literal_percent_in_parent_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "100天亏掉40%测试"
+            root.mkdir()
+            audio = root / "sample.wav"
+            audio.write_bytes(b"RIFFmock")
+            chunk_dir = root / "chunks"
+            captured: list[str] = []
+
+            def run(command, capture_output, text, timeout):
+                captured.extend(command)
+                (chunk_dir / "chunk-0000.wav").write_bytes(b"RIFFmock")
+                return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+            with mock.patch("scripts.transcriber.subprocess.run", side_effect=run):
+                chunks = transcriber.split_audio_for_mlx(audio, chunk_dir)
+
+            self.assertEqual(chunks, [chunk_dir / "chunk-0000.wav"])
+            self.assertTrue(captured[-1].endswith("40%%测试/chunks/chunk-%04d.wav"))
 
     def test_default_auto_requires_mlx_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

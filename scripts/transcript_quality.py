@@ -84,6 +84,22 @@ def title_transcript_consistency_debug(title: Any, segments: list[dict[str, Any]
     }
 
 
+def subtitle_episode_identity_debug(identity: dict[str, Any] | None) -> dict[str, Any]:
+    if not identity or int(identity.get("page_count") or 0) <= 1 or int(identity.get("page_index") or 0) < 1:
+        return {}
+    if identity.get("provider") != "bilibili_content_provider":
+        return {}
+    pairs = [(str(identity.get(f"expected_{key}") or ""), str(identity.get(f"source_{key}") or "")) for key in ("bvid", "cid")]
+    mismatch = any(expected and actual and expected != actual for expected, actual in pairs)
+    verified = all(expected and actual and expected == actual for expected, actual in pairs) and bool(identity.get("part_title"))
+    return {
+        "subtitle_episode_identity_verified": verified,
+        "subtitle_episode_identity_mismatch": mismatch,
+        "subtitle_episode_index": int(identity["page_index"]),
+        "subtitle_episode_count": int(identity["page_count"]),
+    }
+
+
 def parse_time_seconds(value: Any) -> float | None:
     if value is None:
         return None
@@ -219,8 +235,13 @@ def transcript_coverage_failure_reason(debug: dict[str, Any]) -> str:
             return "segment_count_too_low_without_duration"
         if char_count < MIN_TEXT_CHARS_WITHOUT_DURATION:
             return "plain_text_char_count_too_low_without_duration"
+    if debug.get("subtitle_episode_identity_mismatch"):
+        return "subtitle_episode_identity_mismatch"
     if debug.get("title_transcript_consistency_checked") is True and int(debug.get("title_transcript_match_count") or 0) == 0:
-        return "title_transcript_mismatch"
+        if debug.get("subtitle_episode_identity_verified"):
+            debug["title_transcript_mismatch_warning"] = True
+        else:
+            return "title_transcript_mismatch"
     return ""
 
 
@@ -230,6 +251,7 @@ def validate_transcript_coverage(
     segments: list[dict[str, Any]],
     transcript_source: str,
     title: Any = "",
+    episode_identity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     debug = transcript_coverage_debug(
         video_duration=video_duration,
@@ -237,6 +259,8 @@ def validate_transcript_coverage(
         transcript_source=transcript_source,
     )
     debug.update(title_transcript_consistency_debug(title, segments, transcript_source))
+    if transcript_source in BILIBILI_PLATFORM_SUBTITLE_SOURCES:
+        debug.update(subtitle_episode_identity_debug(episode_identity))
     reason = transcript_coverage_failure_reason(debug)
     if reason:
         debug["transcript_quality_reason"] = reason

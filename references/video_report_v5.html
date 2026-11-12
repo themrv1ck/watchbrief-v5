@@ -219,6 +219,19 @@ h1{
 }
 .chain-summary strong{color:var(--white)}
 
+.combined-target-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;grid-column:span 12}
+.target-section h3{margin:0 0 10px;font-size:17px}
+.target-section ul{margin:0;padding-left:20px;color:var(--text);line-height:1.75}
+.target-section li+li{margin-top:8px}
+.target-section.t-green{border-left-color:var(--green);background:linear-gradient(135deg,var(--green-bg) 0%,var(--surface) 72%)}
+.target-section.t-green h3{color:var(--green)}
+.target-section.t-purple{border-left-color:var(--purple);background:linear-gradient(135deg,var(--purple-bg) 0%,var(--surface) 72%)}
+.target-section.t-purple h3{color:var(--purple)}
+.target-section.t-blue{border-left-color:var(--blue);background:linear-gradient(135deg,var(--blue-bg) 0%,var(--surface) 72%)}
+.target-section.t-blue h3{color:var(--blue)}
+.target-section.t-red{border-left-color:var(--red);background:linear-gradient(135deg,var(--red-bg) 0%,var(--surface) 72%)}
+.target-section.t-red h3{color:var(--red)}
+
 .section-watch{border-left:3px solid var(--action-green);background:linear-gradient(135deg,var(--action-green-bg) 0%,var(--surface) 72%)}
 .section-watch h2{color:var(--action-green)}
 .watch-list{display:grid;gap:12px}
@@ -262,6 +275,7 @@ h1{
   .hero{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.col-12,.col-7,.col-5,.col-6{grid-column:span 1}
   h1{font-size:27px}.hero-main,.hero-side,.section{padding:20px}
   .chain{grid-template-columns:1fr}.chain-step::after{content:'↓';right:50%;top:auto;bottom:-15px}.chain-step:last-child::after{content:''}
+  .combined-target-grid{grid-template-columns:1fr}
   .watch-item{grid-template-columns:1fr}.watch-time{text-align:left;width:max-content;max-width:100%}
   .one-liner{font-size:18px}
 }
@@ -1105,97 +1119,189 @@ h1{
 }
 
 </style>
+<!-- Static preview styling; renderer reads only the first style block. -->
+<style>
+:root{--ink:var(--white);--line:var(--border);--mono:'Space Mono',monospace;--accent:var(--teal)}
+.report-note{
+  margin:18px 0 0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.7;
+}
+.report-note strong{color:var(--ink);font-weight:800}
+.preference-fit{
+  padding:14px 16px;
+  border-radius:20px;
+  border:1px solid var(--blue-border);
+  background:var(--blue-bg);
+  color:var(--text);
+  font-size:14px;
+  line-height:1.75;
+}
+.preference-fit strong{color:var(--white);font-weight:800}
+.section-scope{border-left:3px solid var(--teal);background:linear-gradient(135deg,var(--teal-bg) 0%,var(--surface) 72%)}
+.section-scope h2{color:var(--teal)}
+.content-scope{margin:0;color:var(--text);font-size:18px;line-height:1.85}
+.watch-time .time-sep{display:block;color:inherit}
+.phase-list{display:grid;gap:14px}
+.phase-item{display:grid;grid-template-columns:132px minmax(0,1fr);gap:16px;align-items:start;padding:14px 0;border-top:1px solid var(--line)}
+.phase-item:first-child{border-top:0}
+.phase-time{font-family:var(--mono);font-weight:800;color:var(--accent);line-height:1.5}
+.phase-copy h3{margin:0 0 6px;font-size:16px}
+.phase-copy p{margin:0;color:var(--muted);line-height:1.75}
+.combined-target-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;grid-column:span 12}
+.target-section h3{margin:0 0 10px;font-size:17px}
+.target-section ul{margin:0;padding-left:20px;color:var(--text);line-height:1.75}
+.target-section li+li{margin-top:8px}
+.target-section.t-green{border-left-color:var(--green);background:linear-gradient(135deg,var(--green-bg) 0%,var(--surface) 72%)}
+.target-section.t-green h3{color:var(--green)}
+.target-section.t-purple{border-left-color:var(--purple);background:linear-gradient(135deg,var(--purple-bg) 0%,var(--surface) 72%)}
+.target-section.t-purple h3{color:var(--purple)}
+.target-section.t-blue{border-left-color:var(--blue);background:linear-gradient(135deg,var(--blue-bg) 0%,var(--surface) 72%)}
+.target-section.t-blue h3{color:var(--blue)}
+.target-section.t-red{border-left-color:var(--red);background:linear-gradient(135deg,var(--red-bg) 0%,var(--surface) 72%)}
+.target-section.t-red h3{color:var(--red)}
+@media(max-width:760px){.combined-target-grid{grid-template-columns:1fr}}
+@media(max-width:760px){.phase-item{grid-template-columns:1fr}.phase-time{font-size:13px}}
+
+/* Reader-first default report: the main path is an article, not a dashboard. */
+main{max-width:860px}
+.reading-hero{display:block;margin-bottom:34px}
+.reading-hero .hero-main{padding:4px 4px 0;border:0;background:transparent;box-shadow:none}
+.reading-kicker{margin-bottom:12px;color:var(--teal);font-size:14px;font-weight:800;letter-spacing:.04em}
+.reading-hero h1{max-width:760px;margin-bottom:14px;font-size:42px;line-height:1.22}
+.reading-meta{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:24px;color:var(--muted);font-size:14px;line-height:1.7}
+.reading-meta strong{color:var(--text);font-weight:700}
+.reading-meta a{color:var(--teal);font-weight:800;text-decoration:none}
+.reading-meta a:hover{text-decoration:underline}
+.reading-score{color:var(--dim)}
+.reading-score strong{color:var(--muted)}
+.reading-hero .hero-summary{max-width:760px;padding:0;border:0;border-radius:0;background:transparent}
+.reading-hero .summary-label{margin-bottom:9px;color:var(--teal);font-size:12px;letter-spacing:.12em}
+.reading-hero .hero-summary p{margin:0;color:var(--text);font-size:19px;line-height:1.9}
+.reading-hero .hero-summary strong{color:var(--white)}
+.reading-flow{grid-column:span 12;max-width:760px;margin:0 auto;padding:8px 0 16px}
+.reading-flow h2,.story-closing h2{margin:0 0 16px;color:var(--white);font-size:26px;line-height:1.35}
+.reading-flow .section-note,.story-closing .section-note{margin-bottom:10px;color:var(--teal)}
+.story-intro{margin:0 0 28px;color:var(--text);font-size:19px;line-height:1.85;letter-spacing:.01em}
+.story-beats{margin:0;padding:0;list-style:none;border-top:1px solid var(--line)}
+.story-beat{display:grid;grid-template-columns:38px minmax(0,1fr);gap:18px;padding:22px 0;border-bottom:1px solid var(--line)}
+.story-marker{padding-top:2px;color:var(--teal);font-family:var(--mono);font-size:14px;font-weight:800;line-height:1.5}
+.story-copy h3{margin:0 0 8px;color:var(--white);font-size:19px;line-height:1.5}
+.story-copy p{margin:0;color:var(--text);font-size:16px;line-height:1.85}
+.story-copy time{display:block;margin-top:10px;color:var(--dim);font-family:var(--num);font-size:12px;font-weight:700}
+.story-closing{grid-column:span 12;max-width:760px;margin:0 auto;padding:30px 34px;border:1px solid rgba(126,184,240,.18);border-radius:28px;background:linear-gradient(135deg,rgba(126,184,240,.08),rgba(19,22,31,.72) 70%)}
+.story-core{margin:0 0 16px;color:#e2f0ff;font-size:21px;line-height:1.85;font-weight:800}
+.story-final{margin:0;color:var(--muted);font-size:17px;line-height:1.9}
+.reader-index{grid-column:span 12;padding:0;overflow:hidden;border-radius:24px;background:rgba(19,22,31,.72)}
+.reader-index summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;cursor:pointer;color:var(--white);font-size:17px;font-weight:800;list-style:none}
+.reader-index summary::-webkit-details-marker{display:none}
+.reader-index summary::after{content:"展开";flex:0 0 auto;color:var(--teal);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.06em}
+.reader-index[open] summary{border-bottom:1px solid var(--line)}
+.reader-index[open] summary::after{content:"收起"}
+.reader-index-body{padding:22px 24px 26px}
+.analysis-index{border-color:rgba(167,139,250,.22)}
+.analysis-index summary::after{color:var(--purple)}
+.source-index{border-color:rgba(79,209,197,.22)}
+.source-index summary::after{color:var(--teal)}
+.report-facts{border-color:rgba(255,255,255,.10)}
+.report-facts summary::after{color:var(--muted)}
+.reference-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:26px 34px}
+.reader-reference h3{margin:0 0 10px;color:var(--white);font-size:17px}
+.reader-reference ul{margin:0;padding-left:20px;color:var(--text);font-size:16px;line-height:1.8}
+.reader-reference li+li{margin-top:8px}
+.reader-reference.reader-boundaries h3{color:#f7a8a8}
+.reader-reference.reader-actions h3{color:var(--blue)}
+.reader-index .phase-list{gap:0}
+.reader-index .phase-item{padding:18px 0}
+.logic-index-copy{display:grid;gap:12px}
+.logic-line{margin:0;color:var(--text);font-size:16px;line-height:1.8}
+.logic-line strong{color:var(--purple)}
+.logic-chain{margin-top:6px;color:#d9caff;font-size:15px;line-height:1.9}
+.report-facts-body{display:grid;gap:16px}
+.report-facts-score{margin:0;color:var(--muted);font-size:16px;line-height:1.8}
+.report-facts-score strong{color:var(--white)}
+.section-watch{max-width:760px;margin:0 auto;padding:0;border-left:3px solid var(--action-green)}
+.section-watch .section-note{color:var(--action-green)}
+.section-watch .watch-intro{margin:-4px 0 18px;color:var(--muted);font-size:16px;line-height:1.8}
+@media(max-width:760px){
+  .reading-hero h1{font-size:31px}.story-intro{font-size:18px}.story-beat{grid-template-columns:32px minmax(0,1fr);gap:12px;padding:18px 0}.story-copy h3{font-size:18px}.story-copy p{font-size:16px}.reader-index summary{padding:18px 20px}.reader-index-body{padding:20px}.reference-sections{grid-template-columns:1fr}
+}
+</style>
 </head>
 <body>
 
 
 <main>
-  <div class="eyebrow">视频速览 · 主要内容与补看入口</div>
+  <div class="eyebrow">视频内容总结</div>
 
-  <section class="hero">
+  <section class="hero reading-hero score-skip" data-score-band="skip">
     <div class="panel hero-main">
-      <h1>随时进入心流状态的秘诀!</h1>
-      <div class="meta-row">
-        <span class="pill"><strong>频道：</strong>Maki的完美算术教室</span>
-        <span class="pill"><strong>时长：</strong>15:42</span>
-        <span class="pill"><strong>日期：</strong>2025-04-04</span>
-        <span class="pill blue"><strong>主题：</strong>效率 / 心流 / 任务设计 / 状态管理</span>
-        <a class="pill blue" href="https://www.bilibili.com/video/BV1NsZUYPESR/" target="_blank" rel="noreferrer"><strong>原视频：</strong>点击查看</a>
-      </div>
-      <div class="hero-summary">
-        <div class="summary-label">one-line brief</div>
-        <p><strong>一句话总结：</strong>这期视频主要讲：进入心流不是靠硬撑专注，而是通过清理情绪负债、明确任务流程、增加挑战和及时切换状态，把学习和工作任务改造成更容易沉浸的形式。</p>
+      <div class="reading-kicker">效率 / 心流 / 任务设计 / 状态管理</div>
+      <h1>如何把任务改造成更容易进入心流的状态</h1>
+      <div class="reading-meta">
+        <span><strong>Mock Channel</strong></span>
+        <span>16:42</span>
+        <span>2026-04-20</span>
+        <a href="https://example.com/watch/heartflow" target="_blank" rel="noreferrer">打开原视频</a>
       </div>
     </div>
-
-    <aside class="panel hero-side">
-      <div class="score-box">
-        <div class="score-label">replacement score</div>
-        <div class="score-num">5.0 <small>/ 10</small></div>
-      </div>
-      <div class="tag">报告基本可替代</div>
-      <p class="side-verdict"><strong>补看入口：</strong>报告已提炼主要内容；如果想核对原片上下文，先看 <strong>10:51—15:08</strong>；想补底层逻辑，再看 <strong>01:59—05:12</strong>。</p>
-    </aside>
   </section>
 
   <section class="grid">
-    <div class="panel section section-chain col-12">
-      <div class="section-note">what the video is actually saying</div>
-      <h2>视频到底讲了什么？</h2>
-      <div class="core-extract">
-        <div class="core-extract-label">highest compression · 核心提炼</div>
-        <p><strong>心流不是靠硬撑出来的，</strong>而是靠把任务设计到足够清楚、可控、有挑战，并在状态变差时及时切换。</p>
-      </div>
-      <div class="path-table">
-        <div class="path-row">
-          <div class="path-label">问题</div>
-          <div class="path-copy">学习或工作时难进入心流，往往不是意志力不够，而是任务和环境没有被设计好。</div>
-        </div>
-        <div class="path-row">
-          <div class="path-label">机制</div>
-          <div class="path-copy">情绪负债、模糊任务和缺少挑战会持续占用注意力，阻止人进入沉浸状态。</div>
-        </div>
-        <div class="path-row">
-          <div class="path-label">转折</div>
-          <div class="path-copy">解决方向不是一直硬撑，而是先清干扰、写清流程，再用限时、正确率、小目标和环境设计提高投入感。</div>
-        </div>
-        <div class="path-row">
-          <div class="path-label">落点</div>
-          <div class="path-copy">心流被收束成一种可被主动制造的条件：任务明确、有适度挑战、状态可觉察、必要时能切换。</div>
-        </div>
-      </div>
-      <div class="mini-arrow-chain">模糊任务和情绪负债 <span class="arrow-token">→</span> 注意力被反复打断 <span class="arrow-token">→</span> 清理干扰 <span class="arrow-token">→</span> 明确流程 <span class="arrow-token">→</span> 增加限时、目标和挑战 <span class="arrow-token">→</span> 觉察状态并切换 <span class="arrow-token">→</span> 更容易进入心流</div>
-      <div class="final-conclusion"><strong>结论：</strong>心流不是意志力硬拧出来的，而是把任务改造成清楚、有挑战、可切换的系统。</div>
-    </div>
 
-    <div class="panel section section-watch col-12">
-      <div class="section-note">where to jump for source context</div>
-      <h2>如果要补原片，先看哪里？</h2>
-      <div class="watch-list">
-        <div class="watch-item">
-          <div class="watch-time">10:51<br>|<br>15:08</div>
-          <div>
-            <h3>首选片段：最可执行</h3>
-            <p>这是全片最强的可执行段落，把竞速、限时、知识点整理、题型分析、小目标设定、环境利用串成了可以直接套用的做法。</p>
-          </div>
-        </div>
-        <div class="watch-item">
-          <div class="watch-time">01:59<br>|<br>05:12</div>
-          <div>
-            <h3>可选补看：理解底层逻辑</h3>
-            <p>这一段讲清视频的底层框架：先清理情绪负债，再明确任务内容与流程；如果这两步没做，后面的技巧很难生效。</p>
-          </div>
-        </div>
-        <div class="watch-item">
-          <div class="watch-time">07:28<br>|<br>10:41</div>
-          <div>
-            <h3>备选：解决累了还硬撑</h3>
-            <p>这一段补上很多方法视频忽略的一点：不是一直硬撑，而是先识别疲劳、焦虑和环境问题，再切换任务维持整体专注。</p>
-          </div>
-        </div>
+    <article class="reading-flow">
+      <div class="section-note">主要内容</div>
+      <h2>视频讲了什么</h2>
+      <p class="story-intro">视频解释目标模糊、反馈太慢如何妨碍进入心流，并给出清理干扰、缩小任务入口、设置小挑战与即时反馈的做法。</p>
+      <ol class="story-beats">
+        <li class="story-beat"><div class="story-marker" aria-hidden="true">01</div><div class="story-copy"><h3>目标模糊和反馈太慢会增加启动阻力</h3><p>作者说，很多人以为心流取决于意志力；如果任务目标不清楚、反馈来得太慢，大脑会把它判断成高摩擦任务。视频因此提醒先检查任务入口是否过大。</p><time>00:00 — 05:12</time></div></li><li class="story-beat"><div class="story-marker" aria-hidden="true">02</div><div class="story-copy"><h3>清理干扰、缩小入口，再增加挑战与反馈</h3><p>作者给出三个做法：关闭桌面通知和无关窗口；把任务缩小，例如先写三行而不是整篇；设置略高于当前能力的小挑战，并让自己马上看到反馈。</p><time>10:51 — 15:08</time></div></li>
+      </ol>
+    </article>
+
+
+
+    <details class="reader-index analysis-index panel col-12">
+      <summary>读到这里，留下四件事</summary>
+      <div class="reader-index-body reference-sections">
+        <section class="reader-reference"><h3>直接结论</h3><ul><li>心流更依赖任务结构设计，而不是单靠意志力维持注意力。</li>
+<li>目标清楚、反馈及时、难度略高于当前能力，是视频给出的心流触发条件。</li></ul></section><section class="reader-reference"><h3>具体观点</h3><ul><li>任务模糊和反馈太慢会让人难以进入稳定专注状态。</li>
+<li>清理干扰、缩小任务入口、增加限时挑战，可以降低进入状态的门槛。</li></ul></section><section class="reader-reference reader-actions"><h3>可直接采用</h3><ul><li>开始前先清理会打断注意力的干扰源。</li>
+<li>把任务拆小，并给自己设置可立即看到反馈的完成标准。</li></ul></section><section class="reader-reference reader-boundaries"><h3>注意边界</h3><ul><li>视频主要是经验型方法说明，缺少实验数据和反例展开。</li>
+<li>这些方法适合改善任务设计，不能保证每次都稳定进入心流。</li></ul></section>
       </div>
-      <div class="only-one">只选一段：10:51—15:08。它已经覆盖全片最能直接转成方法的部分。</div>
-    </div>
+    </details>
+
+
+
+
+
+    <details class="reader-index report-facts panel col-12">
+      <summary>报告信息与边界</summary>
+      <div class="reader-index-body report-facts-body">
+        <p class="report-facts-score"><strong>内容价值：</strong>4.8 / 10 · 内容价值偏低</p>
+        <p class="report-facts-score"><strong>一句话：</strong>这期视频主要讲：心流更依赖任务结构设计，而不是单靠意志力硬撑注意力。</p>
+        <p class="report-facts-score"><strong>视频主旨：</strong>心流不是把自己逼到更专注，而是把任务改成目标清楚、反馈及时、难度略高于当前能力的系统。</p>
+        <p class="report-facts-score"><strong>结尾主张：</strong>心流不是意志力硬拧出来的，而是把任务改造成清楚、有挑战、可反馈的系统。</p>
+        <p class="report-facts-score"><strong>补看说明：</strong>看报告基本够，原视频只建议跳看 10:51 - 15:08；想补前置误区，再看 01:59 - 05:12。</p>
+        <div class="preference-fit" data-personal-match="profile-not-bound"><strong>画像判断：</strong>未绑定个人画像，此结果不能用于判断你是否会喜欢。</div>
+
+      <p class="report-note"><strong>说明：</strong>视频更偏经验型方法说明，缺少实验数据和反例展开。</p>
+      </div>
+    </details>
+
+
+    <details class="reader-index section-watch panel col-12">
+      <summary>查看原片对应片段</summary>
+      <div class="reader-index-body">
+        <p class="watch-intro">想听原话、看案例或核对语气时，可以从这些时间点打开原片。</p>
+        <div class="watch-list">
+          <div class="watch-item"><div class="watch-time"><span>10:51</span><span class="time-sep">|</span><span>15:08</span></div><div><h3>首选片段：任务改造步骤</h3><p>这一段把清理干扰、缩小入口、限时挑战和即时反馈连成可执行流程。</p></div></div>
+        <div class="watch-item"><div class="watch-time"><span>01:59</span><span class="time-sep">|</span><span>05:12</span></div><div><h3>可选补看：心流误区</h3><p>这一段解释为什么只靠意志力维持专注会失败。</p></div></div>
+        </div>
+        <div class="only-one">只选一段：10:51 - 15:08。这一段直接给出任务改造流程，报告之外的表达增量也集中在这里。</div>
+      </div>
+    </details>
   </section>
 </main>
 

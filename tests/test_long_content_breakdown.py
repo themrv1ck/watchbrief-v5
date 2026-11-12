@@ -38,6 +38,26 @@ def long_course_payload() -> dict:
             "summary": "补充方法不适用的场景，以及缺少反馈、干扰太强时该如何重新调整任务结构。",
         },
     ]
+    payload["reading_flow"] = [
+        {
+            "start": "00:00",
+            "end": "24:00",
+            "heading": "先把心流从意志力误解中拿开",
+            "body": "课程先界定任务设计如何决定启动阻力，再说明目标、反馈与挑战为什么需要一起看。",
+        },
+        {
+            "start": "24:00",
+            "end": "44:20",
+            "heading": "再把大任务拆成能进入的小入口",
+            "body": "中段把任务拆分、限时挑战和反馈节点连起来，说明方法如何在执行中维持推进。",
+        },
+        {
+            "start": "44:20",
+            "end": "1:02:03",
+            "heading": "最后用现实边界校准这套方法",
+            "body": "结尾补充干扰太强或反馈不足时的调整方式，避免把心流当成任何场景都有效的单一技巧。",
+        },
+    ]
     return payload
 
 
@@ -67,11 +87,18 @@ class LongContentBreakdownTest(unittest.TestCase):
         assert_invalid(self, payload, "long_breakdown_overlap")
 
     def test_renderer_outputs_phase_breakdown_section(self) -> None:
-        html = render_single_video_html(long_course_payload())
+        payload = long_course_payload()
+        payload["target_summary"] = "这期内容先界定心流的误解，再讲目标、反馈、任务拆分和适用边界。"
+        html = render_single_video_html(payload)
 
-        self.assertIn("长内容阶段拆分", html)
+        self.assertIn("视频到底讲了什么？", html)
+        self.assertIn(payload["target_summary"], html)
+        self.assertIn("想按时间核对全片，再展开完整索引", html)
         self.assertIn("00:00 - 08:30", html)
         self.assertIn("目标、反馈与挑战", html)
+        body = html.split("</style>", 1)[1]
+        self.assertLess(body.index("视频到底讲了什么？"), body.index("直接结论"))
+        self.assertLess(body.index("直接结论"), body.index("想按时间核对全片，再展开完整索引"))
 
 
 if __name__ == "__main__":

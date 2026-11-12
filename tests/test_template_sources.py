@@ -15,13 +15,21 @@ class TemplateSourceTest(unittest.TestCase):
 
     def test_video_report_template_has_single_video_markers(self) -> None:
         for marker in [
-            "视频到底讲了什么？",
-            "如果要补原片，先看哪里？",
-            "one-line brief",
-            "final-conclusion",
+            "视频讲了什么",
+            "查看原片对应片段",
+            "直接结论",
+            "具体观点",
+            "可直接采用",
+            "注意边界",
+            "report-facts",
+            "reading-flow",
             "feedback-launcher",
         ]:
             self.assertIn(marker, self.video_template)
+        self.assertIn("reader-actions", self.video_template)
+        self.assertIn("--bg:#0c0e14", self.video_template)
+        self.assertNotIn("--bg:#f7f3eb", self.video_template)
+        self.assertNotIn("target-section t-orange", self.video_template)
 
     def test_video_report_template_excludes_watch_order_markers(self) -> None:
         for marker in ["categoryConfig", "rank-card", "filter-banner"]:

@@ -22,6 +22,7 @@ except ImportError:  # pragma: no cover
 
 
 SUPPORTED_TRANSCRIBERS = ("auto", "mlx_audio", "whisper")
+MLX_AUDIO_CHUNK_SECONDS = 90
 DEFAULT_WHISPER_MODEL = "base"
 DEFAULT_PROJECT_ROOT = Path("/Users/apple/Documents/New project/watchbrief_v5")
 DEFAULT_MIMO_MLX_ROOT = Path(os.environ.get("WATCHBRIEF_MIMO_MLX_ROOT", "/Users/apple/Documents/MiMo-V2.5-ASR-MLX")).expanduser()
@@ -71,7 +72,13 @@ def mlx_audio_python_candidates() -> list[Path]:
     return unique
 
 
-def check_mlx_audio_python(candidate: Path, *, runner: Any = subprocess.run, timeout: int = 10) -> tuple[bool, str]:
+# Importing MLX can briefly block while macOS reclaims GPU resources.  This is a
+# readiness probe, not the transcription deadline, so keep it comfortably above
+# launchd scheduling jitter instead of misclassifying a healthy runtime.
+MLX_AUDIO_PROBE_TIMEOUT_SECONDS = 60
+
+
+def check_mlx_audio_python(candidate: Path, *, runner: Any = subprocess.run, timeout: int = MLX_AUDIO_PROBE_TIMEOUT_SECONDS) -> tuple[bool, str]:
     if not candidate.exists() or not candidate.is_file():
         return False, "missing"
     result = runner(
@@ -86,7 +93,7 @@ def check_mlx_audio_python(candidate: Path, *, runner: Any = subprocess.run, tim
     return False, f"import_failed: {detail[:240]}" if detail else "import_failed"
 
 
-def mlx_audio_python_statuses(*, runner: Any = subprocess.run, timeout: int = 10) -> list[dict[str, str]]:
+def mlx_audio_python_statuses(*, runner: Any = subprocess.run, timeout: int = MLX_AUDIO_PROBE_TIMEOUT_SECONDS) -> list[dict[str, str]]:
     statuses: list[dict[str, str]] = []
     for candidate in mlx_audio_python_candidates():
         available, status = check_mlx_audio_python(candidate, runner=runner, timeout=timeout)
@@ -98,7 +105,7 @@ def mlx_audio_python_statuses(*, runner: Any = subprocess.run, timeout: int = 10
     return statuses
 
 
-def resolve_mlx_audio_python(*, runner: Any = subprocess.run, timeout: int = 10) -> Optional[Path]:
+def resolve_mlx_audio_python(*, runner: Any = subprocess.run, timeout: int = MLX_AUDIO_PROBE_TIMEOUT_SECONDS) -> Optional[Path]:
     for candidate in mlx_audio_python_candidates():
         available, _status = check_mlx_audio_python(candidate, runner=runner, timeout=timeout)
         if available:
@@ -113,17 +120,17 @@ def resolve_existing_mlx_audio_python() -> Optional[Path]:
     return None
 
 
-def has_mlx_audio(runner: Any = subprocess.run, timeout: int = 10) -> bool:
+def has_mlx_audio(runner: Any = subprocess.run, timeout: int = MLX_AUDIO_PROBE_TIMEOUT_SECONDS) -> bool:
     return resolve_mlx_audio_python(runner=runner, timeout=timeout) is not None
 
 
-def mlx_audio_unavailable_message(*, runner: Any = subprocess.run, timeout: int = 10) -> str:
+def mlx_audio_unavailable_message(*, runner: Any = subprocess.run, timeout: int = MLX_AUDIO_PROBE_TIMEOUT_SECONDS) -> str:
     details = "; ".join(
         f"{row['python']} [{row['status']}]"
         for row in mlx_audio_python_statuses(runner=runner, timeout=timeout)
     )
     return (
-        "MLX-Audio unavailable. Checked Python candidates: "
+        "MiMo MLX unavailable. Checked Python candidates: "
         f"{details}. Set WATCHBRIEF_MLX_AUDIO_PYTHON or install the local MiMo MLX runtime."
     )
 
@@ -239,9 +246,103 @@ def load_material_from_transcript(
     stderr: str = "",
 ) -> dict[str, Any]:
     try:
+        raw_payload = json.loads(transcript_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        raw_payload = None
+    try:
         return load_transcript_source(transcript_path, language=language, transcript_quality=transcript_quality)
     except TranscriptSourceError as exc:
         raise FormatConversionError("transcriber", f"transcript JSON conversion failed: {exc}", command, stderr) from exc
+
+
+def probe_audio_duration_seconds(audio_path: Path) -> float:
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        return 0.0
+    try:
+        return max(0.0, float(str(result.stdout or "").strip()))
+    except ValueError:
+        return 0.0
+
+
+def split_audio_for_mlx(audio_path: Path, chunk_dir: Path, *, chunk_seconds: int = MLX_AUDIO_CHUNK_SECONDS) -> list[Path]:
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    # The segment muxer treats every percent sign in the full output path as
+    # part of its filename template. Escape literal percent signs from video
+    # titles while preserving the one numeric chunk placeholder.
+    escaped_chunk_dir = str(chunk_dir).replace("%", "%%")
+    pattern = f"{escaped_chunk_dir}/chunk-%04d.wav"
+    result = subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(audio_path),
+            "-f", "segment", "-segment_time", str(chunk_seconds), "-reset_timestamps", "1",
+            "-ar", "16000", "-ac", "1", pattern,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if result.returncode != 0:
+        raise TranscriptionError("failed to split long audio for MiMo", result.args, str(result.stderr or ""))
+    chunks = sorted(chunk_dir.glob("chunk-*.wav"))
+    if not chunks:
+        raise TranscriptionError("long audio split produced no chunks", result.args, str(result.stderr or ""))
+    return chunks
+
+
+def run_chunked_mlx_audio(
+    audio_path: Path,
+    output_dir: Path,
+    *,
+    language: str,
+    model: str,
+    audio_tokenizer_dir: str,
+    runner: Any,
+    timeout: int,
+) -> tuple[Path, list[str]]:
+    chunk_root = output_dir / f".{audio_path.stem}-mlx-chunks"
+    transcript_root = chunk_root / "transcripts"
+    chunks = split_audio_for_mlx(audio_path, chunk_root / "audio")
+    combined_segments: list[dict[str, Any]] = []
+    combined_text: list[str] = []
+    commands: list[list[str]] = []
+    offset = 0.0
+    for chunk in chunks:
+        chunk_duration = probe_audio_duration_seconds(chunk)
+        transcript_path, command = run_mlx_audio(
+            chunk,
+            transcript_root,
+            language=language,
+            model=model,
+            audio_tokenizer_dir=audio_tokenizer_dir,
+            runner=runner,
+            timeout=timeout,
+        )
+        commands.append(command)
+        payload = json.loads(transcript_path.read_text(encoding="utf-8"))
+        raw_segments = payload.get("segments") if isinstance(payload, dict) else []
+        if isinstance(raw_segments, list):
+            for segment in raw_segments:
+                if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
+                    continue
+                start = float(segment.get("start") or 0.0) + offset
+                end = float(segment.get("end") or chunk_duration) + offset
+                text_value = str(segment.get("text") or "").strip()
+                combined_segments.append({"start": start, "end": end, "text": text_value})
+                combined_text.append(text_value)
+        offset += chunk_duration
+    combined_path = expected_transcript_json_path(audio_path, output_dir)
+    combined_path.write_text(
+        json.dumps({"text": "\n".join(combined_text), "segments": combined_segments}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    shutil.rmtree(chunk_root, ignore_errors=True)
+    return combined_path, ["mlx_audio_chunked", f"chunks={len(chunks)}", f"chunk_seconds={MLX_AUDIO_CHUNK_SECONDS}"]
 
 
 def transcribe_audio_to_material(
@@ -279,15 +380,21 @@ def transcribe_audio_to_material(
 
     try:
         if selected == "mlx_audio":
-            transcript_path, command = run_mlx_audio(
-                audio_path,
-                output_dir,
-                language=language,
-                model=model,
-                audio_tokenizer_dir=audio_tokenizer_dir,
-                runner=runner,
-                timeout=timeout,
-            )
+            if probe_audio_duration_seconds(audio_path) > MLX_AUDIO_CHUNK_SECONDS:
+                transcript_path, command = run_chunked_mlx_audio(
+                    audio_path, output_dir, language=language, model=model,
+                    audio_tokenizer_dir=audio_tokenizer_dir, runner=runner, timeout=timeout,
+                )
+            else:
+                transcript_path, command = run_mlx_audio(
+                    audio_path,
+                    output_dir,
+                    language=language,
+                    model=model,
+                    audio_tokenizer_dir=audio_tokenizer_dir,
+                    runner=runner,
+                    timeout=timeout,
+                )
         else:
             transcript_path, command = run_whisper(
                 audio_path,

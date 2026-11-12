@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import sys
@@ -15,6 +16,51 @@ from scripts import cli
 
 
 class CliTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.default_profile_temp = tempfile.TemporaryDirectory()
+        self.default_profile_path = Path(self.default_profile_temp.name) / "seth.yaml"
+        self.default_profile_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "watchbefore.profile.v2",
+                    "behavior_summary": {},
+                    "interest_profile": {
+                        "status": "ready",
+                        "basis": "watchbefore_reports_and_history_engagement",
+                        "summary": "测试画像",
+                        "domains": [
+                            {
+                                "name": "测试领域",
+                                "description": "测试领域",
+                                "subtopics": ["测试主题"],
+                                "keywords": ["测试主题"],
+                                "confidence": "high",
+                                "evidence_count": 3,
+                                "evidence_ids": ["r001", "r002", "r003"],
+                                "watched_seconds": 3600,
+                                "watched_hours": 1.0,
+                                "watch_count": 3,
+                                "watch_time_share": 1.0,
+                            }
+                        ],
+                        "content_preferences": [],
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.default_profile_patch = mock.patch.object(
+            cli,
+            "DEFAULT_PREFERENCE_PROFILE",
+            self.default_profile_path,
+        )
+        self.default_profile_patch.start()
+
+    def tearDown(self) -> None:
+        self.default_profile_patch.stop()
+        self.default_profile_temp.cleanup()
+
     def write_mock_review(self, root: Path) -> Path:
         path = root / "mock_review.json"
         path.write_text(json.dumps({"title": "mock"}, ensure_ascii=False), encoding="utf-8")
@@ -158,6 +204,45 @@ class CliTest(unittest.TestCase):
         self.assertEqual(args.codex_home_root, cli.DEFAULT_WATCHBRIEF_CODEX_HOME_ROOT)
         self.assertEqual(args.codex_account, "account-ready")
 
+    def test_visual_analysis_builds_one_persistent_analyzer_and_closes_it(self) -> None:
+        analyzer = mock.Mock()
+        analyzer.analyze_video = mock.Mock()
+        with mock.patch("scripts.cli.MimoVLVisualAnalyzer", return_value=analyzer) as analyzer_class:
+            deps = self.run_cli_and_capture_deps(
+                [
+                    "--visual-analysis",
+                    "--mimo-vl-root",
+                    "/mock/mimo-vl",
+                    "--visual-max-frame-gap-seconds",
+                    "8",
+                    "--visual-max-tokens",
+                    "2048",
+                    "--visual-timeout",
+                    "321",
+                ]
+            )
+
+        analyzer_class.assert_called_once()
+        call = analyzer_class.call_args.kwargs
+        self.assertEqual(str(call["root"]), "/mock/mimo-vl")
+        self.assertEqual(call["max_tokens"], 2048)
+        self.assertEqual(call["timeout"], 321)
+        self.assertIs(deps.analyze_visual_func, analyzer.analyze_video)
+        self.assertEqual(deps.visual_analysis_options, {"max_gap_seconds": 8.0})
+        analyzer.close.assert_called_once_with()
+
+    def test_visual_analysis_defaults_to_lazy_auto_mode(self) -> None:
+        with mock.patch("scripts.cli.MimoVLVisualAnalyzer") as analyzer_class:
+            deps = self.run_cli_and_capture_deps([])
+        self.assertEqual(deps.visual_analysis_mode, "auto")
+        self.assertTrue(callable(deps.analyze_visual_func))
+        analyzer_class.assert_not_called()
+
+    def test_visual_analysis_can_be_forced_off(self) -> None:
+        deps = self.run_cli_and_capture_deps(["--no-visual-analysis"])
+        self.assertEqual(deps.visual_analysis_mode, "off")
+        self.assertIsNone(deps.analyze_visual_func)
+
     def test_auto_review_provider_falls_back_to_local_only_when_codex_is_not_ready(self) -> None:
         args = argparse.Namespace(
             review_provider="auto",
@@ -179,12 +264,106 @@ class CliTest(unittest.TestCase):
         self.assertEqual(deps.review_options["report_target"], "watch_decision")
         self.assertEqual(deps.local_extract_options["qwen_timeout"], 900)
         self.assertFalse(deps.review_options["force_reanalysis"])
+        self.assertEqual(
+            deps.review_options["preference_profile"]["path"],
+            str(self.default_profile_path),
+        )
+
+    def test_default_preference_profile_is_required(self) -> None:
+        missing_path = Path(self.default_profile_temp.name) / "missing.yaml"
+        with mock.patch.object(cli, "DEFAULT_PREFERENCE_PROFILE", missing_path):
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                mock_review = self.write_mock_review(root)
+                argv = [
+                    "cli.py",
+                    "--source-url",
+                    "https://example.com/watch",
+                    "--output-dir",
+                    str(root / "out"),
+                    "--mock-review-response",
+                    str(mock_review),
+                ]
+                with mock.patch.object(sys, "argv", argv):
+                    with mock.patch("scripts.cli.process_source") as process:
+                        with self.assertRaises(SystemExit) as raised:
+                            cli.main()
+
+        self.assertIn("preference profile not found", str(raised.exception))
+        process.assert_not_called()
 
     def test_report_target_passes_to_pipeline_review_options(self) -> None:
         deps = self.run_cli_and_capture_deps(["--report-target", "knowledge_notes"])
 
         self.assertEqual(deps.review_options["analysis_mode"], "standard")
         self.assertEqual(deps.review_options["report_target"], "knowledge_notes")
+
+    def test_xiaohongshu_media_refresh_browser_is_explicit_and_passed_to_pipeline(self) -> None:
+        deps = self.run_cli_and_capture_deps(["--xiaohongshu-media-refresh-browser", "arc"])
+
+        self.assertEqual(deps.media_url_refresh_browser, "arc")
+
+    def test_preference_profile_passes_metadata_to_pipeline_review_options(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            profile_path = root / "seth.yaml"
+            profile_text = json.dumps({
+                "schema_version": "watchbefore.profile.v2",
+                "behavior_summary": {},
+                "interest_profile": {
+                    "status": "insufficient_content_analysis",
+                    "domains": [],
+                    "content_preferences": [],
+                    "secret_sample": "should-not-enter-request",
+                },
+            }, ensure_ascii=False)
+            profile_path.write_text(profile_text, encoding="utf-8")
+            mock_review = self.write_mock_review(root)
+            argv = [
+                "cli.py",
+                "--source-url",
+                "https://example.com/watch",
+                "--output-dir",
+                str(root / "out"),
+                "--mock-review-response",
+                str(mock_review),
+                "--preference-profile",
+                str(profile_path),
+            ]
+
+            with mock.patch.object(sys, "argv", argv):
+                with mock.patch("scripts.cli.process_source", return_value={"source_kind": "single", "items": [], "failed_count": 0}) as process:
+                    self.assertEqual(cli.main(), 0)
+
+            profile_meta = process.call_args.kwargs["deps"].review_options["preference_profile"]
+            self.assertEqual(profile_meta["path"], str(profile_path))
+            self.assertEqual(profile_meta["schema_version"], "watchbefore.profile.v2")
+            self.assertEqual(profile_meta["sha256"], hashlib.sha256(profile_text.encode("utf-8")).hexdigest())
+            self.assertEqual(profile_meta["bytes"], len(profile_text.encode("utf-8")))
+
+    def test_missing_preference_profile_exits_before_pipeline(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            mock_review = self.write_mock_review(root)
+            argv = [
+                "cli.py",
+                "--source-url",
+                "https://example.com/watch",
+                "--output-dir",
+                str(root / "out"),
+                "--mock-review-response",
+                str(mock_review),
+                "--preference-profile",
+                str(root / "missing.yaml"),
+            ]
+
+            with mock.patch.object(sys, "argv", argv):
+                with mock.patch("scripts.cli.process_source") as process:
+                    with self.assertRaises(SystemExit) as raised:
+                        cli.main()
+
+            self.assertIn("preference profile not found", str(raised.exception))
+            process.assert_not_called()
 
     def test_deep_analysis_mode_sets_pipeline_defaults(self) -> None:
         deps = self.run_cli_and_capture_deps(["--analysis-mode", "deep"])
@@ -550,7 +729,7 @@ class CliTest(unittest.TestCase):
             self.assertFalse((output_dir / "manifest.json").exists())
             self.assertFalse(captured["debug_dir"].exists())
 
-    def test_list_success_keeps_watch_order_and_per_video_html_in_output_folder(self) -> None:
+    def test_source_file_list_success_uses_output_dir_as_parent_folder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             output_dir = root / "list-delivery"
@@ -574,25 +753,28 @@ class CliTest(unittest.TestCase):
                     "watch_order_path": str(delivery_dir / "00-watch-order.html"),
                 }
 
-            with mock.patch.object(
-                sys,
-                "argv",
-                [
-                    "cli.py",
-                    "--source-file",
-                    str(source_file),
-                    "--output-dir",
-                    str(output_dir),
-                    "--mock-review-response",
-                    str(mock_review),
-                ],
-            ):
-                with mock.patch("scripts.cli.process_source", side_effect=fake_process):
-                    self.assertEqual(cli.main(), 0)
+            with mock.patch("scripts.cli.timestamp_slug", return_value="20260428-120000"):
+                with mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "cli.py",
+                        "--source-file",
+                        str(source_file),
+                        "--output-dir",
+                        str(output_dir),
+                        "--mock-review-response",
+                        str(mock_review),
+                    ],
+                ):
+                    with mock.patch("scripts.cli.process_source", side_effect=fake_process):
+                        self.assertEqual(cli.main(), 0)
 
-            self.assertTrue((output_dir / "00-watch-order.html").exists())
-            self.assertTrue((output_dir / "01-one.html").exists())
-            self.assertTrue((output_dir / "02-two.html").exists())
+            expected_dir = output_dir / "watch-20260428-120000"
+            self.assertTrue((expected_dir / "00-watch-order.html").exists())
+            self.assertTrue((expected_dir / "01-one.html").exists())
+            self.assertTrue((expected_dir / "02-two.html").exists())
+            self.assertFalse((output_dir / "00-watch-order.html").exists())
 
     def test_single_default_desktop_contains_only_html_and_no_task_folder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -861,10 +1043,10 @@ class CliTest(unittest.TestCase):
             self.assertEqual((existing_dir / "keep.txt").read_text(encoding="utf-8"), "do not overwrite")
             self.assertEqual(sorted(path.name for path in expected_dir.iterdir()), ["00-watch-order.html", "01-one.html", "02-two.html"])
 
-    def test_list_url_explicit_output_dir_is_final_delivery_dir_not_parent(self) -> None:
+    def test_list_url_explicit_output_dir_is_parent_and_playlist_title_is_final_folder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            output_dir = root / "WatchBrief-Runs" / "phase18B-list"
+            output_parent = root / "WatchBrief-Runs" / "phase18B-list"
             mock_review = self.write_mock_review(root)
             captured: dict[str, Path] = {}
 
@@ -885,28 +1067,42 @@ class CliTest(unittest.TestCase):
                     "watch_order_path": str(delivery_dir / "00-watch-order.html"),
                 }
 
-            with mock.patch.object(
-                sys,
-                "argv",
-                [
-                    "cli.py",
-                    "--source-url",
-                    "https://www.youtube.com/watch?v=one&list=playlist",
-                    "--output-dir",
-                    str(output_dir),
-                    "--mock-review-response",
-                    str(mock_review),
-                ],
+            playlist_url = "https://www.bilibili.com/list/ml3621337310?oid=114282922511207&bvid=BV1GRRXYEEGn"
+            with mock.patch(
+                "scripts.cli.resolve_url",
+                return_value={
+                    "source_kind": "list",
+                    "source_url": playlist_url,
+                    "title": "纳瓦尔",
+                    "playlist_title": "纳瓦尔",
+                    "videos": [
+                        {"title": "one", "url": "https://www.bilibili.com/video/BV1GRRXYEEGn"},
+                        {"title": "two", "url": "https://www.bilibili.com/video/BV1yKZLYTEzV"},
+                    ],
+                },
             ):
-                with mock.patch("scripts.cli.process_source", side_effect=fake_process):
-                    self.assertEqual(cli.main(), 0)
+                with mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "cli.py",
+                        "--source-url",
+                        playlist_url,
+                        "--output-dir",
+                        str(output_parent),
+                        "--mock-review-response",
+                        str(mock_review),
+                    ],
+                ):
+                    with mock.patch("scripts.cli.process_source", side_effect=fake_process):
+                        self.assertEqual(cli.main(), 0)
 
-            self.assertEqual(captured["delivery_dir"], output_dir)
+            expected_dir = output_parent / "纳瓦尔"
+            self.assertEqual(captured["delivery_dir"], expected_dir)
             self.assertIn("WatchBrief-Runs", str(captured["delivery_dir"]))
-            self.assertEqual(sorted(path.name for path in output_dir.iterdir()), ["00-watch-order.html", "01-one.html", "02-two.html"])
-            self.assertFalse([path for path in output_dir.iterdir() if path.is_dir()])
-            self.assertFalse((output_dir / "phase18B-list").exists())
-            self.assertFalse((output_dir / "watch-20260428-120000").exists())
+            self.assertEqual(sorted(path.name for path in expected_dir.iterdir()), ["00-watch-order.html", "01-one.html", "02-two.html"])
+            self.assertEqual([path.name for path in output_parent.iterdir() if path.is_dir()], ["纳瓦尔"])
+            self.assertFalse((output_parent / "00-watch-order.html").exists())
 
     def test_diagnostic_run_default_outputs_to_temp_not_desktop(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

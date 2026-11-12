@@ -1,14 +1,18 @@
-# WatchBrief V5 Contract
+# WatchBefore v6 Contract
 
-Formal usage and runbook rules are documented in `USAGE_V5.md`.
+Formal usage and runbook rules are documented in `USAGE_V6.md`.
 
 ## Product Positioning
 
-WatchBrief V5 generates fixed-format Chinese viewing-decision reports for videos.
+WatchBefore v6 generates validated Chinese video reports. The internal skill and directory names retain `watchbrief_v5` for compatibility, while new payloads use `watchbrief_v6`.
+
+When the user explicitly asks to follow a tutorial, the skill continues from video evidence into authorized real-world operation and verifies the requested end state. See `references/tutorial-execution.md`. A report alone does not authorize any mutation.
 
 The final visible product must stay compatible with the established V4 report structure and watch-order structure.
 
-## Phase 2 Boundary
+The numbered phase boundaries below document the original implementation milestones; they do not disable features already implemented in v6.
+
+## Historical Phase 2 Boundary
 
 Phase 2 must not connect to real video infrastructure.
 
@@ -133,7 +137,7 @@ All acquisition results must be converted into `watchbrief_v5.transcript_materia
 
 ### Browser Auth And Bilibili Resolver
 
-With user authorization, browser login state is a normal acquisition path for target video URLs. When `--cookies-from-browser` is not provided, WatchBrief must use the shared browser order `chrome -> safari`: resolver, YouTube subtitle_fetcher, Bilibili subtitle provider, and audio_downloader all receive the same attempt list. If Chrome clearly fails due to unreadable cookies, extracted zero cookies, login-required subtitle, platform restriction, or browser cookie access error, the same stage may retry Safari. Explicit `--cookies-from-browser chrome`, `--cookies-from-browser safari`, or `--cookies-from-browser edge` overrides the default and must not fallback to another browser. The system may also use an explicit cookies file, but must not print, store, or expose cookie contents.
+With user authorization, browser login state is a normal acquisition path for target video URLs. When `--cookies-from-browser` is not provided, WatchBefore must use the shared browser order `chrome -> safari`: resolver, YouTube subtitle_fetcher, Bilibili subtitle provider, and audio_downloader all receive the same attempt list. If Chrome clearly fails due to unreadable cookies, extracted zero cookies, login-required subtitle, platform restriction, or browser cookie access error, the same stage may retry Safari. Explicit `--cookies-from-browser chrome`, `--cookies-from-browser safari`, or `--cookies-from-browser edge` overrides the default and must not fallback to another browser. The system may also use an explicit cookies file, but must not print, store, or expose cookie contents.
 
 YouTube subtitle rules:
 
@@ -142,10 +146,10 @@ YouTube subtitle rules:
 - Automatic English captions are preferred over translated subtitles.
 - English candidates include `en`, `en-US`, `en-GB`, `en-orig`, and actual `en-*` entries exposed by the platform.
 - Subtitle candidates must be tried one by one. A failed candidate records its failure and the fetcher continues to the next candidate.
-- audio_downloader may run only after all usable subtitle candidates fail.
+- audio_downloader may run only after all usable subtitle candidates fail, unless the user explicitly selected `--force-audio-transcription`. The explicit mode must record `force_audio_transcription=true`, mark subtitle_fetcher as skipped with `reason=force_audio_transcription`, and must never be enabled as an implicit fallback.
 - item_manifest records the subtitle probe, candidate list, candidate failures, selected language/kind/format, fetch reason, and whether audio_downloader was skipped due to subtitles.
 
-YouTube Connect transcript fallback lives at `scripts/providers/youtube_connect_provider.py`. When a single-video YouTube resolver fails with `platform_restriction`, bot check, sign-in restriction, or login verification, and the URL still contains a valid video id, the pipeline may try this fallback before failing the item. If fallback succeeds, it must produce `watchbrief_v5.transcript_material.v1`, set `transcript_fallback_provider=youtube-connect`, set `transcript_fallback_success=true`, and continue through local_extract, Codex review, validator, and renderer. It must skip audio_downloader and MLX/Whisper transcription. If fallback fails, the original resolver failure remains authoritative.
+YouTube Connect transcript fallback lives at `scripts/providers/youtube_connect_provider.py`. When a single-video YouTube resolver fails with `platform_restriction`, bot check, sign-in restriction, or login verification, and the URL still contains a valid video id, the pipeline may try this fallback before failing the item. If fallback succeeds, it must produce `watchbrief_v5.transcript_material.v1`, set `transcript_fallback_provider=youtube-connect`, set `transcript_fallback_success=true`, and continue through local_extract, Codex review, validator, and renderer. It must skip audio_downloader and MiMo MLX transcription. If fallback fails, the original resolver failure remains authoritative.
 
 The YouTube Connect fallback is not a full replacement for the primary resolver. It does not expand playlists, handle cookies, write SRT/VTT files, or guarantee full metadata. It may set title to video_id and duration to the transcript-derived duration when richer metadata is unavailable.
 
@@ -174,13 +178,13 @@ Bilibili resolver rules:
 
 Current behavior:
 
-- The canonical WatchBrief V5 project root is `/Users/apple/Documents/New project/watchbrief_v5`; Hermes and Codex default runs must invoke `python3 scripts/cli.py ...` from that directory.
+- The canonical WatchBefore v6 project root is `/Users/apple/Documents/New project/watchbrief_v5`; Hermes and Codex default runs invoke `python3 scripts/watchbefore.py ...` from that directory. `scripts/cli.py` remains a compatible entrypoint.
 - `--transcriber auto` is the default.
-- `auto` means MLX-Audio first.
-- Whisper is allowed only when the user explicitly passes `--transcriber whisper`, or explicitly passes `--allow-whisper-fallback` and MLX-Audio is unavailable or fails.
-- The pipeline must not silently fall back from MLX-Audio to Whisper.
-- MLX-Audio Python lookup must prefer `WATCHBRIEF_MLX_AUDIO_PYTHON`, the canonical standalone project `.venv-mlx/bin/python`, the current skill-root `.venv-mlx/bin/python`, the parent project-root `.venv-mlx/bin/python`, and Hermes installed skill `.venv-mlx/bin/python` before considering the current Python executable. It must not depend on the legacy `v1deodownload` skill `.venv-mlx`.
-- If MLX-Audio is unavailable and fallback is not explicitly allowed, the acquisition layer fails with `transcriber_unavailable` and a message that lists checked Python candidates.
+- `auto` means MiMo MLX through `/Users/apple/Documents/MiMo-V2.5-ASR-MLX/models/MiMo-V2.5-ASR-MLX`.
+- Whisper is allowed only when the user explicitly passes `--transcriber whisper`, or explicitly passes `--allow-whisper-fallback` and MiMo MLX is unavailable or fails.
+- The pipeline must not silently fall back from MiMo MLX to Whisper.
+- MiMo runtime Python lookup must prefer `WATCHBRIEF_MLX_AUDIO_PYTHON`, then `/Users/apple/Documents/MiMo-V2.5-ASR-MLX/.venv/bin/python`, then the current Python executable. It must not inspect WatchBefore project or Hermes skill `.venv-mlx` folders, and must not depend on the legacy `v1deodownload` skill `.venv-mlx`.
+- If MiMo MLX is unavailable and fallback is not explicitly allowed, the acquisition layer fails with `transcriber_unavailable` and a message that lists checked Python candidates.
 
 ### Extract Strategy
 
@@ -192,8 +196,8 @@ Rules:
 - The endpoint can be changed with `WATCHBRIEF_QWEN_BASE_URL`; `WATCHBRIEF_QWEN_API_BASE` and `--qwen-api-base` remain supported.
 - The default model is `qwen3-30b-a3b-instruct-2507-mlx`.
 - The model can be explicitly overridden with `WATCHBRIEF_QWEN_MODEL` or `--qwen-model`.
-- WatchBrief and Hermes are clients of the LM Studio `http://127.0.0.1:1234/v1` endpoint. They select different local models through the request `model` field; they do not run on port `1234`.
-- Do not run the full WatchBrief video pipeline concurrently with Hermes local-model heavy tasks. The risk is shared Mac unified memory and compute, not a port conflict.
+- WatchBefore and Hermes are clients of the LM Studio `http://127.0.0.1:1234/v1` endpoint. They select different local models through the request `model` field; they do not run on port `1234`.
+- Do not run the full WatchBefore video pipeline concurrently with Hermes local-model heavy tasks. The risk is shared Mac unified memory and compute, not a port conflict.
 - In `local-qwen`, non-Qwen model ids are rejected.
 - Non-Qwen local models must use `--extract-provider local-openai-compatible --extract-model <model>`.
 - Other OpenAI-compatible / Gemini / Claude / Kimi / Codex extraction must use explicit `--extract-provider`; API keys must be read from environment variables only.
@@ -340,6 +344,9 @@ Required fields:
 - `arrow_chain`
 - `final_conclusion`
 - `content_caveat`
+- `target_summary`: 开场总览；直接概括视频具体讲述的对象、主要内容和结果。长视频必须交代显著延伸出的次级主题，不能写模板或字段说明。
+- `reading_flow`: 给读者直接阅读的内容总结，包含 2 到 5 个有时间锚的具体要点；每项必须有 `start`、`end`、`heading` 和 `body`，用 1 到 3 句写出具体经过、主张、例子和结果，不写质量研判或观看建议。
+- `target_sections`: for default `watch_decision`, this must contain the reference-section keys `direct_statements`, `key_points`, `practical_takeaways`, and `boundaries`.
 - `watch_segments`
 - `only_one_segment`
 - `score_basis`
@@ -355,34 +362,42 @@ Required fields:
 - `scoring_formula_version`
 - `watchbrief_version`
 - `confidence_note`
+- `preference_profile_schema_version`: required in every formal CLI review request stability metadata.
+- `preference_profile_sha256`: required in every formal CLI review request stability metadata.
+- `personal_relevance`: required in every formal CLI output. It must contain only deterministic local profile matching results, not model-generated claims.
 
 Conditional fields:
 
-- `long_content_breakdown`: required when a video is longer than 45 minutes and is a podcast, interview, lecture, talk, course, workshop, seminar, training, or similar long-form content that needs phase-by-phase understanding. Each item must contain `start`, `end`, `title`, and `summary`.
+- `long_content_breakdown`: required when a video is longer than 45 minutes and is a podcast, interview, lecture, talk, course, workshop, seminar, training, or similar long-form content that needs phase-by-phase understanding. Each item must contain `start`, `end`, `title`, and `summary`. It is the folded verification index, not the primary reading path.
 
 ## Non-Negotiable Rules
 
-- `replacement_score` means remaining value in watching the original video after reading the report.
-- `replacement_score` must be recomputed locally from `structured_assessment`: `information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3`.
+- `replacement_score` is now the deterministic visible score for the current scoring profile. It is not the user's final watch decision.
+- Default scoring must be recomputed locally from `structured_assessment`: `information_density*0.35 + evidence_quality*0.35 + topic_interest*0.3`.
+- The legacy balanced scoring profile is removed; do not keep `standard` as a scoring profile.
 - Codex-provided `replacement_score` is only retained as `score_trace.model_suggested_score`; the final visible score must come from deterministic scoring.
+- Formal CLI runs must load `~/.watchbrief/preferences/seth.yaml` by default and stop before the pipeline when the profile is missing or invalid. `--preference-profile` may replace the path, but there is no profile-free formal mode. The bound metadata contains path, schema version, sha256, and byte count; raw viewing history and the profile body must not enter the review request.
+- The visible personal layer must be generated deterministically after review as `personal_relevance`. Matching scope is the unified interest domains and subtopics synthesized from real history engagement plus WatchBefore-analyzed report topics. Watched time and watch count must be shown for the primary matched domain. Behavior must not surface as positive, negative, queued, or mixed topic categories. Watch-later rows are excluded from interest inference. Author-level inference is forbidden. A matched domain renders `画像判断：可能喜欢`; no match renders `画像判断：暂时无法判断` and must not be converted into dislike. The profile updates `structured_assessment.话题兴趣` and recomputes `replacement_score`, `score_trace`, and `tag`.
+- A history report enters interest synthesis when it has `watched_seconds > 0` and a transcript-derived WatchBefore content report. `watch_later` rows never enter synthesis. Domain classification must bind results by exact report-id object keys, not positional arrays. Every delivered domain needs at least three classified reports. Domains and content preferences are ordered by cumulative watched seconds first, watch count second, and unique evidence count third; their `watched_seconds`, `watched_hours`, `watch_count`, and `watch_time_share` must be recomputed from assigned evidence IDs. Human-readable `subtopics` and deterministic matching `keywords` must be generated only from the reports already assigned to that domain.
+- Default single-video HTML must present `target_summary` and the model-authored `reading_flow` as the primary content summary. Score, 画像判断, four reference sections `直接结论 / 具体观点 / 可直接采用 / 注意边界`, full phase map, provenance and source-video segments are folded indexes; feedback remains visible. It must not render a standalone long-form `和我的观看习惯有什么关系？` block.
 - `tag` and `watch_verdict` must be semantically consistent with the final deterministic score. High score cannot say the report is enough; low score cannot recommend full watching.
 - Validated reports are cached outside delivery folders under `~/.watchbrief/cache/reports/` by default.
-- The report cache key must include at least `transcript_hash`, `qwen_model_id`, `qwen_prompt_fingerprint`, `codex_model`, `codex_prompt_fingerprint`, `scoring_formula_version`, and `watchbrief_version`.
+- The report cache key must include at least `transcript_hash`, `qwen_model_id`, `qwen_prompt_fingerprint`, `codex_model`, `codex_prompt_fingerprint`, `scoring_formula_version`, and `watchbrief_version`. When `--preference-profile` is provided, it must also include the profile hash through review request stability metadata.
 - Cache hits must reuse the previously validated `normalized_payload`, skip Codex review, write the current run's `normalized_payload.json`, render HTML normally, and record `cache_hit`, `cache_key`, and `cached_payload_path` in `item_manifest.json`.
 - `--force-reanalysis` must bypass report cache and run Codex review again.
 - CLI is the formal delivery boundary for output directory policy.
 - Single-video CLI runs without `--output-dir` must deliver only one HTML file to `~/Desktop/` and must not create a task folder or `00-watch-order.html`.
 - List CLI runs without `--output-dir` must deliver to one folder under Desktop. If a playlist/list title is available, the folder must be `~/Desktop/<playlist title>/`; if that path already exists, use `-2`, `-3`, and later numeric suffixes without overwriting. If no playlist/list title is available, fallback to `~/Desktop/watch-YYYYMMDD-HHMMSS/`. The folder must contain only `00-watch-order.html` and per-video HTML files.
 - List delivery order must preserve the original playlist/item order. `00-watch-order.html` and per-video HTML filename prefixes `01/02/03...` must not be reordered by `replacement_score`.
-- List CLI runs with explicit `--output-dir <dir>` must treat `<dir>` as the final delivery folder, not as a parent folder. `00-watch-order.html` and all per-video HTML files must be direct children of `<dir>`.
+- Formal list CLI runs with explicit `--output-dir <dir>` must treat `<dir>` as the parent folder. The final delivery folder must be `<dir>/<playlist title>/` when a playlist/list title is available, using `-2`, `-3`, and later numeric suffixes without overwriting. If no playlist/list title is available, fallback to `<dir>/watch-YYYYMMDD-HHMMSS/`. `00-watch-order.html` and all per-video HTML files must be direct children of that final playlist folder.
 - CLI runs must not open final HTML or Watch Order output by default. Opening output is allowed only when an explicit output-opening flag is passed.
 - Debug, payload, audio, transcript, manifest, and work artifacts must not be mixed into formal delivery folders by default.
 - Successful CLI runs must clean default temporary debug/work artifacts unless `--debug-dir` or `--keep-debug-artifacts` is explicit.
-- Failed CLI runs without `--debug-dir` must retain diagnostics in the temporary debug directory and print the `debug_artifacts` path; they must not create `~/Desktop/WatchBrief-Debug/` by default.
-- Formal user tasks and default diagnostic tasks must not default to `~/Desktop/WatchBrief-Runs/`.
-- Phase acceptance, smoke, cache verification, debug, and temporary rechecks may use an explicit `--output-dir <retained diagnostic directory>` when artifacts need to be kept. That folder is the final delivery folder and must not contain another HTML task folder.
+- Failed CLI runs without `--debug-dir` must retain diagnostics in the temporary debug directory and print the `debug_artifacts` path; they must not create `~/Desktop/WatchBefore-Debug/` by default.
+- Formal user tasks and default diagnostic tasks must not default to `~/Desktop/WatchBefore-Runs/`.
+- Phase acceptance, smoke, cache verification, debug, and temporary rechecks may use an explicit `--output-dir <retained directory>` when artifacts need to be kept. Formal list runs still create the playlist-title delivery folder inside that directory; diagnostic runs with `--diagnostic-run` treat the directory itself as the final diagnostic output directory.
 - Diagnosis, repro, debug, and issue-investigation runs must use `--diagnostic-run` or `--repro-run` unless an explicit diagnostic `--output-dir` is provided.
-- Diagnostic runs without explicit `--output-dir` must default to a system temporary directory, not to the formal single-video Desktop HTML location, formal list task folder, or `~/Desktop/WatchBrief-Runs/`.
+- Diagnostic runs without explicit `--output-dir` must default to a system temporary directory, not to the formal single-video Desktop HTML location, formal list task folder, or `~/Desktop/WatchBefore-Runs/`.
 - Diagnostic runs must store manifest, payload, and debug artifacts under the diagnostic output directory's `_debug/` folder by default. Any generated HTML is a diagnostic artifact, not a formal delivery.
 - Diagnostic runs with explicit `--output-dir <dir>` must still treat `<dir>` as the final diagnostic output directory and must not create a nested HTML task folder.
 - Single-video `date` must be the source video publish date, not report generation time, current system date, file creation time, or pipeline runtime. Source priority is `publish_date`, `release_date`, `upload_date`, `timestamp`, then other explicit platform publish fields.
@@ -395,7 +410,7 @@ Conditional fields:
 - `watch_segments` has one `primary`, at most one `optional`, and optional `backup`.
 - `only_one_segment` must match the `primary` time range.
 - `watch_segments` time cards use a vertical separator layout: `start`, `|`, `end`.
-- Long podcasts, interviews, lectures, talks, courses, workshops, seminars, trainings, and similar videos longer than 45 minutes must include `long_content_breakdown` as an ordered whole-video phase map. This field must not replace `watch_segments`.
+- Long podcasts, interviews, lectures, talks, courses, workshops, seminars, trainings, and similar videos longer than 45 minutes must include `long_content_breakdown` as an ordered whole-video phase map and 3 to 5 `reading_flow` sections covering that whole map. Neither field replaces `watch_segments`.
 - natural Chinese sentences such as `watch_verdict` and `only_one_segment` may render `start - end` for readability without changing the normalized payload.
 - `content_caveat` must not render as a hero-side verdict banner; if shown, render it as a low-priority report note.
 - renderer must not create, repair, or derive content fields.

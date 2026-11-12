@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover
     from validator import validate_normalized_report_payload
 
 
-REPORT_CACHE_VERSION = "watchbrief_v5.report_cache.v1"
+REPORT_CACHE_VERSION = "watchbrief_v6.report_cache.v1"
 REPORT_CACHE_ENV = "WATCHBRIEF_REPORT_CACHE_DIR"
 DEFAULT_REPORT_CACHE_DIR = Path.home() / ".watchbrief" / "cache" / "reports"
 REPORT_CACHE_KEY_FIELDS = (
@@ -30,12 +30,17 @@ REPORT_CACHE_KEY_FIELDS = (
     "source_cid",
     "transcript_source",
     "transcript_hash",
+    "visual_evidence_hash",
+    "visual_provider",
+    "visual_prompt_version",
     "qwen_model_id",
     "qwen_prompt_fingerprint",
     "codex_model",
     "codex_prompt_fingerprint",
     "scoring_formula_version",
     "watchbrief_version",
+    "preference_profile_schema_version",
+    "preference_profile_sha256",
 )
 
 
@@ -60,12 +65,17 @@ def build_report_cache_identity(review_request: dict[str, Any], *, codex_model: 
         "source_cid": str(metadata.get("source_cid") or "none"),
         "transcript_source": str(metadata.get("transcript_source") or "none"),
         "transcript_hash": str(metadata.get("transcript_hash") or ""),
+        "visual_evidence_hash": str(metadata.get("visual_evidence_hash") or "none"),
+        "visual_provider": str(metadata.get("visual_provider") or "none"),
+        "visual_prompt_version": str(metadata.get("visual_prompt_version") or "none"),
         "qwen_model_id": str(metadata.get("qwen_model_id") or ""),
         "qwen_prompt_fingerprint": str(metadata.get("qwen_prompt_fingerprint") or ""),
         "codex_model": str(codex_model or metadata.get("codex_model") or ""),
         "codex_prompt_fingerprint": str(metadata.get("codex_prompt_fingerprint") or review_request.get("codex_prompt_fingerprint") or ""),
         "scoring_formula_version": str(metadata.get("scoring_formula_version") or ""),
         "watchbrief_version": str(metadata.get("watchbrief_version") or ""),
+        "preference_profile_schema_version": str(metadata.get("preference_profile_schema_version") or "none"),
+        "preference_profile_sha256": str(metadata.get("preference_profile_sha256") or "none"),
     }
     missing = [field for field in REPORT_CACHE_KEY_FIELDS if not identity.get(field)]
     if missing:

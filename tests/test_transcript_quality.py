@@ -56,6 +56,21 @@ class TranscriptQualityTest(unittest.TestCase):
         self.assertTrue(debug["title_transcript_consistency_checked"])
         self.assertEqual(debug["title_transcript_match_count"], 0)
 
+    def test_verified_part_identity_does_not_require_abstract_title_words(self) -> None:
+        identity={"page_index":4,"page_count":12,"expected_bvid":"BV1Me41137rw","expected_cid":"824336900","source_bvid":"BV1Me41137rw","source_cid":"824336900","provider":"bilibili_content_provider","part_title":"与设备合二为一"}
+        segments=[{"start":"00:00","end":"04:00","text":"驾驶舱、赛车、引擎与方向盘的反馈，以及高速比赛时的感官体验。"*15},{"start":"04:00","end":"09:00","text":"车手如何感知抓地力、赛车状态和制动点。"*15}]
+        result=validate_transcript_coverage(video_duration=545,segments=segments,transcript_source="subtitle_bcc",title="与设备合二为一",episode_identity=identity)
+        self.assertTrue(result["transcript_quality_passed"])
+        self.assertTrue(result["subtitle_episode_identity_verified"])
+        self.assertEqual(result["title_transcript_match_count"],0)
+        self.assertTrue(result["title_transcript_mismatch_warning"])
+        short=validate_transcript_coverage(video_duration=545,segments=segments[:1],transcript_source="subtitle_bcc",title="与设备合二为一",episode_identity=identity)
+        self.assertFalse(short["transcript_quality_passed"])
+        wrong=dict(identity,source_cid="824337319")
+        result=validate_transcript_coverage(video_duration=545,segments=segments,transcript_source="subtitle_bcc",title="与设备合二为一",episode_identity=wrong)
+        self.assertFalse(result["transcript_quality_passed"])
+        self.assertEqual(result["transcript_quality_reason"],"subtitle_episode_identity_mismatch")
+
 
 if __name__ == "__main__":
     unittest.main()

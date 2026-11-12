@@ -1,0 +1,95 @@
+/* Reading palette shared by single reports and collections. White is reserved for headings. */
+:root {
+  color-scheme: dark;
+  --bg: #15171b;
+  --surface: #1e2127;
+  --surface-raised: #252930;
+  --border: #363c45;
+  --text: #b6bdc7;
+  --muted: #9ca5b1;
+  --dim: #8993a1;
+  --heading: #ffffff;
+  --teal: #92b6b2;
+  --blue: #97aec5;
+  --gold: #c8b681;
+  --white: var(--text);
+  --ink: var(--text);
+  --line: var(--border);
+}
+body {
+  color: var(--text);
+  background: var(--bg);
+}
+h1, h2, h3, h4,
+.section h2, .summary-panel h2, .summary-beats h3,
+.reading-flow h2, .story-closing h2, .story-copy h3,
+.watch-item h3, .reader-reference h3, .target-section h3,
+.phase-copy h3, .reader-index > summary {
+  color: var(--heading);
+}
+.panel { box-shadow: none; }
+.hero-main {
+  background: var(--surface);
+  border-left-color: #69737f;
+}
+.hero-summary, .summary-panel {
+  background: var(--surface);
+}
+.pill strong, .hero-summary strong, .preference-fit strong,
+.report-note strong, .report-facts-score strong,
+.reading-hero .hero-summary strong {
+  color: var(--text);
+}
+.hero-side .side-verdict {
+  color: var(--text) !important;
+  font-weight: 500;
+}
+.hero-side .side-verdict strong { color: var(--gold); }
+.final-conclusion {
+  color: var(--text) !important;
+  background: var(--surface-raised) !important;
+  border-color: var(--border) !important;
+}
+.final-conclusion strong { color: var(--text) !important; }
+.story-core, .core-extract p, .chain-title, .chain-step p,
+.mini-arrow-chain, .only-one, .target-hero-copy {
+  color: var(--text);
+}
+.watch-time { color: var(--muted); }
+.report-top-menu a:hover, .feedback-launcher-btn:hover { color: var(--text); }
+
+/* The feedback drawer follows the report palette rather than opening a white sheet. */
+.feedback-drawer-card { background: var(--surface); border-color: var(--border); }
+.feedback-card, .step-hero, .step-block, .choice-card,
+.feedback-field, .feedback-card .feedback-field:first-of-type,
+.score-slider-wrap, .summary-preview {
+  background: var(--surface-raised);
+  border-color: var(--border);
+  box-shadow: none;
+}
+.feedback-card h3 { color: var(--heading); background: transparent; border-color: var(--border); }
+.feedback-drawer-head h2, .step-title, .summary-preview h4 { color: var(--heading); }
+.feedback-close-btn, .wizard-btn, .option, .feedback-textarea,
+.feedback-field label, .wizard-step, .wizard-step span {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--border);
+}
+.feedback-textarea::placeholder { color: var(--dim); }
+.feedback-hint, .step-copy, .choice-card-copy, .wizard-footer-copy,
+.score-slider-scale, .score-slider-ticks, .summary-preview p { color: var(--muted); }
+.step-block-head, .choice-card-title { color: var(--text); }
+.wizard-step.is-active, .wizard-step.is-done,
+.option:has(input:checked), .choice-card:has(input[value]:checked) {
+  background: #2b3540;
+  color: var(--text);
+  border-color: #687f95;
+  box-shadow: none;
+}
+.wizard-step.is-active span, .wizard-step.is-done span,
+.wizard-btn.primary, .score-slider-value {
+  background: #344453;
+  color: var(--text);
+  border-color: #687f95;
+}
+.wizard-footer { border-color: var(--border); }

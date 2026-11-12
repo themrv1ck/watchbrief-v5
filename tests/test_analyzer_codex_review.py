@@ -45,6 +45,20 @@ def fake_qwen_extract(seed: dict) -> dict:
         "language": seed["transcript"]["language"],
         "important_terms": ["flow"],
         "corrected_terms": [],
+        "reading_flow": [
+            {
+                "start": "00:00",
+                "end": "05:12",
+                "heading": "先看任务为什么卡住",
+                "body": "内容先说明目标和反馈不清楚如何让任务变成高摩擦问题。",
+            },
+            {
+                "start": "10:51",
+                "end": "15:08",
+                "heading": "再把任务拆成可进入的系统",
+                "body": "后半段把清理干扰和拆小任务连成可执行的改造路径。",
+            },
+        ],
     }
 
 
@@ -69,11 +83,11 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertEqual(request["messages"][0]["role"], "system")
         self.assertEqual(request["messages"][1]["role"], "user")
         self.assertIn("final_conclusion", request["contract"]["required_fields"])
-        self.assertEqual(request["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v5")
+        self.assertEqual(request["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v10")
         self.assertRegex(request["codex_prompt_fingerprint"], r"^[0-9a-f]{64}$")
         self.assertRegex(request["stability_metadata"]["transcript_hash"], r"^[0-9a-f]{64}$")
         self.assertEqual(request["stability_metadata"]["qwen_model_id"], DEFAULT_QWEN_MODEL)
-        self.assertEqual(request["stability_metadata"]["scoring_formula_version"], "watchbrief_v5.video_value_formula.v2")
+        self.assertEqual(request["stability_metadata"]["scoring_formula_version"], "watchbrief_v5.topic_interest_formula.v2")
 
     def test_qwen_terms_are_passed_into_review_request(self) -> None:
         request = build_review_request(self.build_local_extract())
@@ -160,6 +174,24 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertEqual(parsed["title"], payload["title"])
         self.assertEqual(parsed["final_conclusion"], payload["final_conclusion"])
         self.assertIn("score_trace", parsed)
+
+    def test_parse_review_response_strips_model_generated_personal_relevance(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["personal_relevance"] = {
+            "status": "matched",
+            "basis": "watchtrace_bilibili_profile",
+            "match_level": "interest_domain_match",
+            "topic_interest_score": 8.5,
+            "summary": "模型不应该生成个人层。",
+            "evidence": ["伪造样本"],
+            "caveat": "伪造说明",
+            "profile_schema_version": "watchbefore.profile.v2",
+            "profile_sha256": "a" * 64,
+        }
+
+        parsed = parse_review_response(payload)
+
+        self.assertNotIn("personal_relevance", parsed)
 
     def test_parse_review_response_does_not_mutate_input_object(self) -> None:
         payload = load_golden("sample_payload_charm.json")
@@ -272,6 +304,7 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertEqual(command[:2], ["/usr/local/bin/codex", "exec"])
         self.assertIn("-m", command)
         self.assertIn("gpt-test", command)
+        self.assertIn('model_reasoning_effort="xhigh"', command)
         self.assertNotIn("--output-schema", command)
 
     def test_codex_cli_prompt_requires_watch_verdict_pipe_time(self) -> None:
@@ -452,6 +485,8 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
         self.assertIn("任务结构", response["one_line_brief"])
         self.assertEqual(response["watch_segments"][0]["priority"], "primary")
         self.assertEqual(response["codex_model"], LOCAL_REVIEW_MODEL_ID)
+        self.assertIn("direct_statements", response["target_sections"])
+        self.assertIn("practical_takeaways", response["target_sections"])
 
     def test_build_local_review_response_supports_content_brief_target(self) -> None:
         response = build_local_review_response(self.build_local_extract(), report_target="content_brief")
@@ -551,6 +586,26 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
             "cleaned_understanding": "课程按目标、反馈、挑战、拆分和边界逐步讲解任务设计。",
             "core_claims": ["心流更依赖任务结构，而不是单纯意志力。"],
             "important_terms": ["课程", "心流", "任务系统"],
+            "reading_flow": [
+                {
+                    "start": "00:00",
+                    "end": "20:00",
+                    "heading": "先用目标和反馈解释启动阻力",
+                    "body": "课程先说明清楚目标和即时反馈如何降低开始任务时的摩擦。",
+                },
+                {
+                    "start": "20:00",
+                    "end": "40:00",
+                    "heading": "再用挑战难度校准心流条件",
+                    "body": "中段把挑战过低或过高都会破坏投入的原因讲清楚。",
+                },
+                {
+                    "start": "40:00",
+                    "end": "60:00",
+                    "heading": "最后把拆分和边界放回实际执行",
+                    "body": "结尾回到任务拆分和适用边界，避免把心流当成单一技巧。",
+                },
+            ],
         })
 
         parsed = parse_review_response(
@@ -638,8 +693,8 @@ class AnalyzerCodexReviewTest(unittest.TestCase):
 
         self.assertNotEqual(first_parsed["structured_assessment"], second_parsed["structured_assessment"])
         self.assertNotEqual(first_parsed["replacement_score"], second_parsed["replacement_score"])
-        self.assertGreaterEqual(first_parsed["replacement_score"], 7.6)
-        self.assertGreaterEqual(second_parsed["replacement_score"], 7.5)
+        self.assertEqual(first_parsed["replacement_score"], 7.1)
+        self.assertEqual(second_parsed["replacement_score"], 7.0)
         self.assertLessEqual(first_parsed["replacement_score"], 8.2)
         self.assertLessEqual(second_parsed["replacement_score"], 8.2)
 

@@ -31,6 +31,40 @@ class ValidatorTest(unittest.TestCase):
         self.assertEqual(validated["report_target"], "knowledge_notes")
         self.assertIn("core_concepts", validated["target_sections"])
 
+    def test_personal_relevance_payload_passes(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["personal_relevance"] = {
+            "status": "matched",
+            "basis": "watchtrace_bilibili_profile",
+            "match_level": "interest_domain_match",
+            "topic_interest_score": 7.5,
+            "summary": "当前视频话题命中你的兴趣领域：个人效率与认知表现。",
+            "evidence": ["个人效率与认知表现：心流"],
+            "caveat": "兴趣画像只来自真实历史观看事实与 WatchBefore 内容报告；不使用作者级推断，也不替你做最终观看决定。",
+            "profile_schema_version": "watchbefore.profile.v2",
+            "profile_sha256": "a" * 64,
+        }
+
+        validated = validate_normalized_report_payload(payload)
+
+        self.assertEqual(validated["personal_relevance"]["match_level"], "interest_domain_match")
+
+    def test_personal_relevance_requires_profile_hash(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["personal_relevance"] = {
+            "status": "matched",
+            "basis": "watchtrace_bilibili_profile",
+            "match_level": "interest_domain_match",
+            "topic_interest_score": 7.5,
+            "summary": "这个视频命中行为样本。",
+            "evidence": ["样本"],
+            "caveat": "这是观看行为信号。",
+            "profile_schema_version": "watchbefore.profile.v2",
+            "profile_sha256": "not-a-hash",
+        }
+
+        assert_invalid(self, payload, "personal_relevance_profile_hash")
+
     def test_content_brief_report_target_payload_passes(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
         payload["report_target"] = "content_brief"
@@ -47,13 +81,49 @@ class ValidatorTest(unittest.TestCase):
         self.assertEqual(validated["report_target"], "content_brief")
         self.assertIn("direct_statements", validated["target_sections"])
 
-    def test_watch_decision_rejects_target_sections(self) -> None:
+    def test_watch_decision_accepts_default_template_content_sections(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
         payload["report_target"] = "watch_decision"
-        payload["target_summary"] = "默认观看决策不应该携带目标 sections。"
+
+        validated = validate_normalized_report_payload(payload)
+
+        self.assertEqual(validated["target_sections"]["direct_statements"][0], payload["target_sections"]["direct_statements"][0])
+
+    def test_watch_decision_rejects_wrong_default_template_section_keys(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["report_target"] = "watch_decision"
         payload["target_sections"] = {"core_concepts": ["多余字段"]}
 
-        assert_invalid(self, payload, "target_unexpected")
+        assert_invalid(self, payload, "target_sections_keys")
+
+    def test_default_report_requires_content_range_and_content_sections(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        del payload["target_summary"]
+        del payload["target_sections"]
+
+        assert_invalid(self, payload, "required")
+
+    def test_reading_flow_is_required_and_must_progress_in_time_order(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["reading_flow"] = [
+            {
+                "start": "08:20",
+                "end": "16:42",
+                "heading": "后半段",
+                "body": "这一段把任务结构和执行动作放在一起说明。",
+            },
+            {
+                "start": "00:00",
+                "end": "08:20",
+                "heading": "开场",
+                "body": "这一段从专注困难切入，说明为什么不该只靠意志力。",
+            },
+        ]
+
+        assert_invalid(self, payload, "reading_flow_order")
+
+        del payload["reading_flow"]
+        assert_invalid(self, payload, "required")
 
     def test_final_conclusion_valid_thematic_sentence_passes(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
@@ -117,6 +187,25 @@ class ValidatorTest(unittest.TestCase):
         payload["watch_verdict"] = "看报告基本够，原视频只建议跳看 20:44 | 32:34。"
         validate_normalized_report_payload(payload)
 
+    def test_watch_segment_end_must_be_after_start(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["watch_segments"][0]["start"] = "12:00"
+        payload["watch_segments"][0]["end"] = "11:00"
+        payload["only_one_segment"] = "只选一段：12:00 | 11:00。这一段已经覆盖全片核心。"
+        payload["watch_verdict"] = "看报告基本够，原视频只建议跳看 12:00 | 11:00。"
+
+        assert_invalid(self, payload, "segment_time_order")
+
+    def test_watch_segment_must_not_exceed_video_duration(self) -> None:
+        payload = load_golden("sample_payload_heartflow.json")
+        payload["duration"] = "10:00"
+        payload["watch_segments"][0]["start"] = "09:00"
+        payload["watch_segments"][0]["end"] = "11:00"
+        payload["only_one_segment"] = "只选一段：09:00 | 11:00。这一段已经覆盖全片核心。"
+        payload["watch_verdict"] = "看报告基本够，原视频只建议跳看 09:00 | 11:00。"
+
+        assert_invalid(self, payload, "segment_out_of_duration")
+
     def test_watch_verdict_no_watch_decision_passes(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
         payload["watch_verdict"] = "看报告足够，原视频不必看。"
@@ -127,8 +216,7 @@ class ValidatorTest(unittest.TestCase):
         payload["structured_assessment"] = {
             "信息密度": 8.5,
             "论据质量": 8.0,
-            "独创性": 7.5,
-            "观看性价比": 8.2,
+            "话题兴趣": 8.2,
         }
         payload = apply_deterministic_scoring(payload)
         payload["watch_verdict"] = "看报告基本够；如果想直接抄关键动作，先看 01:52 | 05:35。只想知道核心原则的话，原视频不必完整看。"

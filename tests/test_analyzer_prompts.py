@@ -23,15 +23,32 @@ def fake_qwen_extract(seed: dict) -> dict:
         "language": seed["transcript"]["language"],
         "important_terms": ["flow"],
         "corrected_terms": [],
+        "reading_flow": [
+            {
+                "start": "00:00",
+                "end": "05:12",
+                "heading": "先看任务为什么卡住",
+                "body": "内容先说明目标和反馈不清楚如何让任务变成高摩擦问题。",
+            },
+            {
+                "start": "10:51",
+                "end": "15:08",
+                "heading": "再把任务拆成可进入的系统",
+                "body": "后半段把清理干扰和拆小任务连成可执行的改造路径。",
+            },
+        ],
     }
 
 
 class AnalyzerPromptsTest(unittest.TestCase):
     def test_prompt_contains_v5_field_boundaries(self) -> None:
         self.assertIn("replacement_score 只表示", ANALYZER_SYSTEM_PROMPT)
-        self.assertIn("视频内容综合评分", ANALYZER_SYSTEM_PROMPT)
+        self.assertIn("视频内容与话题兴趣综合评分", ANALYZER_SYSTEM_PROMPT)
         self.assertIn("不是替用户做观看决定", ANALYZER_SYSTEM_PROMPT)
         self.assertIn("final_conclusion 只回答", ANALYZER_SYSTEM_PROMPT)
+        self.assertIn("默认报告首先是视频内容总结", ANALYZER_SYSTEM_PROMPT)
+        self.assertIn("正文不写视频质量研判", ANALYZER_SYSTEM_PROMPT)
+        self.assertIn("每个要点聚焦一件主要事情", ANALYZER_SYSTEM_PROMPT)
         self.assertIn("不要重新引入“要点提炼 / 可执行动作清单 / 完整笔记”", ANALYZER_SYSTEM_PROMPT)
 
     def test_payload_contract_lists_required_fields_and_tags(self) -> None:
@@ -75,17 +92,29 @@ class AnalyzerPromptsTest(unittest.TestCase):
         self.assertIn(mock["metadata"]["title"], prompt)
         self.assertIn('"local_qwen_model_call": true', prompt)
 
-    def test_build_review_user_prompt_adds_non_watch_target_contract_only_when_requested(self) -> None:
+    def test_build_review_user_prompt_adds_default_template_content_card_contract(self) -> None:
         mock = json.loads((ROOT / "golden" / "mock_transcript_heartflow.json").read_text(encoding="utf-8"))
         local_extract = build_local_extract_payload(mock["metadata"], mock["transcript_segments"], qwen_extractor=fake_qwen_extract)
 
         default_prompt = build_review_user_prompt(local_extract)
         target_prompt = build_review_user_prompt(local_extract, report_target="text_structure")
 
-        self.assertNotIn("report_target 目标模式补充契约", default_prompt)
+        self.assertIn("默认 WatchBefore 模板阅读流契约", default_prompt)
+        self.assertIn("正文开场总览", default_prompt)
+        self.assertIn("direct_statements", default_prompt)
+        self.assertIn("不要把 report_target 改成 content_brief", default_prompt)
         self.assertIn("report_target 目标模式补充契约", target_prompt)
         self.assertIn("text_structure", target_prompt)
         self.assertIn("structure_overview", target_prompt)
+
+    def test_default_review_prompt_requires_model_authored_reading_flow(self) -> None:
+        mock = json.loads((ROOT / "golden" / "mock_transcript_heartflow.json").read_text(encoding="utf-8"))
+        local_extract = build_local_extract_payload(mock["metadata"], mock["transcript_segments"], qwen_extractor=fake_qwen_extract)
+
+        prompt = build_review_user_prompt(local_extract)
+
+        self.assertIn("reading_flow", prompt)
+        self.assertIn("写具体内容、例子与结果", prompt)
 
     def test_build_review_user_prompt_compacts_large_local_extract_payload(self) -> None:
         segments = [
@@ -149,7 +178,7 @@ class AnalyzerPromptsTest(unittest.TestCase):
                 "qwen_family_only": True,
                 "no_real_url_processing": True,
                 "does_not_generate_final_report_fields": True,
-                "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v2",
+                "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v6",
                 "qwen_prompt_fingerprint": "b" * 64,
             },
             "chunked_local_extract": {

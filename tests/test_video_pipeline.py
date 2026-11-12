@@ -26,6 +26,7 @@ from scripts.analyzer.local_extract import LocalExtractError, LocalQwenError, bu
 from scripts.analyzer.local_review import LOCAL_REVIEW_MODEL_ID, LOCAL_REVIEW_PROMPT_FINGERPRINT
 from scripts.analyzer.codex_review import build_review_request
 from scripts.report_cache import build_report_cache_identity, report_cache_key
+from scripts.stability import stable_sha256
 from scripts.transcript_source_adapter import load_transcript_source
 from scripts.video_pipeline import (
     PipelineDependencies,
@@ -34,6 +35,7 @@ from scripts.video_pipeline import (
     metadata_from_item_with_debug,
     process_source,
 )
+from scripts.validator import parse_duration_seconds, parse_time_point_seconds
 
 
 FIXTURE_DIR = ROOT / "fixtures" / "transcripts"
@@ -187,8 +189,54 @@ def xiaohongshu_board_resolution() -> dict:
 
 def review_provider_for_golden(item: dict, review_request: dict, local_extract: dict) -> dict:
     if "charm" in item["url"]:
-        return load_golden("sample_payload_charm.json")
-    return load_golden("sample_payload_heartflow.json")
+        payload = load_golden("sample_payload_charm.json")
+    else:
+        payload = load_golden("sample_payload_heartflow.json")
+    raw_duration = item.get("duration")
+    if isinstance(raw_duration, (int, float)) and not isinstance(raw_duration, bool):
+        duration_seconds = int(raw_duration)
+    elif str(raw_duration or "").strip().isdigit():
+        duration_seconds = int(str(raw_duration).strip())
+    else:
+        duration_seconds = parse_duration_seconds(raw_duration)
+    reading_flow_ends = [
+        parse_time_point_seconds(section.get("end")) or 0
+        for section in payload.get("reading_flow", [])
+        if isinstance(section, dict)
+    ]
+    if duration_seconds > 1 and max(reading_flow_ends, default=0) > duration_seconds:
+        midpoint_seconds = max(1, duration_seconds // 2)
+
+        def timecode(seconds: int) -> str:
+            return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+        payload["reading_flow"] = [
+            {
+                "start": "00:00",
+                "end": timecode(midpoint_seconds),
+                "heading": "先确认测试内容的核心问题",
+                "body": "测试材料先说明内容主轴和需要解决的问题，为后面的具体做法建立理解入口。",
+            },
+            {
+                "start": timecode(midpoint_seconds),
+                "end": timecode(duration_seconds),
+                "heading": "再回到测试材料的具体做法",
+                "body": "测试材料随后把核心观点落到可理解的调整路径，并保留必要的内容边界。",
+            },
+        ]
+    if 0 < duration_seconds < 15 * 60 + 8:
+        end_seconds = max(1, min(duration_seconds, 5 * 60))
+        end = f"{end_seconds // 60:02d}:{end_seconds % 60:02d}"
+        payload["watch_segments"] = [{
+            "priority": "primary",
+            "start": "00:00",
+            "end": end,
+            "title": "首选片段：测试内容入口",
+            "reason": "测试报告使用视频真实时长范围内的内容入口。",
+        }]
+        payload["only_one_segment"] = f"只选一段：00:00 | {end}。这一段覆盖测试素材核心。"
+        payload["watch_verdict"] = f"看报告基本够，原视频只建议跳看 00:00 | {end}。"
+    return payload
 
 
 def target_review_provider(item: dict, review_request: dict, local_extract: dict) -> dict:
@@ -272,6 +320,154 @@ def report_cache_review_options(cache_dir: Path, *, force_reanalysis: bool = Fal
 
 
 class VideoPipelineTest(unittest.TestCase):
+    def test_auto_visual_activation_is_recorded_before_visual_download(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = single_resolution()
+            source["videos"][0]["duration"] = "10:00"
+            source["videos"][0]["title"] = "屏幕界面操作与图表效果对比"
+            material = transcript_material_from_segments(
+                [
+                    {"start": "00:00", "end": "04:00", "text": "屏幕上的界面，点击按钮后打开菜单。" * 8},
+                    {"start": "04:00", "end": "08:00", "text": "图表显示前后对比，拖动滑块查看效果。" * 8},
+                ],
+                source_kind="subtitle_bcc",
+                transcript_quality="ok",
+            )
+            calls: list[str] = []
+
+            def fail_visual_download(_url, _visual_dir, **_kwargs):
+                calls.append("visual_download")
+                raise RuntimeError("controlled visual download stop")
+
+            deps = PipelineDependencies(
+                resolve_url_func=lambda _url: source,
+                fetch_subtitles_func=lambda _url, _dir, **_kwargs: material,
+                download_visual_func=fail_visual_download,
+                analyze_visual_func=lambda *_args, **_kwargs: {},
+                prepare_visual_func=lambda: calls.append("visual_preflight"),
+                visual_analysis_mode="auto",
+            )
+            manifest = process_source(
+                "https://example.com/watch/heartflow",
+                Path(temp_dir),
+                review_response_provider=None,
+                deps=deps,
+            )
+            self.assertEqual(calls, ["visual_preflight", "visual_download"])
+            self.assertEqual(manifest["failed_count"], 1)
+            item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text())
+            self.assertTrue(item_manifest["visual_analysis_enabled"])
+            self.assertEqual(item_manifest["visual_activation"]["reason_code"], "transcript_visual_dependency")
+
+    def test_explicit_visual_analysis_flows_into_extract_review_payload_and_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            captured: dict[str, Any] = {}
+
+            def download_visual(url, visual_dir, **kwargs):
+                captured["visual_url"] = url
+                captured["visual_download_options"] = kwargs
+                video_path = visual_dir / "source.mp4"
+                video_path.parent.mkdir(parents=True, exist_ok=True)
+                video_path.write_bytes(b"mock-video")
+                return {"video_path": str(video_path)}
+
+            def analyze_visual(video_path, visual_dir, **kwargs):
+                captured["visual_video_path"] = str(video_path)
+                captured["visual_analysis_options"] = kwargs
+                evidence = {
+                    "evidence_version": "watchbrief_v5.visual_evidence.v1",
+                    "prompt_version": "watchbrief_v5.mimo_visual_prompt.v1",
+                    "provider": {
+                        "provider": "mimo-vl-mlx",
+                        "model": "/mock/MiMo-VL-7B-RL-2508",
+                        "version": "mlx-vlm-0.5.0",
+                    },
+                    "video_sha256": "b" * 64,
+                    "duration_seconds": 1002.0,
+                    "sampling": {
+                        "method": "uniform_full_timeline_endpoints_v1",
+                        "requested_max_gap_seconds": 10.0,
+                        "observed_max_gap_seconds": 10.0,
+                        "includes_start": True,
+                        "includes_end": True,
+                        "timestamps_seconds": [0.0, 1002.0],
+                    },
+                    "frames": [
+                        {"index": 0, "timestamp_seconds": 0.0, "endpoint": "start", "sha256": "c" * 64},
+                        {"index": 1, "timestamp_seconds": 1002.0, "endpoint": "end", "sha256": "d" * 64},
+                    ],
+                    "analysis": {
+                        "overall_visual_summary": "画面展示任务拆解流程。",
+                        "frames": [
+                            {
+                                "index": 0,
+                                "timestamp_seconds": 0.0,
+                                "observation": "可见任务清单界面。",
+                                "visible_text": ["任务"],
+                                "actions": [],
+                                "uncertainty": "",
+                            },
+                            {
+                                "index": 1,
+                                "timestamp_seconds": 1002.0,
+                                "observation": "可见总结页。",
+                                "visible_text": ["总结"],
+                                "actions": [],
+                                "uncertainty": "",
+                            },
+                        ],
+                        "visual_caveats": ["抽帧不能证明音频内容。"],
+                    },
+                }
+                evidence["visual_evidence_hash"] = stable_sha256(evidence)
+                return evidence
+
+            def capture_extract(metadata, transcript_segments, **kwargs):
+                captured["extract_visual_evidence"] = kwargs.get("visual_evidence")
+                return local_extract_for_tests(metadata, transcript_segments, **kwargs)
+
+            deps = PipelineDependencies(
+                resolve_url_func=lambda _url: single_resolution(),
+                fetch_subtitles_func=lambda url, subtitle_dir, **kwargs: fixture_material(),
+                download_visual_func=download_visual,
+                analyze_visual_func=analyze_visual,
+                build_local_extract_func=capture_extract,
+                visual_download_options={"cookie_browser_attempts": ["safari"]},
+                visual_analysis_options={"max_gap_seconds": 10.0},
+                review_options={"codex_model": "gpt-test"},
+            )
+
+            manifest = process_source(
+                "https://example.com/watch/heartflow",
+                output_dir,
+                review_response_provider=review_provider_for_golden,
+                deps=deps,
+            )
+
+            self.assertEqual(manifest["completed_count"], 1)
+            evidence = captured["extract_visual_evidence"]
+            self.assertEqual(evidence["provider"]["provider"], "mimo-vl-mlx")
+            self.assertEqual(captured["visual_download_options"]["cookie_browser_attempts"], ["safari"])
+            self.assertEqual(captured["visual_analysis_options"], {"max_gap_seconds": 10.0})
+            item = manifest["items"][0]
+            item_manifest = json.loads(Path(item["item_manifest_path"]).read_text(encoding="utf-8"))
+            self.assertTrue(item_manifest["visual_analysis_enabled"])
+            steps = {step["step"]: step for step in item_manifest["steps"]}
+            self.assertEqual(steps["visual_acquisition"]["status"], "completed")
+            self.assertEqual(steps["visual_analysis"]["status"], "completed")
+            self.assertEqual(steps["visual_analysis"]["frame_count"], 2)
+            visual_path = Path(item_manifest["visual_evidence_path"])
+            self.assertTrue(visual_path.is_file())
+            review_request = json.loads((visual_path.parent / "review_request.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                review_request["stability_metadata"]["visual_evidence_hash"],
+                evidence["visual_evidence_hash"],
+            )
+            payload = json.loads(Path(item["payload_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(payload["visual_provider"], "mimo-vl-mlx")
+            self.assertEqual(payload["visual_prompt_version"], "watchbrief_v5.mimo_visual_prompt.v1")
+
     def test_low_transcript_coverage_blocks_qwen_codex_renderer_and_html(self) -> None:
         calls: list[str] = []
 
@@ -530,6 +726,23 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(quality_steps[-1]["status"], "completed")
             self.assertEqual(quality_steps[-1]["transcript_source"], "asr_wav")
 
+    def test_multi_part_cid_bound_subtitle_with_abstract_title_stays_on_subtitles(self) -> None:
+        material=transcript_material_from_segments([
+            {"start":"00:00","end":"08:00","text":"驾驶舱、赛车和方向盘提供反馈，车手感知抓地力与制动点。"*30},
+            {"start":"08:00","end":"16:30","text":"高速比赛时，感官需要处理引擎、路面、轮胎的状态。"*30},
+        ],source_kind="subtitle_bcc",transcript_quality="ok")
+        material["source"].update(provider="bilibili_content_provider",bvid="BV1Me41137rw",cid="824336900",part_title="与设备合二为一")
+        resolved={"source_kind":"single","url":"https://www.bilibili.com/video/BV1Me41137rw?p=4","videos":[{"title":"与设备合二为一","url":"https://www.bilibili.com/video/BV1Me41137rw?p=4","duration":"20:00","bvid":"BV1Me41137rw","cid":"824336900","page_index":4,"page_count":12}]}
+        def unexpected(*args,**kwargs):raise AssertionError("valid same-CID chapter subtitles should not trigger audio transcription")
+        deps=PipelineDependencies(resolve_url_func=lambda _url:resolved,fetch_subtitles_func=lambda *a,**k:material,download_audio_func=unexpected,transcribe_func=unexpected,build_local_extract_func=local_extract_for_tests)
+        with tempfile.TemporaryDirectory() as tmp:
+            result=process_source(resolved["url"],Path(tmp),review_response_provider=review_provider_for_golden,deps=deps)
+            self.assertEqual(result["completed_count"],1)
+            im=json.loads(Path(result["items"][0]["item_manifest_path"]).read_text())
+            quality=[x for x in im["steps"] if x["step"]=="transcript_quality"][-1]
+            self.assertEqual(quality["transcript_source"],"subtitle_bcc")
+            self.assertTrue(quality["subtitle_episode_identity_verified"])
+
     def test_transcript_coverage_enough_continues_normally(self) -> None:
         calls: list[str] = []
 
@@ -590,6 +803,64 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(payload["report_target"], "knowledge_notes")
             self.assertEqual(request["report_target"], "knowledge_notes")
             self.assertIn("target_sections", payload)
+
+    def test_preference_profile_metadata_is_written_to_review_request(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            preference_profile = {
+                "path": "/Users/apple/.watchbrief/preferences/seth.yaml",
+                "schema_version": "watchbefore.profile.v2",
+                "sha256": "a" * 64,
+                "bytes": 1234,
+                "interest_profile": {
+                    "status": "ready",
+                    "domains": [{
+                        "name": "个人效率与认知表现",
+                        "description": "关注心流和任务设计。",
+                        "subtopics": ["心流", "任务设计"],
+                        "keywords": ["心流", "任务设计", "专注"],
+                        "confidence": "high",
+                        "evidence_count": 8,
+                        "evidence_ids": ["r001", "r002"],
+                    }],
+                    "content_preferences": [],
+                },
+                "content": "must not be copied into review request",
+            }
+            deps = PipelineDependencies(
+                resolve_url_func=lambda _url: single_resolution(),
+                fetch_subtitles_func=lambda url, subtitle_dir, **kwargs: fixture_material(),
+                build_local_extract_func=local_extract_for_tests,
+                review_options={"preference_profile": preference_profile, "codex_model": "gpt-test"},
+            )
+
+            manifest = process_source(
+                "https://example.com/watch/heartflow",
+                output_dir,
+                review_response_provider=review_provider_for_golden,
+                deps=deps,
+            )
+
+            item_dir = Path(manifest["items"][0]["item_manifest_path"]).parent
+            request = json.loads((item_dir / "review_request.json").read_text(encoding="utf-8"))
+            item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(request["preference_profile"], {
+                "path": "/Users/apple/.watchbrief/preferences/seth.yaml",
+                "schema_version": "watchbefore.profile.v2",
+                "sha256": "a" * 64,
+                "bytes": 1234,
+            })
+            self.assertNotIn("must not be copied", json.dumps(request, ensure_ascii=False))
+            self.assertEqual(request["stability_metadata"]["preference_profile_schema_version"], "watchbefore.profile.v2")
+            self.assertEqual(request["stability_metadata"]["preference_profile_sha256"], "a" * 64)
+            review_steps = [step for step in item_manifest["steps"] if step["step"] == "codex_review_request"]
+            self.assertEqual(review_steps[0]["preference_profile_schema_version"], "watchbefore.profile.v2")
+            self.assertEqual(review_steps[0]["preference_profile_sha256"], "a" * 64)
+            payload = json.loads(Path(manifest["items"][0]["payload_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(payload["personal_relevance"]["match_level"], "interest_domain_match")
+            self.assertEqual(payload["structured_assessment"]["话题兴趣"], 8.5)
+            self.assertIn("个人效率与认知表现", payload["personal_relevance"]["summary"])
+            self.assertNotIn("must not be copied", json.dumps(payload, ensure_ascii=False))
 
     def test_short_video_does_not_fail_on_low_coverage_ratio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -890,6 +1161,76 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(subtitle_steps[0]["status"], "completed")
             self.assertTrue(audio_steps[0]["audio_downloader_skipped_due_to_subtitle"])
             self.assertEqual(audio_steps[0]["status"], "skipped")
+
+    def test_force_audio_transcription_skips_subtitles_and_runs_audio_asr(self) -> None:
+        captured: dict[str, Any] = {}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+
+            def resolve(_url):
+                return {
+                    "resolution_version": "watchbrief_v5.resolution.v1",
+                    "source_kind": "single",
+                    "url": "https://www.bilibili.com/video/BV1force/",
+                    "videos": [{
+                        "title": "强制音频转写测试",
+                        "url": "https://www.bilibili.com/video/BV1force/",
+                        "duration": 120,
+                        "bvid": "BV1force",
+                        "cid": "123",
+                    }],
+                }
+
+            def fetch_subtitles(*args, **kwargs):
+                raise AssertionError("subtitle fetcher must be skipped")
+
+            def download_audio(url, audio_dir, **kwargs):
+                captured["audio_kwargs"] = dict(kwargs)
+                audio_path = audio_dir / "forced.wav"
+                audio_path.parent.mkdir(parents=True, exist_ok=True)
+                audio_path.write_bytes(b"RIFFmock")
+                return {"audio_path": str(audio_path), "method": "yt_dlp"}
+
+            def transcribe(_audio_path, _transcript_dir, **_kwargs):
+                return transcript_material_from_segments(
+                    [
+                        {"start": "00:00", "end": "01:00", "text": "音频转写正文" * 20},
+                        {"start": "01:00", "end": "02:00", "text": "继续覆盖完整时间轴" * 20},
+                    ],
+                    source_kind="asr_wav",
+                    transcript_quality="ok",
+                )
+
+            deps = PipelineDependencies(
+                resolve_url_func=resolve,
+                fetch_subtitles_func=fetch_subtitles,
+                download_audio_func=download_audio,
+                transcribe_func=transcribe,
+                build_local_extract_func=local_extract_for_tests,
+                force_audio_transcription=True,
+            )
+
+            manifest = process_source(
+                "https://www.bilibili.com/video/BV1force/",
+                output_dir,
+                review_response_provider=review_provider_for_golden,
+                deps=deps,
+            )
+
+            self.assertEqual(manifest["completed_count"], 1)
+            self.assertFalse(captured["audio_kwargs"]["subtitle_checked"])
+            self.assertFalse(captured["audio_kwargs"]["subtitle_available"])
+            self.assertTrue(captured["audio_kwargs"]["force_audio_transcription"])
+            item_manifest = json.loads(
+                Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8")
+            )
+            subtitle_step = next(
+                step for step in item_manifest["steps"] if step["step"] == "subtitle_fetcher"
+            )
+            self.assertEqual(subtitle_step["status"], "skipped")
+            self.assertEqual(subtitle_step["reason"], "force_audio_transcription")
+            self.assertTrue(item_manifest["force_audio_transcription"])
 
     def test_bilibili_provider_success_enters_local_extract_without_audio_or_transcriber(self) -> None:
         captured: dict[str, Any] = {}
@@ -1597,14 +1938,13 @@ class VideoPipelineTest(unittest.TestCase):
             output_dir = Path(temp_dir)
 
             def ranked_review_provider(item, review_request, local_extract):
+                payload = review_provider_for_golden(item, review_request, local_extract)
                 if "charm" in item["url"]:
-                    payload = load_golden("sample_payload_charm.json")
-                    payload["structured_assessment"] = {"信息密度": 6.0, "论据质量": 6.0, "独创性": 6.0, "观看性价比": 6.0}
+                    payload["structured_assessment"] = {"信息密度": 6.0, "论据质量": 6.0, "话题兴趣": 6.0}
                     payload["replacement_score"] = 6.0
                     payload["tag"] = "只建议跳看"
                     return payload
-                payload = load_golden("sample_payload_heartflow.json")
-                payload["structured_assessment"] = {"信息密度": 5.0, "论据质量": 5.0, "独创性": 5.0, "观看性价比": 5.0}
+                payload["structured_assessment"] = {"信息密度": 5.0, "论据质量": 5.0, "话题兴趣": 5.0}
                 payload["replacement_score"] = 5.0
                 payload["tag"] = "只建议跳看"
                 return payload
@@ -1846,9 +2186,10 @@ class VideoPipelineTest(unittest.TestCase):
 
             def refresh_media_url(note_url, **kwargs):
                 seen["refresh_note_url"] = note_url
+                seen["refresh_browser"] = kwargs["browser"]
                 return {
                     "media_url": "https://media.example.com/video.mp4?token=SECRET_MEDIA",
-                    "provider": "safari-performance",
+                    "provider": "arc-performance",
                     "media_url_available": True,
                 }
 
@@ -1859,6 +2200,7 @@ class VideoPipelineTest(unittest.TestCase):
                 transcribe_func=lambda audio_path, transcript_dir, language="": fixture_material(),
                 build_local_extract_func=local_extract_for_tests,
                 media_url_refresh_func=refresh_media_url,
+                media_url_refresh_browser="arc",
             )
 
             manifest = process_source(
@@ -1872,6 +2214,7 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertEqual(seen["audio_urls"][0], "https://www.xiaohongshu.com/explore/video-note-1?xsec_token=SECRET_XSEC")
             self.assertEqual(seen["audio_urls"][1], "https://media.example.com/video.mp4?token=SECRET_MEDIA")
             self.assertEqual(seen["refresh_note_url"], "https://www.xiaohongshu.com/explore/video-note-1?xsec_token=SECRET_XSEC")
+            self.assertEqual(seen["refresh_browser"], "arc")
             item_manifest_text = Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8")
             self.assertNotIn("SECRET_MEDIA", item_manifest_text)
             self.assertNotIn("SECRET_XSEC", item_manifest_text)
@@ -1882,6 +2225,50 @@ class VideoPipelineTest(unittest.TestCase):
             audio_steps = [step for step in item_manifest["steps"] if step["step"] == "audio_downloader"]
             self.assertEqual(audio_steps[0]["source_url_source"], "refreshed_media_url")
             self.assertEqual(audio_steps[0]["source_url_type"], "media_or_external_url_with_query")
+
+    def test_xiaohongshu_audio_failure_does_not_refresh_a_browser_without_explicit_permission(self) -> None:
+        seen = {"refresh_called": False}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            resolution = {
+                "source_kind": "single",
+                "videos": [
+                    {
+                        "title": "小红书单视频",
+                        "url": "https://www.xiaohongshu.com/explore/video-note-1",
+                        "duration": 42,
+                        "_download_url": "https://www.xiaohongshu.com/explore/video-note-1?xsec_token=SECRET_XSEC",
+                    }
+                ],
+            }
+
+            def fetch_subtitles(url, subtitle_dir):
+                raise SubtitleUnavailableError("mock subtitles unavailable")
+
+            def download_audio(url, output_dir, **kwargs):
+                raise AudioDownloadError("mock no video formats")
+
+            def refresh_media_url(note_url, **kwargs):
+                seen["refresh_called"] = True
+                return {"media_url": "https://media.example.com/video.mp4?token=SECRET_MEDIA"}
+
+            deps = PipelineDependencies(
+                resolve_url_func=lambda url: resolution,
+                fetch_subtitles_func=fetch_subtitles,
+                download_audio_func=download_audio,
+                media_url_refresh_func=refresh_media_url,
+            )
+
+            manifest = process_source(
+                "https://www.xiaohongshu.com/explore/video-note-1",
+                output_dir,
+                review_response_provider=review_provider_for_golden,
+                deps=deps,
+            )
+
+            self.assertEqual(manifest["failed_count"], 1)
+            self.assertFalse(seen["refresh_called"])
 
     def test_xiaohongshu_board_all_non_video_notes_creates_watch_order_without_video_html(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2162,12 +2549,12 @@ class VideoPipelineTest(unittest.TestCase):
             self.assertTrue(audio_steps[0]["fallback_success"])
             local_steps = [step for step in item_manifest["steps"] if step["step"] == "local_extract"]
             self.assertRegex(local_steps[0]["transcript_hash"], r"^[0-9a-f]{64}$")
-            self.assertEqual(local_steps[-1]["qwen_prompt_version"], "watchbrief_v5.qwen_local_extract_prompt.v2")
+            self.assertEqual(local_steps[-1]["qwen_prompt_version"], "watchbrief_v5.qwen_local_extract_prompt.v6")
             review_steps = [step for step in item_manifest["steps"] if step["step"] == "codex_review_request"]
             self.assertRegex(review_steps[0]["transcript_hash"], r"^[0-9a-f]{64}$")
-            self.assertEqual(review_steps[0]["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v5")
-            self.assertEqual(review_steps[0]["scoring_formula_version"], "watchbrief_v5.video_value_formula.v2")
-            self.assertEqual(review_steps[0]["watchbrief_version"], "watchbrief_v5")
+            self.assertEqual(review_steps[0]["codex_prompt_version"], "watchbrief_v5.codex_review_prompt.v10")
+            self.assertEqual(review_steps[0]["scoring_formula_version"], "watchbrief_v5.topic_interest_formula.v2")
+            self.assertEqual(review_steps[0]["watchbrief_version"], "watchbrief_v6")
 
     def test_bilibili_login_required_for_subtitle_falls_back_to_audio(self) -> None:
         seen_kwargs: dict = {}
@@ -2579,6 +2966,48 @@ class VideoPipelineTest(unittest.TestCase):
             review_steps = [step for step in item_manifest["steps"] if step["step"] == "codex_review"]
             self.assertEqual(review_steps[-1]["status"], "skipped")
 
+    def test_report_cache_stores_content_before_personalization(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cache_dir = root / "cache"
+            options = report_cache_review_options(cache_dir)
+            options["preference_profile"] = {
+                "schema_version": "watchbefore.profile.v2",
+                "sha256": "a" * 64,
+                "interest_profile": {
+                    "status": "ready",
+                    "domains": [{
+                        "name": "个人效率与认知表现",
+                        "description": "关注心流和任务设计。",
+                        "subtopics": ["心流", "任务设计"],
+                        "keywords": ["心流", "任务设计", "专注"],
+                        "confidence": "high",
+                        "evidence_count": 8,
+                        "evidence_ids": ["r001", "r002"],
+                    }],
+                    "content_preferences": [],
+                },
+            }
+            deps = PipelineDependencies(
+                resolve_url_func=lambda url: single_resolution(),
+                fetch_subtitles_func=lambda url, subtitle_dir: fixture_material(),
+                build_local_extract_func=local_extract_for_tests,
+                review_options=options,
+            )
+
+            manifest = process_source(
+                "https://example.com/watch/heartflow",
+                root / "output",
+                review_response_provider=review_provider_for_golden,
+                deps=deps,
+            )
+
+            delivered = json.loads(Path(manifest["items"][0]["payload_path"]).read_text(encoding="utf-8"))
+            item_manifest = json.loads(Path(manifest["items"][0]["item_manifest_path"]).read_text(encoding="utf-8"))
+            cached = json.loads(Path(item_manifest["cached_payload_path"]).read_text(encoding="utf-8"))["normalized_payload"]
+            self.assertIn("personal_relevance", delivered)
+            self.assertNotIn("personal_relevance", cached)
+
     def test_force_reanalysis_bypasses_report_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -2646,6 +3075,23 @@ class VideoPipelineTest(unittest.TestCase):
         self.assertNotEqual(report_cache_key(changed_formula), base_key)
         self.assertNotEqual(report_cache_key(changed_source), base_key)
 
+    def test_report_cache_key_separates_visual_and_transcript_only_reports(self) -> None:
+        material = fixture_material()
+        metadata = single_resolution()["videos"][0]
+        request = build_review_request(local_extract_for_tests(metadata, material["segments"]))
+        transcript_only = build_report_cache_identity(request, codex_model="gpt-test")
+        visual = dict(transcript_only)
+        visual.update(
+            {
+                "visual_evidence_hash": "a" * 64,
+                "visual_provider": "mimo-vl-mlx",
+                "visual_prompt_version": "watchbrief_v5.mimo_visual_prompt.v1",
+            }
+        )
+
+        self.assertEqual(transcript_only["visual_evidence_hash"], "none")
+        self.assertNotEqual(report_cache_key(transcript_only), report_cache_key(visual))
+
     def test_report_cache_key_changes_when_report_target_changes(self) -> None:
         material = fixture_material()
         metadata = single_resolution()["videos"][0]
@@ -2659,6 +3105,22 @@ class VideoPipelineTest(unittest.TestCase):
         self.assertEqual(watch_identity["report_target"], "watch_decision")
         self.assertEqual(notes_identity["report_target"], "knowledge_notes")
         self.assertNotEqual(report_cache_key(watch_identity), report_cache_key(notes_identity))
+
+    def test_report_cache_key_changes_when_preference_profile_changes(self) -> None:
+        request = build_review_request(local_extract_for_tests(
+            {"title": "video", "url": "https://example.com/video", "channel": "channel", "duration": "16:42", "date": "2026-01-01"},
+            fixture_material()["segments"],
+        ))
+        first = copy.deepcopy(request)
+        first["stability_metadata"]["preference_profile_schema_version"] = "watchbefore.profile.v2"
+        first["stability_metadata"]["preference_profile_sha256"] = "a" * 64
+        second = copy.deepcopy(first)
+        second["stability_metadata"]["preference_profile_sha256"] = "b" * 64
+
+        first_identity = build_report_cache_identity(first, codex_model="gpt-test")
+        second_identity = build_report_cache_identity(second, codex_model="gpt-test")
+
+        self.assertNotEqual(report_cache_key(first_identity), report_cache_key(second_identity))
 
     def test_local_review_cache_identity_uses_local_review_fingerprint(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

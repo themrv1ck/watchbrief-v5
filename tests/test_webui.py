@@ -14,7 +14,7 @@ class WebUITest(unittest.TestCase):
     def test_static_shell_exposes_customization_sections(self) -> None:
         html = webui.render_index_html()
 
-        self.assertIn("WatchBrief WebUI", html)
+        self.assertIn("WatchBefore WebUI", html)
         self.assertIn("LOCAL-FIRST VIDEO REPORT", html)
         self.assertIn("普通用户模式：贴链接就能开始", html)
         self.assertNotIn("普通用户只看这里", html)
@@ -56,7 +56,7 @@ class WebUITest(unittest.TestCase):
         self.assertIn("DEFAULT_EXTRACT_PROFILES", webui.APP_JS)
         self.assertIn("DEFAULT_REVIEW_PROFILES", webui.APP_JS)
         self.assertIn("完全不懂代码也照着做", html)
-        self.assertIn("WatchBrief 不保存你的密码，不展示 cookie", html)
+        self.assertIn("WatchBefore 不保存你的密码，不展示 cookie", html)
         self.assertIn("本地规则判断，无需账号", html)
         self.assertIn("新建任务", html)
         self.assertIn("模型与账号", html)
@@ -102,10 +102,11 @@ class WebUITest(unittest.TestCase):
         self.assertIn("Standard 标准报告", html)
         self.assertIn("Deep 深度分析", html)
         self.assertIn("重新分析、不走旧缓存", html)
-        self.assertIn("我的评分规则", html)
-        self.assertIn("默认均衡，不懂就不用展开", html)
-        self.assertIn("更看重信息量", html)
-        self.assertIn("更看重证据", html)
+        self.assertIn("内容评分规则", html)
+        self.assertIn("默认使用新公式", html)
+        self.assertIn("话题兴趣 30%", html)
+        self.assertNotIn("更看重信息量", html)
+        self.assertNotIn("更看重证据", html)
         self.assertIn("自定义评分权重", html)
         self.assertIn("collapsed-choice-block", html)
         self.assertIn("内容理解模型", html)
@@ -126,10 +127,10 @@ class WebUITest(unittest.TestCase):
         self.assertIn("Codex CLI", html)
         self.assertIn("OpenAI-compatible 云端接口", html)
         self.assertIn("观看判断 API key 环境变量", html)
-        self.assertIn("WatchBrief 不让模型直接写 HTML", html)
+        self.assertIn("WatchBefore 不让模型直接写 HTML", html)
         self.assertIn("小红书专辑会完整保留内容结构", html)
         self.assertIn("raw metadata 只进 debug/manifest", html)
-        self.assertIn("推荐：读取本机后自动选择", html)
+        self.assertIn("推荐：使用本机 MiMo MLX", html)
         self.assertIn("输出方式", html)
         self.assertIn("选择文件夹", html)
         self.assertIn("输出位置", html)
@@ -335,25 +336,27 @@ class WebUITest(unittest.TestCase):
         self.assertIn("creation_review", preview["commands"][3])
 
     def test_scoring_profile_maps_to_cli_with_first_class_analysis_flag(self) -> None:
-        command = webui.build_cli_command({"source_url": "https://example.com/v", "scoring_profile": "evidence-first"})
+        default_command = webui.build_cli_command({"source_url": "https://example.com/v"})
+        self.assertNotIn("--scoring-profile", default_command)
 
-        self.assertIn("--scoring-profile", command)
-        self.assertIn("evidence-first", command)
+        command = webui.build_cli_command({"source_url": "https://example.com/v", "scoring_profile": "personal-interest"})
+
+        self.assertNotIn("--scoring-profile", command)
         self.assertIn("--analysis-mode", command)
         self.assertIn("standard", command)
 
         custom = webui.build_cli_command({
             "source_url": "https://example.com/v",
             "scoring_profile": "custom",
-            "scoring_weights": "information_density=2,evidence_quality=3,originality=2,watch_value=3",
+            "scoring_weights": "information_density=2,evidence_quality=3,topic_interest=5",
         })
         self.assertIn("--scoring-profile", custom)
         self.assertIn("custom", custom)
         self.assertIn("--scoring-weights", custom)
-        self.assertIn("information_density=2,evidence_quality=3,originality=2,watch_value=3", custom)
+        self.assertIn("information_density=2,evidence_quality=3,topic_interest=5", custom)
 
         with self.assertRaisesRegex(ValueError, "评分规则"):
-            webui.build_cli_command({"source_url": "https://example.com/v", "scoring_profile": "legacy"})
+            webui.build_cli_command({"source_url": "https://example.com/v", "scoring_profile": "evidence-first"})
         with self.assertRaisesRegex(ValueError, "自定义评分"):
             webui.build_cli_command({"source_url": "https://example.com/v", "scoring_profile": "custom"})
 
@@ -413,8 +416,8 @@ class WebUITest(unittest.TestCase):
             "transcriber": {
                 "mlx_audio": {"ok": False},
                 "whisper": {"ok": True, "path": "/usr/local/bin/whisper"},
-                "recommended": "whisper",
-                "recommendation_reason": "未检测到 MLX-Audio，WebUI 默认改用 Whisper",
+                "recommended": "auto",
+                "recommendation_reason": "未检测到本机 MiMo MLX；WebUI 保持 auto，不自动推荐 Whisper",
             },
             "review": {
                 "codex_cli_ok": False,
@@ -438,7 +441,7 @@ class WebUITest(unittest.TestCase):
         self.assertIn("可以开始正式任务", diagnostics["summary"])
         joined = "\n".join(item["detail"] + item.get("action", "") for item in diagnostics["checks"])
         self.assertIn("GEMINI_API_KEY", joined)
-        self.assertIn("Whisper", joined)
+        self.assertIn("MiMo MLX", joined)
         self.assertNotIn("sk-", joined)
         self.assertEqual(diagnostics["fail_count"], 0)
 
@@ -554,11 +557,45 @@ class WebUITest(unittest.TestCase):
         self.assertIn("--open-output", command)
         self.assertNotIn("--source-url", command)
 
-    def test_recommended_transcriber_uses_whisper_when_mlx_audio_is_missing(self) -> None:
+    def test_build_cli_command_supports_explicit_mimo_visual_analysis(self) -> None:
+        command = webui.build_cli_command(
+            {
+                "source_url": "https://example.com/v",
+                "visual_analysis": True,
+                "mimo_vl_root": "/mock/MiMo-VL-7B-RL-2508",
+                "visual_max_frame_gap_seconds": "8.5",
+                "visual_timeout": "600",
+            }
+        )
+
+        self.assertIn("--visual-analysis", command)
+        self.assertIn("--mimo-vl-root", command)
+        self.assertIn("/mock/MiMo-VL-7B-RL-2508", command)
+        self.assertIn("--visual-max-frame-gap-seconds", command)
+        self.assertIn("8.5", command)
+        self.assertIn("--visual-timeout", command)
+        self.assertIn("600", command)
+
+        without_visual = webui.build_cli_command({"source_url": "https://example.com/v"})
+        self.assertNotIn("--visual-analysis", without_visual)
+        self.assertNotIn("--no-visual-analysis", without_visual)
+        forced_off = webui.build_cli_command({"source_url": "https://example.com/v", "visual_analysis_mode": "off"})
+        self.assertIn("--no-visual-analysis", forced_off)
+
+        with self.assertRaisesRegex(ValueError, "必须是正数"):
+            webui.build_cli_command(
+                {
+                    "source_url": "https://example.com/v",
+                    "visual_analysis": True,
+                    "visual_max_frame_gap_seconds": "0",
+                }
+            )
+
+    def test_recommended_transcriber_keeps_auto_when_mimo_mlx_is_missing(self) -> None:
         original = webui.local_capabilities
         try:
             webui.local_capabilities = lambda force=False: {
-                "transcriber": {"recommended": "whisper"}
+                "transcriber": {"recommended": "auto"}
             }
             command = webui.build_cli_command(
                 {
@@ -569,8 +606,8 @@ class WebUITest(unittest.TestCase):
         finally:
             webui.local_capabilities = original
 
-        self.assertIn("--transcriber", command)
-        self.assertIn("whisper", command)
+        self.assertNotIn("--transcriber", command)
+        self.assertNotIn("whisper", command)
 
     def test_recommended_transcriber_keeps_cli_auto_when_mlx_audio_exists(self) -> None:
         original = webui.local_capabilities
@@ -893,10 +930,10 @@ class WebUITest(unittest.TestCase):
                     "error": "connection refused",
                 },
                 "transcriber": {
-                    "recommended": "whisper",
+                    "recommended": "auto",
                     "mlx_audio": {"ok": False, "selected_python": "", "candidates": []},
                     "whisper": {"ok": True, "path": "/usr/local/bin/whisper"},
-                    "recommendation_reason": "未检测到 MLX-Audio，WebUI 默认改用 Whisper",
+                    "recommendation_reason": "未检测到本机 MiMo MLX；WebUI 保持 auto，不自动推荐 Whisper",
                 },
                 "review": {
                     "codex_cli_ok": True,
@@ -925,7 +962,7 @@ class WebUITest(unittest.TestCase):
             webui.local_capabilities = original
 
         self.assertFalse(status["local_model"]["qwen_ok"])
-        self.assertEqual(status["transcriber"]["recommended"], "whisper")
+        self.assertEqual(status["transcriber"]["recommended"], "auto")
         self.assertEqual(status["paths"]["desktop"], "/Users/example/Desktop")
         self.assertEqual(status["directory_picker"]["method"], "macos_osascript")
         joined = str(status)

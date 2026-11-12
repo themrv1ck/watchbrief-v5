@@ -549,6 +549,12 @@ renderList();
 
 def render_watch_order_html(payload: dict[str, Any]) -> str:
     data = validate_watch_order_payload(payload)
+    if data.get("source_subkind") == "bilibili_multipart" and int(data["requested_count"]) > 1:
+        try:
+            from .collection_renderer import render_collection_html
+        except ImportError:  # pragma: no cover - direct script execution
+            from collection_renderer import render_collection_html
+        return render_collection_html(data)
     requested = int(data["requested_count"])
     completed = int(data["completed_count"])
     failed = int(data["failed_count"])
@@ -657,7 +663,7 @@ def build_watch_order_payload(manifest: dict[str, Any], output_dir: Path) -> dic
             }
             skipped.append(skipped_item)
             watch_order_items.append(skipped_card_item(skipped_item))
-    return {
+    payload = {
         "job_name": str(manifest.get("source_url") or output_dir.name),
         "playlist_title": str(manifest.get("playlist_title") or ""),
         "source_url": str(manifest.get("source_url") or ""),
@@ -676,6 +682,16 @@ def build_watch_order_payload(manifest: dict[str, Any], output_dir: Path) -> dic
         "skipped": skipped,
         "watch_order_items": watch_order_items,
     }
+    if "collection_summary" in manifest:
+        payload["collection_summary"] = manifest["collection_summary"]
+    if not payload["source_subkind"]:
+        try:
+            from .collection_renderer import is_same_bvid_multipart
+        except ImportError:  # pragma: no cover
+            from collection_renderer import is_same_bvid_multipart
+        if is_same_bvid_multipart(payload["source_url"], manifest.get("items") or []):
+            payload["source_subkind"] = "bilibili_multipart"
+    return payload
 
 
 def write_watch_order(manifest: dict[str, Any], output_dir: Path) -> Path:

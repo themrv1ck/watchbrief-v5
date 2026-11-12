@@ -111,7 +111,14 @@ def pick_audio_file(output_dir: Path) -> Path:
     return pick_audio_files(output_dir)[0]
 
 
-def ensure_audio_fallback_allowed(*, subtitle_checked: bool, subtitle_available: bool) -> None:
+def ensure_audio_fallback_allowed(
+    *,
+    subtitle_checked: bool,
+    subtitle_available: bool,
+    force_audio_transcription: bool = False,
+) -> None:
+    if force_audio_transcription:
+        return
     if not subtitle_checked:
         raise AudioDownloadBlockedError("audio download is blocked until subtitle fetch has been attempted")
     if subtitle_available:
@@ -660,6 +667,7 @@ def download_standard_audio(
     *,
     subtitle_checked: bool,
     subtitle_available: bool,
+    force_audio_transcription: bool = False,
     runner: Any = subprocess.run,
     timeout: int = 600,
     urlopen_func: Any = urllib.request.urlopen,
@@ -683,6 +691,7 @@ def download_standard_audio(
                     output_dir,
                     subtitle_checked=subtitle_checked,
                     subtitle_available=subtitle_available,
+                    force_audio_transcription=force_audio_transcription,
                     runner=runner,
                     timeout=timeout,
                     urlopen_func=urlopen_func,
@@ -708,7 +717,11 @@ def download_standard_audio(
         if last_exc is not None:
             raise last_exc
 
-    ensure_audio_fallback_allowed(subtitle_checked=subtitle_checked, subtitle_available=subtitle_available)
+    ensure_audio_fallback_allowed(
+        subtitle_checked=subtitle_checked,
+        subtitle_available=subtitle_available,
+        force_audio_transcription=force_audio_transcription,
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     command = [
         "yt-dlp",

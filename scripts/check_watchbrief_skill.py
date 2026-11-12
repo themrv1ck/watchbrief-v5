@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Self-check script for WatchBrief V5 package integrity and discoverability."""
+"""Self-check script for WatchBefore v6 package integrity."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -29,9 +30,11 @@ REQUIRED_TEST_FILES = [
     "test_acquisition_scope.py",
     "test_bilibili_content_provider.py",
     "test_analyzer_codex_review.py",
+    "test_visual_analyzer.py",
 ]
 REQUIRED_SCRIPTS = [
     "scripts/cli.py",
+    "scripts/watchbefore.py",
     "scripts/check_watchbrief_skill.py",
     "scripts/video_pipeline.py",
     "scripts/renderer.py",
@@ -46,12 +49,18 @@ REQUIRED_SCRIPTS = [
     "scripts/analyzer/local_extract.py",
     "scripts/analyzer/model_clients.py",
     "scripts/transcript_source_adapter.py",
+    "scripts/visual_analyzer.py",
+    "scripts/mimo_vl_worker.py",
 ]
 VIDEO_TEMPLATE_REQUIRED = [
-    "视频到底讲了什么？",
-    "如果要补原片，先看哪里？",
-    "one-line brief",
-    "final-conclusion",
+    "视频讲了什么",
+    "查看原片对应片段",
+    "直接结论",
+    "具体观点",
+    "可直接采用",
+    "注意边界",
+    "report-facts",
+    "reading-flow",
     "feedback-launcher",
 ]
 VIDEO_TEMPLATE_FORBIDDEN = [
@@ -71,7 +80,7 @@ WATCH_ORDER_TEMPLATE_REQUIRED = [
     "failed",
 ]
 WATCH_ORDER_TEMPLATE_FORBIDDEN = [
-    "视频到底讲了什么？",
+    "视频讲了什么",
     "如果要补原片，先看哪里？",
     "feedback-launcher",
 ]
@@ -113,8 +122,8 @@ def check_skill_frontmatter(skill_path: Path) -> tuple[str, bool]:
         return fail("SKILL frontmatter missing name: watchbrief_v5")
     if not data.get("description"):
         return fail("SKILL frontmatter missing description")
-    if "WatchBrief V5" not in data["description"]:
-        return fail("SKILL description should mention WatchBrief V5")
+    if "WatchBefore" not in data["description"]:
+        return fail("SKILL description should mention WatchBefore")
     return ok("SKILL.md frontmatter valid")
 
 
@@ -128,8 +137,8 @@ def check_agent_config(agent_path: Path) -> tuple[str, bool]:
         return fail("openai.yaml missing display_name")
     if not prompt:
         return fail("openai.yaml missing default_prompt")
-    if display.group(1).strip().strip('\"') != "WatchBrief":
-        return fail("display_name should be WatchBrief")
+    if display.group(1).strip().strip('\"') != "WatchBefore":
+        return fail("display_name should be WatchBefore")
     if "$watchbrief_v5" not in prompt.group(1):
         return fail("default_prompt should mention $watchbrief_v5")
     return ok("agents/openai.yaml valid")
@@ -139,7 +148,10 @@ def check_required_paths() -> list[tuple[str, bool]]:
     paths = [
         ("watchbrief_v5/README.md", BASE_DIR / "README.md"),
         ("watchbrief_v5/ACKNOWLEDGEMENTS.md", BASE_DIR / "ACKNOWLEDGEMENTS.md"),
-        ("watchbrief_v5/CONTRACT_V5.md", BASE_DIR / "CONTRACT_V5.md"),
+        ("watchbrief_v5/CONTRACT_V6.md", BASE_DIR / "CONTRACT_V6.md"),
+        ("watchbrief_v5/USAGE_V6.md", BASE_DIR / "USAGE_V6.md"),
+        ("watchbrief_v5/RELEASE_NOTES_V6.md", BASE_DIR / "RELEASE_NOTES_V6.md"),
+        ("references/tutorial-execution.md", BASE_DIR / "references" / "tutorial-execution.md"),
         ("references/video_report_v5.html", BASE_DIR / "references" / "video_report_v5.html"),
         ("references/00watch_order_v5.html", BASE_DIR / "references" / "00watch_order_v5.html"),
         ("schemas/single_video_report.schema.json", BASE_DIR / "schemas" / "single_video_report.schema.json"),
@@ -232,18 +244,53 @@ def check_tests() -> list[tuple[str, bool]]:
 
 def check_discoverability(strict_install: bool) -> list[tuple[str, bool]]:
     checks = []
-    watch_dir = Path.home() / ".codex" / "skills" / "watchbrief_v5"
-    if watch_dir.exists():
-        checks.append(ok("codex installed watchbrief_v5"))
+    watch_dirs = [
+        Path.home() / ".codex-accounts" / "accounts" / "default" / "codex-home" / "skills" / "watchbrief_v5",
+        Path.home() / ".codex" / "skills" / "watchbrief_v5",
+        Path.home() / ".hermes" / "shared" / "skills" / "watchbrief_v5",
+    ]
+    existing = [path for path in watch_dirs if path.exists()]
+    if existing:
+        checks.append(ok("codex installed watchbrief_v5: " + ", ".join(str(path) for path in existing)))
+        sync_files = [
+            Path("SKILL.md"),
+            Path("USAGE_V6.md"),
+            Path("CONTRACT_V6.md"),
+            Path("agents/openai.yaml"),
+            Path("references/tutorial-execution.md"),
+            Path("references/video_report_v5.html"),
+            Path("references/00watch_order_v5.html"),
+            Path("schemas/single_video_report.schema.json"),
+            Path("schemas/watch_order.schema.json"),
+            *(path.relative_to(BASE_DIR) for path in sorted((BASE_DIR / "scripts").rglob("*.py"))),
+        ]
+        for install_dir in existing:
+            if install_dir.resolve() == BASE_DIR.resolve():
+                continue
+            drifted: list[str] = []
+            for relative in sync_files:
+                source = BASE_DIR / relative
+                installed = install_dir / relative
+                if not installed.exists():
+                    drifted.append(f"{relative}:missing")
+                    continue
+                source_hash = hashlib.sha256(source.read_bytes()).digest()
+                installed_hash = hashlib.sha256(installed.read_bytes()).digest()
+                if source_hash != installed_hash:
+                    drifted.append(str(relative))
+            if drifted:
+                checks.append(fail(f"installed skill drift: {install_dir}: {', '.join(drifted[:12])}"))
+            else:
+                checks.append(ok(f"installed skill matches runtime source: {install_dir}"))
     elif strict_install:
-        checks.append(fail("watchbrief_v5 not installed under ~/.codex/skills"))
+        checks.append(fail("watchbrief_v5 not installed under Codex skill paths"))
     else:
-        checks.append((f"WARN: not installed in ~/.codex/skills/watchbrief_v5 (expected at {watch_dir})", True))
+        checks.append((f"WARN: not installed in Codex skill paths (expected one of {', '.join(str(path) for path in watch_dirs)})", True))
     return checks
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate WatchBrief V5 folder integrity and check discoverability.")
+    parser = argparse.ArgumentParser(description="Validate WatchBefore v6 folder integrity and check discoverability.")
     parser.add_argument("--json", action="store_true", help="output machine-readable JSON")
     parser.add_argument("--strict-install", action="store_true", help="require ~/.codex/skills/watchbrief_v5 installed")
     args = parser.parse_args()

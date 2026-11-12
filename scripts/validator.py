@@ -10,10 +10,10 @@ from typing import Any, Optional
 
 try:
     from .report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, normalize_report_target, report_target_section_keys
-    from .scoring import SCORE_TRACE_FINAL_SOURCE, build_score_trace, formula_version_for_weights, scoring_weights_from_payload, tag_for_score
+    from .scoring import SCORE_SEMANTICS, SCORE_TRACE_FINAL_SOURCE, build_score_trace, formula_version_for_weights, scoring_weights_from_payload, tag_for_score
 except ImportError:  # pragma: no cover
     from report_targets import DEFAULT_REPORT_TARGET, REPORT_TARGETS, normalize_report_target, report_target_section_keys
-    from scoring import SCORE_TRACE_FINAL_SOURCE, build_score_trace, formula_version_for_weights, scoring_weights_from_payload, tag_for_score
+    from scoring import SCORE_SEMANTICS, SCORE_TRACE_FINAL_SOURCE, build_score_trace, formula_version_for_weights, scoring_weights_from_payload, tag_for_score
 
 
 VALID_TAGS = (
@@ -25,9 +25,9 @@ VALID_TAGS = (
     "不推荐观看",
     "解析不足",
 )
-WATCHBRIEF_VERSION = "watchbrief_v5"
-QWEN_LOCAL_EXTRACT_PROMPT_VERSION = "watchbrief_v5.qwen_local_extract_prompt.v2"
-CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v5"
+WATCHBRIEF_VERSION = "watchbrief_v6"
+QWEN_LOCAL_EXTRACT_PROMPT_VERSION = "watchbrief_v5.qwen_local_extract_prompt.v6"
+CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v10"
 
 PATH_TABLE_KEYS = ("problem", "mechanism", "turning_point", "landing")
 WATCH_SEGMENT_PRIORITY_ORDER = ("primary", "optional", "backup")
@@ -37,6 +37,8 @@ WATCH_SEGMENT_TITLE_PREFIX = {
     "backup": "备选：",
 }
 LONG_CONTENT_BREAKDOWN_FIELD = "long_content_breakdown"
+READING_FLOW_FIELD = "reading_flow"
+READING_FLOW_ITEM_KEYS = ("start", "end", "heading", "body")
 LONG_CONTENT_DURATION_THRESHOLD_SECONDS = 45 * 60
 LONG_CONTENT_TYPE_MARKERS = (
     "播客",
@@ -60,20 +62,35 @@ LONG_CONTENT_TYPE_MARKERS = (
 SCORE_BASIS_KEYS = (
     "information_density",
     "evidence_quality",
-    "originality",
-    "watch_value",
+    "topic_interest",
 )
-STRUCTURED_ASSESSMENT_KEYS = ("信息密度", "论据质量", "独创性", "观看性价比")
+STRUCTURED_ASSESSMENT_KEYS = ("信息密度", "论据质量", "话题兴趣")
 SCORE_TRACE_KEYS = (
     "information_density",
     "evidence_quality",
-    "originality",
-    "watch_value",
+    "topic_interest",
     "formula",
     "computed_replacement_score",
     "model_suggested_score",
     "final_score_source",
     "score_semantics",
+)
+PERSONAL_RELEVANCE_KEYS = (
+    "status",
+    "basis",
+    "match_level",
+    "topic_interest_score",
+    "summary",
+    "evidence",
+    "caveat",
+    "profile_schema_version",
+    "profile_sha256",
+)
+PERSONAL_RELEVANCE_STATUS_VALUES = ("matched", "no_match", "insufficient_profile")
+PERSONAL_RELEVANCE_MATCH_LEVELS = (
+    "interest_domain_match",
+    "no_interest_domain_match",
+    "insufficient_interest_profile",
 )
 
 REQUIRED_REPORT_FIELDS = (
@@ -92,6 +109,9 @@ REQUIRED_REPORT_FIELDS = (
     "arrow_chain",
     "final_conclusion",
     "content_caveat",
+    "target_summary",
+    "reading_flow",
+    "target_sections",
     "watch_segments",
     "only_one_segment",
     "score_basis",
@@ -351,6 +371,67 @@ def _validate_long_content_breakdown(payload: dict[str, Any], issues: list[Valid
             issues.append(ValidationIssue(f"{path}.summary", "phase summary must describe the concrete content", "long_breakdown_summary"))
 
 
+def _validate_reading_flow(payload: dict[str, Any], issues: list[ValidationIssue]) -> None:
+    field = READING_FLOW_FIELD
+    flow = payload.get(field)
+    if not isinstance(flow, list):
+        issues.append(ValidationIssue(field, "must be a list", "reading_flow_type"))
+        return
+    if not 2 <= len(flow) <= 5:
+        issues.append(ValidationIssue(field, "must contain 2 to 5 reading sections", "reading_flow_length"))
+
+    duration_seconds = parse_duration_seconds(payload.get("duration"))
+    previous_end: Optional[int] = None
+    first_start: Optional[int] = None
+    last_end: Optional[int] = None
+    for index, item in enumerate(flow):
+        path = f"{field}[{index}]"
+        if not isinstance(item, dict):
+            issues.append(ValidationIssue(path, "reading section must be an object", "reading_flow_item_type"))
+            continue
+        actual_keys = set(item)
+        if actual_keys != set(READING_FLOW_ITEM_KEYS):
+            issues.append(
+                ValidationIssue(
+                    path,
+                    f"must contain exactly these keys: {list(READING_FLOW_ITEM_KEYS)}",
+                    "reading_flow_keys",
+                )
+            )
+        for key in READING_FLOW_ITEM_KEYS:
+            if not text(item.get(key)):
+                issues.append(ValidationIssue(f"{path}.{key}", "required reading field is missing", "reading_flow_required_field"))
+        start = parse_time_point_seconds(item.get("start"))
+        end = parse_time_point_seconds(item.get("end"))
+        if start is None or end is None:
+            issues.append(ValidationIssue(path, "reading section start/end must be MM:SS or H:MM:SS", "reading_flow_time"))
+            continue
+        if end <= start:
+            issues.append(ValidationIssue(path, "reading section end must be after start", "reading_flow_time_order"))
+        if previous_end is not None and start < previous_end:
+            issues.append(ValidationIssue(path, "reading sections must be ordered and non-overlapping", "reading_flow_order"))
+        if duration_seconds > 0 and end > duration_seconds:
+            issues.append(ValidationIssue(f"{path}.end", "reading section must not exceed video duration", "reading_flow_out_of_duration"))
+        if len(text(item.get("heading"))) < 4:
+            issues.append(ValidationIssue(f"{path}.heading", "reading heading must be concrete", "reading_flow_heading"))
+        if len(text(item.get("body"))) < 16:
+            issues.append(ValidationIssue(f"{path}.body", "reading body must summarize concrete video content", "reading_flow_body"))
+        first_start = start if first_start is None else min(first_start, start)
+        last_end = end if last_end is None else max(last_end, end)
+        previous_end = max(previous_end or 0, end)
+
+    phases = payload.get(LONG_CONTENT_BREAKDOWN_FIELD)
+    if isinstance(phases, list) and phases:
+        phase_start = parse_time_point_seconds(phases[0].get("start")) if isinstance(phases[0], dict) else None
+        phase_end = parse_time_point_seconds(phases[-1].get("end")) if isinstance(phases[-1], dict) else None
+        if len(flow) < 3:
+            issues.append(ValidationIssue(field, "long content needs 3 to 5 reading sections", "reading_flow_long_length"))
+        if phase_start is not None and first_start is not None and first_start > phase_start:
+            issues.append(ValidationIssue(field, "long-content reading flow must begin with the first phase", "reading_flow_coverage"))
+        if phase_end is not None and last_end is not None and last_end < phase_end:
+            issues.append(ValidationIssue(field, "long-content reading flow must reach the final phase", "reading_flow_coverage"))
+
+
 def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any]:
     issues: list[ValidationIssue] = []
 
@@ -452,6 +533,7 @@ def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any
 
     segments = payload.get("watch_segments")
     primary_segment: Optional[dict[str, Any]] = None
+    video_duration_seconds = parse_duration_seconds(payload.get("duration"))
     if not isinstance(segments, list):
         issues.append(ValidationIssue("watch_segments", "must be a list", "segments_type"))
     else:
@@ -477,6 +559,14 @@ def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any
             for field in ("start", "end", "title", "reason"):
                 if not text(segment.get(field)):
                     issues.append(ValidationIssue(f"watch_segments[{index}].{field}", "required segment field is missing", "segment_required"))
+            start_seconds = parse_time_point_seconds(segment.get("start"))
+            end_seconds = parse_time_point_seconds(segment.get("end"))
+            if start_seconds is None or end_seconds is None:
+                issues.append(ValidationIssue(f"watch_segments[{index}]", "segment start/end must be MM:SS or H:MM:SS", "segment_time"))
+            elif end_seconds <= start_seconds:
+                issues.append(ValidationIssue(f"watch_segments[{index}]", "segment end must be after start", "segment_time_order"))
+            elif video_duration_seconds > 0 and end_seconds > video_duration_seconds:
+                issues.append(ValidationIssue(f"watch_segments[{index}].end", "segment must not exceed video duration", "segment_out_of_duration"))
             title = text(segment.get("title"))
             expected_prefix = WATCH_SEGMENT_TITLE_PREFIX[priority]
             if title and not title.startswith(expected_prefix):
@@ -500,11 +590,14 @@ def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any
             issues.append(ValidationIssue("only_one_segment", "must match primary start/end exactly", "only_one_match"))
 
     _validate_long_content_breakdown(payload, issues)
+    _validate_reading_flow(payload, issues)
 
     score_basis = payload.get("score_basis")
     if not isinstance(score_basis, dict):
         issues.append(ValidationIssue("score_basis", "must be an object", "score_basis_type"))
     else:
+        if "originality" in score_basis:
+            issues.append(ValidationIssue("score_basis.originality", "originality is no longer a scoring dimension", "score_dimension_removed"))
         for key in SCORE_BASIS_KEYS:
             value = text(score_basis.get(key))
             if not value:
@@ -520,6 +613,7 @@ def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any
 
     _validate_score_trace_and_tag(payload, issues)
     _validate_stability_metadata(payload, issues)
+    _validate_personal_relevance(payload, issues)
 
     if not text(payload.get("confidence_note")):
         issues.append(ValidationIssue("confidence_note", "must not be empty", "confidence_note_empty"))
@@ -532,10 +626,9 @@ def validate_normalized_report_payload(payload: dict[str, Any]) -> dict[str, Any
 
 def _validate_target_payload(payload: dict[str, Any], report_target: str, issues: list[ValidationIssue]) -> None:
     if report_target == DEFAULT_REPORT_TARGET:
-        if "target_summary" in payload:
-            issues.append(ValidationIssue("target_summary", "is only allowed for non-watch report targets", "target_unexpected"))
-        if "target_sections" in payload:
-            issues.append(ValidationIssue("target_sections", "is only allowed for non-watch report targets", "target_unexpected"))
+        if not text(payload.get("target_summary")):
+            issues.append(ValidationIssue("target_summary", "must not be empty for the default report", "target_summary_required"))
+        _validate_target_sections(payload, report_target_section_keys("content_brief"), issues)
         return
 
     if text(payload.get("report_target")) != report_target:
@@ -543,10 +636,13 @@ def _validate_target_payload(payload: dict[str, Any], report_target: str, issues
     if not text(payload.get("target_summary")):
         issues.append(ValidationIssue("target_summary", "must not be empty for non-watch report targets", "target_summary_required"))
 
+    _validate_target_sections(payload, report_target_section_keys(report_target), issues)
+
+
+def _validate_target_sections(payload: dict[str, Any], required_keys: tuple[str, ...], issues: list[ValidationIssue]) -> None:
     sections = payload.get("target_sections")
-    required_keys = report_target_section_keys(report_target)
     if not isinstance(sections, dict):
-        issues.append(ValidationIssue("target_sections", "must be an object for non-watch report targets", "target_sections_type"))
+        issues.append(ValidationIssue("target_sections", "must be an object", "target_sections_type"))
         return
     actual_keys = tuple(sections.keys())
     if actual_keys != required_keys:
@@ -567,6 +663,8 @@ def _validate_structured_assessment(value: Any, issues: list[ValidationIssue], p
     if not isinstance(value, dict):
         issues.append(ValidationIssue(path, "must be an object", "structured_type"))
         return
+    if "独创性" in value:
+        issues.append(ValidationIssue(f"{path}.独创性", "originality is no longer a scoring dimension", "score_dimension_removed"))
     for key in STRUCTURED_ASSESSMENT_KEYS:
         score = value.get(key)
         if not isinstance(score, (int, float)) or isinstance(score, bool):
@@ -580,6 +678,8 @@ def _validate_score_trace_and_tag(payload: dict[str, Any], issues: list[Validati
     if not isinstance(score_trace, dict):
         issues.append(ValidationIssue("score_trace", "must be an object", "score_trace_type"))
         return
+    if "originality" in score_trace:
+        issues.append(ValidationIssue("score_trace.originality", "originality is no longer a scoring dimension", "score_dimension_removed"))
     for key in SCORE_TRACE_KEYS:
         if key not in score_trace:
             issues.append(ValidationIssue(f"score_trace.{key}", "required score trace field is missing", "score_trace_required"))
@@ -588,7 +688,7 @@ def _validate_score_trace_and_tag(payload: dict[str, Any], issues: list[Validati
     except Exception as exc:
         issues.append(ValidationIssue("score_trace", f"cannot compute deterministic score: {exc}", "score_trace_compute"))
         return
-    numeric_keys = ("information_density", "evidence_quality", "originality", "watch_value", "computed_replacement_score")
+    numeric_keys = ("information_density", "evidence_quality", "topic_interest", "computed_replacement_score")
     for key in numeric_keys:
         value = score_trace.get(key)
         if not isinstance(value, (int, float)) or isinstance(value, bool):
@@ -599,8 +699,8 @@ def _validate_score_trace_and_tag(payload: dict[str, Any], issues: list[Validati
         issues.append(ValidationIssue("score_trace.formula", "must match deterministic formula", "score_trace_formula"))
     if score_trace.get("final_score_source") != SCORE_TRACE_FINAL_SOURCE:
         issues.append(ValidationIssue("score_trace.final_score_source", "must be deterministic_formula", "score_trace_source"))
-    if score_trace.get("score_semantics") != "video_overall_value":
-        issues.append(ValidationIssue("score_trace.score_semantics", "must be video_overall_value", "score_trace_semantics"))
+    if score_trace.get("score_semantics") != SCORE_SEMANTICS:
+        issues.append(ValidationIssue("score_trace.score_semantics", f"must be {SCORE_SEMANTICS}", "score_trace_semantics"))
     replacement_score = payload.get("replacement_score")
     if isinstance(replacement_score, (int, float)) and not isinstance(replacement_score, bool):
         if round(float(replacement_score), 1) != float(expected["computed_replacement_score"]):
@@ -612,7 +712,7 @@ def _validate_score_trace_and_tag(payload: dict[str, Any], issues: list[Validati
         score = float(expected["computed_replacement_score"])
         has_precise_watch_segments = bool(PIPE_TIME_RANGE_RE.search(verdict))
         has_strong_no_watch = any(marker in verdict for marker in ("不必看", "不用看", "无需看", "不推荐观看"))
-        if score > 6.5 and has_strong_no_watch and not has_precise_watch_segments:
+        if score > 7.0 and has_strong_no_watch and not has_precise_watch_segments:
             issues.append(ValidationIssue("watch_verdict", "must not conflict with high video value", "watch_verdict_score_conflict"))
         if score < 5.0 and any(marker in verdict for marker in ("建议完整看", "建议完整观看", "值得补看", "值得完整看")):
             issues.append(ValidationIssue("watch_verdict", "must not conflict with low video value", "watch_verdict_score_conflict"))
@@ -635,6 +735,58 @@ def _validate_stability_metadata(payload: dict[str, Any], issues: list[Validatio
         issues.append(ValidationIssue("scoring_formula_version", "must match scoring formula version", "stable_formula_version"))
     if text(payload.get("watchbrief_version")) != WATCHBRIEF_VERSION:
         issues.append(ValidationIssue("watchbrief_version", "must match WatchBrief version", "stable_watchbrief_version"))
+    visual_hash = text(payload.get("visual_evidence_hash"))
+    visual_provider = text(payload.get("visual_provider"))
+    visual_prompt_version = text(payload.get("visual_prompt_version"))
+    visual_values = (visual_hash, visual_provider, visual_prompt_version)
+    if any(visual_values):
+        if not all(visual_values):
+            issues.append(ValidationIssue("visual_evidence", "visual stability fields must be present together", "stable_visual_metadata"))
+        elif not SHA256_RE.fullmatch(visual_hash):
+            issues.append(ValidationIssue("visual_evidence_hash", "must be a sha256 hex fingerprint", "stable_fingerprint"))
+        elif visual_provider != "mimo-vl-mlx":
+            issues.append(ValidationIssue("visual_provider", "must be mimo-vl-mlx", "stable_visual_provider"))
+        elif visual_prompt_version != "watchbrief_v5.mimo_visual_prompt.v1":
+            issues.append(ValidationIssue("visual_prompt_version", "must match MiMo visual prompt version", "stable_prompt_version"))
+
+
+def _validate_personal_relevance(payload: dict[str, Any], issues: list[ValidationIssue]) -> None:
+    if "personal_relevance" not in payload:
+        return
+    value = payload.get("personal_relevance")
+    if not isinstance(value, dict):
+        issues.append(ValidationIssue("personal_relevance", "must be an object", "personal_relevance_type"))
+        return
+    missing = [key for key in PERSONAL_RELEVANCE_KEYS if key not in value]
+    extra = sorted(set(value) - set(PERSONAL_RELEVANCE_KEYS))
+    if missing:
+        issues.append(ValidationIssue("personal_relevance", f"missing keys: {missing}", "personal_relevance_required"))
+    if extra:
+        issues.append(ValidationIssue("personal_relevance", f"unexpected keys: {extra}", "personal_relevance_extra"))
+    if text(value.get("status")) not in PERSONAL_RELEVANCE_STATUS_VALUES:
+        issues.append(ValidationIssue("personal_relevance.status", "must be matched, no_match, or insufficient_profile", "personal_relevance_status"))
+    if text(value.get("basis")) != "watchtrace_bilibili_profile":
+        issues.append(ValidationIssue("personal_relevance.basis", "must be watchtrace_bilibili_profile", "personal_relevance_basis"))
+    if text(value.get("match_level")) not in PERSONAL_RELEVANCE_MATCH_LEVELS:
+        issues.append(ValidationIssue("personal_relevance.match_level", "invalid match level", "personal_relevance_match_level"))
+    topic_interest_score = value.get("topic_interest_score")
+    if not isinstance(topic_interest_score, (int, float)) or isinstance(topic_interest_score, bool):
+        issues.append(ValidationIssue("personal_relevance.topic_interest_score", "must be a number", "personal_relevance_topic_interest_score"))
+    elif not 0 <= float(topic_interest_score) <= 10:
+        issues.append(ValidationIssue("personal_relevance.topic_interest_score", "must be between 0 and 10", "personal_relevance_topic_interest_score"))
+    if not text(value.get("summary")):
+        issues.append(ValidationIssue("personal_relevance.summary", "must not be empty", "personal_relevance_summary"))
+    evidence = value.get("evidence")
+    if not isinstance(evidence, list) or not 1 <= len(evidence) <= 6:
+        issues.append(ValidationIssue("personal_relevance.evidence", "must contain 1 to 6 evidence strings", "personal_relevance_evidence"))
+    elif any(not text(item) for item in evidence):
+        issues.append(ValidationIssue("personal_relevance.evidence", "evidence must not contain empty strings", "personal_relevance_evidence"))
+    if not text(value.get("caveat")):
+        issues.append(ValidationIssue("personal_relevance.caveat", "must not be empty", "personal_relevance_caveat"))
+    if not text(value.get("profile_schema_version")):
+        issues.append(ValidationIssue("personal_relevance.profile_schema_version", "must not be empty", "personal_relevance_profile_schema"))
+    if not SHA256_RE.fullmatch(text(value.get("profile_sha256"))):
+        issues.append(ValidationIssue("personal_relevance.profile_sha256", "must be a sha256 hex fingerprint", "personal_relevance_profile_hash"))
 
 
 def validate_renderer_input(payload: dict[str, Any]) -> dict[str, Any]:

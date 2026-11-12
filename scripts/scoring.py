@@ -1,4 +1,4 @@
-"""Deterministic video-value score rules for WatchBrief V5."""
+"""Deterministic content score rules for WatchBefore."""
 
 from __future__ import annotations
 
@@ -9,56 +9,31 @@ import re
 from typing import Any
 
 
-SCORING_FORMULA_VERSION = "watchbrief_v5.video_value_formula.v2"
-SCORING_FORMULA = "information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3"
+SCORING_FORMULA_VERSION = "watchbrief_v5.topic_interest_formula.v2"
+SCORING_FORMULA = "information_density*0.35 + evidence_quality*0.35 + topic_interest*0.3"
 SCORE_TRACE_FINAL_SOURCE = "deterministic_formula"
+SCORE_SEMANTICS = "content_quality_with_topic_interest"
+DEFAULT_SCORING_PROFILE = "personal-interest"
 
 STRUCTURED_TO_INTERNAL = {
     "信息密度": "information_density",
     "论据质量": "evidence_quality",
-    "独创性": "originality",
-    "观看性价比": "watch_value",
+    "话题兴趣": "topic_interest",
 }
 
-SCORE_DIMENSIONS = ("information_density", "evidence_quality", "originality", "watch_value")
+SCORE_DIMENSIONS = ("information_density", "evidence_quality", "topic_interest")
 WEIGHTS = {
-    "information_density": 0.2,
-    "evidence_quality": 0.3,
-    "originality": 0.2,
-    "watch_value": 0.3,
+    "information_density": 0.35,
+    "evidence_quality": 0.35,
+    "topic_interest": 0.3,
 }
 SCORING_PROFILES: dict[str, dict[str, float]] = {
-    "standard": WEIGHTS,
-    "information-first": {
-        "information_density": 0.4,
-        "evidence_quality": 0.25,
-        "originality": 0.15,
-        "watch_value": 0.2,
-    },
-    "evidence-first": {
-        "information_density": 0.15,
-        "evidence_quality": 0.45,
-        "originality": 0.15,
-        "watch_value": 0.25,
-    },
-    "originality-first": {
-        "information_density": 0.15,
-        "evidence_quality": 0.25,
-        "originality": 0.4,
-        "watch_value": 0.2,
-    },
-    "watch-value-first": {
-        "information_density": 0.15,
-        "evidence_quality": 0.2,
-        "originality": 0.15,
-        "watch_value": 0.5,
-    },
+    "personal-interest": WEIGHTS,
 }
 FORMULA_RE = re.compile(
     r"^information_density\*(?P<information_density>\d+(?:\.\d+)?) \+ "
     r"evidence_quality\*(?P<evidence_quality>\d+(?:\.\d+)?) \+ "
-    r"originality\*(?P<originality>\d+(?:\.\d+)?) \+ "
-    r"watch_value\*(?P<watch_value>\d+(?:\.\d+)?)$"
+    r"topic_interest\*(?P<topic_interest>\d+(?:\.\d+)?)$"
 )
 
 
@@ -115,7 +90,7 @@ def parse_scoring_weights(value: str) -> dict[str, float]:
 
 
 def weights_for_profile(profile: str) -> dict[str, float]:
-    key = str(profile or "standard").strip() or "standard"
+    key = str(profile or DEFAULT_SCORING_PROFILE).strip() or DEFAULT_SCORING_PROFILE
     if key not in SCORING_PROFILES:
         raise ValueError(f"unsupported scoring profile: {key}")
     return dict(SCORING_PROFILES[key])
@@ -172,7 +147,7 @@ def tag_for_score(score: float, current_tag: Any = "") -> str:
     tag = str(current_tag or "").strip()
     if score < 5.0:
         return "不推荐观看"
-    if score <= 6.5:
+    if score <= 7.0:
         return "只建议跳看"
     if score <= 8.5:
         return "值得补看"
@@ -195,10 +170,9 @@ def build_score_trace(payload: dict[str, Any], weights: dict[str, Any] | None = 
     return {
         "information_density": round_score(dimensions["information_density"]),
         "evidence_quality": round_score(dimensions["evidence_quality"]),
-        "originality": round_score(dimensions["originality"]),
-        "watch_value": round_score(dimensions["watch_value"]),
+        "topic_interest": round_score(dimensions["topic_interest"]),
         "formula": formula,
-        "score_semantics": "video_overall_value",
+        "score_semantics": SCORE_SEMANTICS,
         "computed_replacement_score": computed,
         "model_suggested_score": model_suggested_score,
         "final_score_source": SCORE_TRACE_FINAL_SOURCE,

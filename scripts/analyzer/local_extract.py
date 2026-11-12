@@ -21,17 +21,18 @@ try:
         QWEN_LOCAL_EXTRACT_FIELDS,
         QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT,
         TERM_LOCALIZATION_RULES,
+        READING_FLOW_RULES,
         build_qwen_local_extract_user_prompt,
     )
     from ..entity_normalization import normalize_qwen_extract_entities
-    from ..stability import prompt_fingerprint, transcript_hash_from_segments
+    from ..stability import prompt_fingerprint, stable_sha256, transcript_hash_from_segments
 except ImportError:  # pragma: no cover
     SCRIPTS_DIR = Path(__file__).resolve().parents[1]
     if str(SCRIPTS_DIR) not in sys.path:
         sys.path.insert(0, str(SCRIPTS_DIR))
-    from prompts import QWEN_LOCAL_EXTRACT_PROMPT_VERSION, QWEN_LOCAL_EXTRACT_FIELDS, QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT, TERM_LOCALIZATION_RULES, build_qwen_local_extract_user_prompt
+    from prompts import QWEN_LOCAL_EXTRACT_PROMPT_VERSION, QWEN_LOCAL_EXTRACT_FIELDS, QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT, TERM_LOCALIZATION_RULES, READING_FLOW_RULES, build_qwen_local_extract_user_prompt
     from entity_normalization import normalize_qwen_extract_entities
-    from stability import prompt_fingerprint, transcript_hash_from_segments
+    from stability import prompt_fingerprint, stable_sha256, transcript_hash_from_segments
 
 
 DEFAULT_QWEN_API_BASE = "http://127.0.0.1:1234/v1"
@@ -46,6 +47,15 @@ CHUNK_TARGET_CHARS = 10_000
 CHUNK_OVERLAP_CHARS = 500
 CHUNK_MAX_RETRIES = 1
 CHUNK_MIN_SUCCESS_COVERAGE = 0.75
+
+QWEN_RESPONSE_SCHEMA_VERSION = "watchbefore.qwen.extract.schema.v1"
+CHUNK_REDUCE_BOUNDARY_RULES = """归并时区分两类时间：
+- chunk_start/chunk_end 是证据范围；字幕向外取整和上下文重叠可能让这些范围相交。不得直接照搬为相邻正文区间。
+- reading_flow_boundary_hints 是从证据已有时间点整理出的正文分界点提示，不是对原始字幕起止时间的修改。
+- 可以合并相邻提示区间，或从证据选择其他分界点，按内容组织 2 到 5 个要点（长内容 3 到 5 个）；不要机械按 chunk 写摘要。
+- 相邻正文可共用同一分界点：前项 end = 后项 start。每项 start < end，后一项 start >= 前一项 end。
+- 原始 chunk_summaries 只作证据；输出前逐项核对正文区间，禁止沿用证据范围之间的重叠。
+"""
 
 REQUIRED_METADATA_FIELDS = ("title", "url", "channel", "duration", "date")
 REQUIRED_SEGMENT_FIELDS = ("start", "end", "text")
@@ -113,6 +123,8 @@ FINAL_REPORT_FIELDS_BLOCKED_IN_LOCAL_EXTRACT = {
     "score_basis",
     "confidence_note",
 }
+QWEN_READING_FLOW_ITEM_KEYS = ("start", "end", "heading", "body")
+TIME_POINT_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
 
 QWEN_CHUNK_EXTRACT_FIELDS = {
     "chunk_start": "本 chunk 覆盖的起始时间。",
@@ -122,7 +134,7 @@ QWEN_CHUNK_EXTRACT_FIELDS = {
     "skippable_content": "本 chunk 中可以跳过的铺垫、重复、闲聊或低密度内容数组。",
     "candidate_watch_segments": "候选观看片段数组；每项写成 start | end：为什么这段值得看。",
     "information_density": "高 / 中 / 低，并用一句话说明依据。",
-    "scoring_evidence": "对最终评分有帮助的证据数组，关注信息密度、论据质量、独创性、观看性价比。",
+    "scoring_evidence": "对最终评分有帮助的证据数组，关注信息密度、论据质量、话题兴趣。",
     "transcript_quality_note": "本 chunk 转写质量是否影响判断。",
     "language": "zh / en / mixed / unknown。",
     "important_terms": "关键术语、产品名、人名、工具名数组，保留原文。",
@@ -193,6 +205,31 @@ def normalize_transcript_segments(segments: list[dict[str, Any]]) -> list[dict[s
         }
         normalized.append(item)
     return normalized
+
+
+def normalize_visual_evidence(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise LocalExtractError("visual_evidence must be an object")
+    evidence = copy.deepcopy(value)
+    evidence_hash = clean_text(evidence.get("visual_evidence_hash"))
+    if re.fullmatch(r"[0-9a-f]{64}", evidence_hash) is None:
+        raise LocalExtractError("visual_evidence.visual_evidence_hash must be sha256")
+    hash_material = copy.deepcopy(evidence)
+    hash_material.pop("visual_evidence_hash", None)
+    if stable_sha256(hash_material) != evidence_hash:
+        raise LocalExtractError("visual_evidence hash does not match its content")
+    provider = evidence.get("provider")
+    analysis = evidence.get("analysis")
+    frames = evidence.get("frames")
+    if not isinstance(provider, dict) or provider.get("provider") != "mimo-vl-mlx":
+        raise LocalExtractError("visual_evidence provider must be mimo-vl-mlx")
+    if not isinstance(analysis, dict) or not isinstance(analysis.get("overall_visual_summary"), str):
+        raise LocalExtractError("visual_evidence.analysis is invalid")
+    if not isinstance(frames, list) or not frames:
+        raise LocalExtractError("visual_evidence.frames must not be empty")
+    return evidence
 
 
 def build_transcript_excerpt(segments: list[dict[str, str]], max_chars: int = 2400) -> str:
@@ -377,12 +414,36 @@ def build_chunk_seed(local_extract_seed: dict[str, Any], chunk: dict[str, Any], 
     }
 
 
+def reading_flow_boundary_hints(chunk_summaries: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Offer shared story boundaries while keeping rounded evidence windows intact."""
+    def seconds(value: str) -> int:
+        parts = [int(part) for part in value.split(":")]
+        return sum(part * multiplier for part, multiplier in zip(reversed(parts), (1, 60, 3600)))
+    starts: dict[int, str] = {}
+    ends: dict[int, str] = {}
+    for item in chunk_summaries:
+        start, end = str(item.get("chunk_start", "")), str(item.get("chunk_end", ""))
+        if not TIME_POINT_RE.fullmatch(start) or not TIME_POINT_RE.fullmatch(end):
+            continue
+        if seconds(start) >= seconds(end):
+            continue
+        starts.setdefault(seconds(start), start)
+        ends.setdefault(seconds(end), end)
+    if not starts or not ends:
+        return []
+    final_end = max(ends)
+    points = {value: stamp for value, stamp in starts.items() if value < final_end}
+    points[final_end] = ends[final_end]
+    stamps = [points[value] for value in sorted(points)]
+    return [{"start": start, "end": end} for start, end in zip(stamps, stamps[1:])]
+
+
 def build_chunk_reduce_seed(
     local_extract_seed: dict[str, Any],
     chunk_summaries: list[dict[str, Any]],
     chunk_debug: dict[str, Any],
 ) -> dict[str, Any]:
-    return {
+    seed = {
         "local_extract_mode": "chunk_reduce",
         "metadata": copy.deepcopy(local_extract_seed["metadata"]),
         "transcript": {
@@ -397,7 +458,11 @@ def build_chunk_reduce_seed(
             "success_coverage": chunk_debug["success_coverage"],
         },
         "chunk_summaries": copy.deepcopy(chunk_summaries),
+        "reading_flow_boundary_hints": reading_flow_boundary_hints(chunk_summaries),
     }
+    if local_extract_seed.get("visual_evidence"):
+        seed["visual_evidence"] = copy.deepcopy(local_extract_seed["visual_evidence"])
+    return seed
 
 
 def build_qwen_chunk_extract_user_prompt(chunk_seed: dict[str, Any]) -> str:
@@ -465,7 +530,8 @@ def build_qwen_chunk_reduce_user_prompt(reduce_seed: dict[str, Any]) -> str:
         "必须包含这些字段：\n"
         f"{json.dumps(QWEN_LOCAL_EXTRACT_FIELDS, ensure_ascii=False, indent=2)}\n\n"
         "chunk summaries：\n"
-        f"{json.dumps(reduce_seed, ensure_ascii=False, indent=2)}"
+        f"{json.dumps(reduce_seed, ensure_ascii=False, indent=2)}\n\n"
+        f"{CHUNK_REDUCE_BOUNDARY_RULES}\n{READING_FLOW_RULES}"
     )
 
 
@@ -679,6 +745,40 @@ def validate_qwen_extract(payload: dict[str, Any]) -> dict[str, Any]:
                 reason_code="local_extract_invalid_output",
             )
         normalized[field] = [clean_text(item) for item in value if clean_text(item)]
+    if "reading_flow" not in normalized:
+        return normalized
+    reading_flow = normalized.get("reading_flow")
+    if not isinstance(reading_flow, list) or not 2 <= len(reading_flow) <= 5:
+        raise LocalExtractError(
+            "Qwen intermediate reading_flow must contain 2 to 5 sections",
+            reason_code="local_extract_invalid_output",
+        )
+    normalized_flow: list[dict[str, str]] = []
+    previous_end = -1
+    for index, item in enumerate(reading_flow):
+        if not isinstance(item, dict) or set(item) != set(QWEN_READING_FLOW_ITEM_KEYS):
+            raise LocalExtractError(
+                f"Qwen intermediate reading_flow[{index}] must contain start, end, heading, body",
+                reason_code="local_extract_invalid_output",
+            )
+        section = {key: clean_text(item.get(key)) for key in QWEN_READING_FLOW_ITEM_KEYS}
+        if not all(section.values()) or not TIME_POINT_RE.fullmatch(section["start"]) or not TIME_POINT_RE.fullmatch(section["end"]):
+            raise LocalExtractError(
+                f"Qwen intermediate reading_flow[{index}] has invalid fields",
+                reason_code="local_extract_invalid_output",
+            )
+        start_parts = [int(part) for part in section["start"].split(":")]
+        end_parts = [int(part) for part in section["end"].split(":")]
+        start_seconds = start_parts[-1] + start_parts[-2] * 60 + (start_parts[-3] * 3600 if len(start_parts) == 3 else 0)
+        end_seconds = end_parts[-1] + end_parts[-2] * 60 + (end_parts[-3] * 3600 if len(end_parts) == 3 else 0)
+        if end_seconds <= start_seconds or start_seconds < previous_end:
+            raise LocalExtractError(
+                f"Qwen intermediate reading_flow[{index}] must be ordered and non-overlapping",
+                reason_code="local_extract_invalid_output",
+            )
+        previous_end = end_seconds
+        normalized_flow.append(section)
+    normalized["reading_flow"] = normalized_flow
     return normalized
 
 
@@ -733,8 +833,20 @@ def validate_qwen_chunk_summary(payload: dict[str, Any], chunk: dict[str, Any]) 
     return normalized
 
 
-def build_qwen_chat_request(selected_model: str, user_prompt: str) -> dict[str, Any]:
-    return {
+def qwen_extract_response_schema() -> dict[str, Any]:
+    string = {"type": "string"}
+    properties = {field: {"type": "array", "items": string} for field in QWEN_EXTRACT_ARRAY_FIELDS}
+    properties.update({field: string for field in ("cleaned_understanding", "main_axis", "transcript_quality_note")})
+    properties["language"] = {"type": "string", "enum": ["zh", "en", "mixed", "unknown"]}
+    def section(keys: tuple[str, ...]) -> dict[str, Any]:
+        return {"type": "object", "properties": {key: string for key in keys}, "required": list(keys), "additionalProperties": False}
+    properties["phase_outline"] = {"type": "array", "items": section(("start", "end", "title", "summary"))}
+    properties["reading_flow"] = {"type": "array", "minItems": 2, "maxItems": 5, "items": section(QWEN_READING_FLOW_ITEM_KEYS)}
+    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+
+
+def build_qwen_chat_request(selected_model: str, user_prompt: str, *, response_schema: dict[str, Any] | None = None) -> dict[str, Any]:
+    request = {
         "model": selected_model,
         "messages": [
             {"role": "system", "content": QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT},
@@ -744,6 +856,9 @@ def build_qwen_chat_request(selected_model: str, user_prompt: str) -> dict[str, 
         "reasoning_effort": "none",
         "stream": False,
     }
+    if response_schema is not None:
+        request["response_format"] = {"type": "json_schema", "json_schema": {"name": "watchbefore_intermediate", "strict": True, "schema": response_schema}}
+    return request
 
 
 def call_qwen_prompt_json(
@@ -755,6 +870,7 @@ def call_qwen_prompt_json(
     timeout: int,
     debug_request_path: Optional[Path] = None,
     debug_raw_response_path: Optional[Path] = None,
+    response_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     raw_content = call_qwen_prompt_text(
         user_prompt,
@@ -764,6 +880,7 @@ def call_qwen_prompt_json(
         timeout=timeout,
         debug_request_path=debug_request_path,
         debug_raw_response_path=debug_raw_response_path,
+        response_schema=response_schema,
     )
     return parse_qwen_message_json(raw_content)
 
@@ -777,8 +894,9 @@ def call_qwen_prompt_text(
     timeout: int,
     debug_request_path: Optional[Path] = None,
     debug_raw_response_path: Optional[Path] = None,
+    response_schema: dict[str, Any] | None = None,
 ) -> str:
-    request_payload = build_qwen_chat_request(selected_model, user_prompt)
+    request_payload = build_qwen_chat_request(selected_model, user_prompt, response_schema=response_schema)
     if debug_request_path:
         write_debug_json(
             debug_request_path,
@@ -794,14 +912,23 @@ def call_qwen_prompt_text(
         if debug_raw_response_path:
             write_debug_text(debug_raw_response_path, raw)
 
-    response = http_json(
-        f"{configured_qwen_api_base(api_base)}/chat/completions",
-        method="POST",
-        payload=request_payload,
-        urlopen_func=urlopen_func,
-        timeout=timeout,
-        raw_response_callback=capture_raw_response,
-    )
+    try:
+        response = http_json(
+            f"{configured_qwen_api_base(api_base)}/chat/completions",
+            method="POST",
+            payload=request_payload,
+            urlopen_func=urlopen_func,
+            timeout=timeout,
+            raw_response_callback=capture_raw_response,
+        )
+    except LocalQwenError as exc:
+        cause = exc.__cause__
+        if response_schema is not None and isinstance(cause, urllib.error.HTTPError) and cause.code in (400, 422):
+            raise LocalExtractError(
+                f"Qwen endpoint rejected the structured extraction request (HTTP {cause.code}); no unconstrained fallback was used",
+                reason_code="local_extract_structured_request_rejected",
+            ) from exc
+        raise
     return extract_message_text(response)
 
 
@@ -857,6 +984,78 @@ def call_qwen_chunk_prompt_json_with_repair(
     return parsed
 
 
+def reading_flow_time_conflicts(parsed: Any) -> list[dict[str, Any]]:
+    flow = parsed.get("reading_flow") if isinstance(parsed, dict) else None
+    if not isinstance(flow, list):
+        return []
+    conflicts = []
+    def seconds(value: str) -> int:
+        return sum(int(part) * factor for part, factor in zip(reversed(value.split(":")), (1, 60, 3600)))
+    for index in range(1, len(flow)):
+        previous, current = flow[index-1], flow[index]
+        if not isinstance(previous, dict) or not isinstance(current, dict):
+            continue
+        end, start = str(previous.get("end") or ""), str(current.get("start") or "")
+        if TIME_POINT_RE.fullmatch(end) and TIME_POINT_RE.fullmatch(start) and seconds(start) < seconds(end):
+            conflicts.append({"previous_item":index,"previous_end":end,"current_item":index+1,"current_start":start})
+    return conflicts
+
+
+def call_validated_qwen_extract(
+    user_prompt: str,
+    *,
+    selected_model: str,
+    api_base: Optional[str],
+    urlopen_func: Any,
+    timeout: int,
+    debug_root: Optional[Path],
+    debug_prefix: str,
+) -> dict[str, Any]:
+    """Regenerate invalid model output from the same evidence, at most twice.
+
+    Never trim sections or edit timestamps to pass validation. Keep the failed
+    responses and the validation feedback separately in the debug trace.
+    """
+    feedback = ""
+    failures: list[dict[str, Any]] = []
+    for attempt in range(3):
+        prefix = debug_prefix if attempt == 0 else f"{debug_prefix}_retry_{attempt}"
+        parsed = None
+        try:
+            parsed = call_qwen_prompt_json(
+                user_prompt + feedback,
+                selected_model=selected_model, api_base=api_base,
+                urlopen_func=urlopen_func, timeout=timeout,
+                response_schema=qwen_extract_response_schema(),
+                debug_request_path=(debug_root / f"{prefix}_request.json") if debug_root else None,
+                debug_raw_response_path=(debug_root / f"{prefix}_raw_response.txt") if debug_root else None,
+            )
+            return validate_qwen_extract(parsed)
+        except LocalExtractError as exc:
+            if exc.reason_code != "local_extract_invalid_output":
+                raise
+            failures.append({"attempt": attempt + 1, "reason_code": exc.reason_code, "error": exc.message})
+            if debug_root:
+                write_debug_json(debug_root / f"{debug_prefix}_validation_retries.json", failures)
+            if attempt == 2:
+                raise
+            previous_flow = parsed.get("reading_flow") if isinstance(parsed, dict) else None
+            feedback = (
+                "\n\n具体时间冲突如下（节点序号从 1 开始）：" + json.dumps(reading_flow_time_conflicts(parsed), ensure_ascii=False) +
+                "\n上一轮 reading_flow 原样如下，供定位错误：" + json.dumps(previous_flow, ensure_ascii=False) +
+                "\n上一轮输出未通过严格校验：" + exc.message +
+                "。请重新依据上面的原始证据完整生成中间提炼 JSON。reading_flow 只允许 2 到 5 项；"
+                "每项 start < end，后一项 start >= 前一项 end。时间点必须有输入证据支持，"
+                "chunk 证据窗口可以重叠，但正文区间必须重新划分；请逐项比较上一项 end 和下一项 start。"
+                "相邻区间可共用同一个来自证据的分界点，即前项 end=T、后项 start=T（T 必须是输入已有时间点）；"
+                "禁止前项 end 比后项 start 晚。优先考虑把明确交叠的这两个相邻要点归并，保留双方具体信息；"
+                "也可依据原始证据重新选择共同分界点。必须解决上表每个冲突，不要只合并其他未出错节点或标题。"
+                "不要删掉重要内容，不要随意修改秒数来绕过校验；可重新组织内容和选择证据分界点。"
+                "只输出符合原契约的 JSON 对象。"
+            )
+    raise AssertionError("unreachable")
+
+
 def call_qwen_local_extract(
     local_extract_seed: dict[str, Any],
     *,
@@ -873,14 +1072,14 @@ def call_qwen_local_extract(
         timeout=min(timeout, 30),
     )
     debug_root = Path(debug_dir) if debug_dir else None
-    parsed = call_qwen_prompt_json(
+    parsed = call_validated_qwen_extract(
         build_qwen_local_extract_user_prompt(local_extract_seed),
         selected_model=selected_model,
         api_base=api_base,
         urlopen_func=urlopen_func,
         timeout=timeout,
-        debug_request_path=(debug_root / "local_extract_request.json") if debug_root else None,
-        debug_raw_response_path=(debug_root / "local_extract_raw_response.txt") if debug_root else None,
+        debug_root=debug_root,
+        debug_prefix="local_extract",
     )
     normalized = validate_qwen_extract(parsed)
     normalized["_qwen_model"] = selected_model
@@ -1099,14 +1298,14 @@ def call_qwen_chunked_local_extract(
         if qwen_extractor:
             parsed_reduce = copy.deepcopy(qwen_extractor(reduce_seed))
         else:
-            parsed_reduce = call_qwen_prompt_json(
+            parsed_reduce = call_validated_qwen_extract(
                 build_qwen_chunk_reduce_user_prompt(reduce_seed),
                 selected_model=selected_model,
                 api_base=api_base,
                 urlopen_func=urlopen_func,
                 timeout=timeout,
-                debug_request_path=(debug_root / "local_extract_chunked_reduce_request.json") if debug_root else None,
-                debug_raw_response_path=(debug_root / "local_extract_chunked_reduce_raw_response.txt") if debug_root else None,
+                debug_root=debug_root,
+                debug_prefix="local_extract_chunked_reduce",
             )
         reduced = validate_qwen_extract(parsed_reduce)
     except LocalQwenError as exc:
@@ -1153,6 +1352,7 @@ def build_local_extract_payload(
     transcript_language: str = "",
     transcript_quality: str = "ok",
     transcript_source: str = "mock",
+    visual_evidence: Optional[dict[str, Any]] = None,
     qwen_extractor: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
     qwen_model: Optional[str] = None,
     qwen_api_base: Optional[str] = None,
@@ -1170,6 +1370,7 @@ def build_local_extract_payload(
     normalized_metadata = normalize_metadata(metadata)
     normalized_segments = normalize_transcript_segments(transcript_segments)
     normalized_language = normalize_extract_language(transcript_language)
+    normalized_visual_evidence = normalize_visual_evidence(visual_evidence)
     local_extract_seed = {
         "metadata": normalized_metadata,
         "transcript": {
@@ -1184,6 +1385,8 @@ def build_local_extract_payload(
         },
         "time_windows": build_time_windows(normalized_segments),
     }
+    if normalized_visual_evidence is not None:
+        local_extract_seed["visual_evidence"] = normalized_visual_evidence
     decision = chunk_trigger_decision(
         local_extract_seed,
         char_threshold=chunked_char_threshold,
@@ -1223,6 +1426,9 @@ def build_local_extract_payload(
         QWEN_LOCAL_EXTRACT_PROMPT_VERSION,
         QWEN_LOCAL_EXTRACT_SYSTEM_PROMPT,
         build_qwen_local_extract_user_prompt(local_extract_seed),
+        QWEN_RESPONSE_SCHEMA_VERSION,
+        qwen_extract_response_schema(),
+        CHUNK_REDUCE_BOUNDARY_RULES,
     )
     payload = {
         "extract_version": "watchbrief_v5.local_extract.v1",
@@ -1236,8 +1442,11 @@ def build_local_extract_payload(
             "does_not_generate_final_report_fields": True,
             "qwen_prompt_version": QWEN_LOCAL_EXTRACT_PROMPT_VERSION,
             "qwen_prompt_fingerprint": qwen_prompt_fingerprint,
+            "visual_analysis_used": normalized_visual_evidence is not None,
         },
     }
+    if normalized_visual_evidence is not None:
+        payload["visual_evidence_hash"] = normalized_visual_evidence["visual_evidence_hash"]
     if chunked_local_extract:
         payload["chunked_local_extract"] = chunked_local_extract
     forbidden = FINAL_REPORT_FIELDS_BLOCKED_IN_LOCAL_EXTRACT.intersection(payload.keys())

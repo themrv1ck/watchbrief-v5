@@ -6,6 +6,7 @@ import unittest
 from helpers import ROOT, assert_invalid, load_golden
 from scripts.analyzer.codex_review import parse_review_response
 from scripts.scoring import (
+    DEFAULT_SCORING_PROFILE,
     SCORING_FORMULA,
     SCORING_FORMULA_VERSION,
     apply_deterministic_scoring,
@@ -48,52 +49,76 @@ class ScoringStabilityTest(unittest.TestCase):
         self.assertEqual(payload["score_trace"]["formula"], SCORING_FORMULA)
         self.assertEqual(payload["score_trace"]["final_score_source"], "deterministic_formula")
         self.assertEqual(payload["scoring_formula_version"], SCORING_FORMULA_VERSION)
-        self.assertEqual(payload["watchbrief_version"], "watchbrief_v5")
+        self.assertEqual(payload["watchbrief_version"], "watchbrief_v6")
 
     def test_formula_weights_are_locked(self) -> None:
         score = compute_replacement_score({
             "information_density": 10.0,
             "evidence_quality": 0.0,
-            "originality": 5.0,
-            "watch_value": 8.0,
+            "topic_interest": 8.0,
         })
 
-        self.assertEqual(score, 5.4)
+        self.assertEqual(score, 5.9)
+
+    def test_three_dimensions_match_user_requested_weights_on_real_examples(self) -> None:
+        for dims, expected in [({"信息密度": 7.0, "论据质量": 5.0, "话题兴趣": 5.0}, 5.7), ({"信息密度": 5.7, "论据质量": 4.0, "话题兴趣": 5.0}, 4.9)]:
+            payload = self.raw_model_payload(1.0)
+            payload["structured_assessment"] = dims
+            result = parse_review_response(payload)
+            self.assertEqual(result["replacement_score"], expected)
+            self.assertEqual(set(result["structured_assessment"]), {"信息密度", "论据质量", "话题兴趣"})
+            self.assertNotIn("originality", result["score_trace"])
+            self.assertNotIn("originality", result["score_basis"])
+
+    def test_removed_originality_dimension_is_rejected(self) -> None:
+        for field, key in [("structured_assessment", "独创性"), ("score_basis", "originality"), ("score_trace", "originality")]:
+            payload = load_golden("sample_payload_heartflow.json")
+            payload[field][key] = 9.0 if field != "score_basis" else "已移除维度不应继续进入评分字段。"
+            with self.subTest(field=field):
+                assert_invalid(self, payload, "score_dimension_removed")
+        with self.assertRaises(ValueError):
+            parse_scoring_weights("information_density=0.3,evidence_quality=0.4,originality=0.1,topic_interest=0.2")
 
     def test_custom_scoring_profile_changes_final_score_deterministically(self) -> None:
         payload = self.raw_model_payload(4.7)
         payload["structured_assessment"] = {
             "信息密度": 2.0,
             "论据质量": 3.0,
-            "独创性": 4.0,
-            "观看性价比": 6.0,
+            "话题兴趣": 6.0,
         }
-        weights = weights_for_profile("watch-value-first")
+        weights = parse_scoring_weights("information_density=0.2,evidence_quality=0.3,topic_interest=0.5")
 
         adapted = apply_deterministic_scoring(payload, weights)
 
-        self.assertEqual(adapted["replacement_score"], 4.5)
-        self.assertEqual(adapted["score_trace"]["formula"], "information_density*0.15 + evidence_quality*0.2 + originality*0.15 + watch_value*0.5")
+        self.assertEqual(adapted["replacement_score"], 4.3)
+        self.assertEqual(adapted["score_trace"]["formula"], "information_density*0.2 + evidence_quality*0.3 + topic_interest*0.5")
         self.assertEqual(adapted["scoring_formula_version"], formula_version_for_weights(weights))
         validate_normalized_report_payload(adapted)
 
+    def test_default_scoring_profile_is_personal_interest(self) -> None:
+        self.assertEqual(DEFAULT_SCORING_PROFILE, "personal-interest")
+        self.assertEqual(weights_for_profile(DEFAULT_SCORING_PROFILE), {
+            "information_density": 0.35,
+            "evidence_quality": 0.35,
+            "topic_interest": 0.3,
+        })
+
     def test_custom_scoring_weights_are_normalized(self) -> None:
-        weights = parse_scoring_weights("information_density=2,evidence_quality=3,originality=2,watch_value=3")
+        weights = parse_scoring_weights("information_density=2,evidence_quality=3,topic_interest=5")
         score = compute_replacement_score({
             "information_density": 10.0,
             "evidence_quality": 0.0,
-            "originality": 5.0,
-            "watch_value": 8.0,
+            "topic_interest": 8.0,
         }, weights)
 
-        self.assertEqual(score, 5.4)
+        self.assertEqual(score, 6.0)
 
     def test_large_model_score_difference_records_warning(self) -> None:
         payload = parse_review_response(self.raw_model_payload(9.8))
 
         self.assertTrue(payload["score_trace"]["warnings"])
         self.assertEqual(payload["score_trace"]["model_suggested_score"], 9.8)
-        self.assertEqual(payload["score_trace"]["computed_replacement_score"], 4.7)
+        self.assertEqual(payload["score_trace"]["computed_replacement_score"], 4.9)
 
     def test_stability_metadata_exists(self) -> None:
         payload = parse_review_response(self.raw_model_payload(4.7))
@@ -105,18 +130,18 @@ class ScoringStabilityTest(unittest.TestCase):
 
     def test_high_score_cannot_keep_report_enough_tag(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
-        payload["structured_assessment"] = {"信息密度": 9.0, "论据质量": 9.0, "独创性": 9.0, "观看性价比": 9.0}
+        payload["structured_assessment"] = {"信息密度": 9.0, "论据质量": 9.0, "话题兴趣": 9.0}
         payload["replacement_score"] = 9.0
         payload["tag"] = "报告足够替代"
         payload["score_trace"] = {
             "information_density": 9.0,
             "evidence_quality": 9.0,
-            "originality": 9.0,
-            "watch_value": 9.0,
+            "topic_interest": 9.0,
             "formula": SCORING_FORMULA,
             "computed_replacement_score": 9.0,
             "model_suggested_score": 9.0,
             "final_score_source": "deterministic_formula",
+            "score_semantics": "content_quality_with_topic_interest",
             "warnings": [],
         }
 
@@ -124,18 +149,18 @@ class ScoringStabilityTest(unittest.TestCase):
 
     def test_low_score_cannot_keep_complete_watch_tag(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
-        payload["structured_assessment"] = {"信息密度": 2.0, "论据质量": 2.0, "独创性": 2.0, "观看性价比": 2.0}
+        payload["structured_assessment"] = {"信息密度": 2.0, "论据质量": 2.0, "话题兴趣": 2.0}
         payload["replacement_score"] = 2.0
         payload["tag"] = "建议完整看"
         payload["score_trace"] = {
             "information_density": 2.0,
             "evidence_quality": 2.0,
-            "originality": 2.0,
-            "watch_value": 2.0,
+            "topic_interest": 2.0,
             "formula": SCORING_FORMULA,
             "computed_replacement_score": 2.0,
             "model_suggested_score": 2.0,
             "final_score_source": "deterministic_formula",
+            "score_semantics": "content_quality_with_topic_interest",
             "warnings": [],
         }
 
@@ -143,7 +168,7 @@ class ScoringStabilityTest(unittest.TestCase):
 
     def test_apply_deterministic_scoring_fixes_conflicting_tag(self) -> None:
         payload = load_golden("sample_payload_heartflow.json")
-        payload["structured_assessment"] = {"信息密度": 9.0, "论据质量": 9.0, "独创性": 9.0, "观看性价比": 9.0}
+        payload["structured_assessment"] = {"信息密度": 9.0, "论据质量": 9.0, "话题兴趣": 9.0}
         payload["replacement_score"] = 1.0
         payload["tag"] = "报告足够替代"
         payload["watch_verdict"] = "报告不能完全替代，原视频建议完整看；如果时间有限，先看 10:51 | 15:08。"
@@ -158,7 +183,8 @@ class ScoringStabilityTest(unittest.TestCase):
         self.assertEqual(tag_for_score(4.9), "不推荐观看")
         self.assertEqual(tag_for_score(5.0), "只建议跳看")
         self.assertEqual(tag_for_score(6.5), "只建议跳看")
-        self.assertEqual(tag_for_score(6.6), "值得补看")
+        self.assertEqual(tag_for_score(7.0), "只建议跳看")
+        self.assertEqual(tag_for_score(7.1), "值得补看")
         self.assertEqual(tag_for_score(8.5), "值得补看")
         self.assertEqual(tag_for_score(8.6), "建议完整看")
 
@@ -168,7 +194,7 @@ class ScoringStabilityTest(unittest.TestCase):
         high = copy.deepcopy(low)
         high["title"] = "High deterministic score"
         high["page_file"] = "high.html"
-        high["structured_assessment"] = {"信息密度": 9.0, "论据质量": 9.0, "独创性": 9.0, "观看性价比": 9.0}
+        high["structured_assessment"] = {"信息密度": 9.0, "论据质量": 9.0, "话题兴趣": 9.0}
         high = apply_deterministic_scoring(high)
 
         html = render_watch_order_html({

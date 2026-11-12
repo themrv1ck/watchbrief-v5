@@ -23,7 +23,7 @@ class FieldContractTest(unittest.TestCase):
             self.assertNotIn(field, schema["properties"])
 
     def test_phase2_contract_forbids_live_video_and_model_work(self) -> None:
-        text = (ROOT / "CONTRACT_V5.md").read_text(encoding="utf-8")
+        text = (ROOT / "CONTRACT_V6.md").read_text(encoding="utf-8")
         self.assertIn("real URL resolving", text)
         self.assertIn("subtitle fetching", text)
         self.assertIn("audio downloading", text)

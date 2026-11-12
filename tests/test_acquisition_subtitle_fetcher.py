@@ -431,7 +431,7 @@ class AcquisitionSubtitleFetcherTest(unittest.TestCase):
         self.assertTrue(provider_path.exists())
         self.assertIn("YouTube Connect", provider_path.read_text(encoding="utf-8"))
         self.assertIn("YouTube Connect", (ROOT / "README.md").read_text(encoding="utf-8"))
-        self.assertIn("YouTube Connect", (ROOT / "CONTRACT_V5.md").read_text(encoding="utf-8"))
+        self.assertIn("YouTube Connect", (ROOT / "CONTRACT_V6.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

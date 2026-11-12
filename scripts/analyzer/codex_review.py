@@ -36,8 +36,9 @@ except ImportError:  # pragma: no cover - direct script execution
 
 ROOT = Path(__file__).resolve().parents[2]
 SINGLE_VIDEO_SCHEMA_PATH = ROOT / "schemas" / "single_video_report.schema.json"
-STRUCTURED_ASSESSMENT_REQUIRED_KEYS = ("信息密度", "论据质量", "独创性", "观看性价比")
-CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v5"
+STRUCTURED_ASSESSMENT_REQUIRED_KEYS = ("信息密度", "论据质量", "话题兴趣")
+CODEX_REVIEW_PROMPT_VERSION = "watchbrief_v5.codex_review_prompt.v10"
+CODEX_CLI_REASONING_EFFORT = "xhigh"
 
 
 class CodexReviewError(ValueError):
@@ -65,6 +66,8 @@ def build_review_request(local_extract_payload: dict[str, Any], *, report_target
     target = normalize_report_target(report_target)
     payload_metadata = local_extract_payload.get("metadata") if isinstance(local_extract_payload.get("metadata"), dict) else {}
     payload_transcript = local_extract_payload.get("transcript") if isinstance(local_extract_payload.get("transcript"), dict) else {}
+    payload_visual = local_extract_payload.get("visual_evidence") if isinstance(local_extract_payload.get("visual_evidence"), dict) else {}
+    payload_visual_provider = payload_visual.get("provider") if isinstance(payload_visual.get("provider"), dict) else {}
     user_prompt = build_review_user_prompt(local_extract_payload, report_target=target)
     target_prompt = build_target_report_prompt(target)
     fingerprint_parts: list[Any] = [
@@ -95,6 +98,9 @@ def build_review_request(local_extract_payload: dict[str, Any], *, report_target
             "source_cid": str(payload_metadata.get("cid") or ""),
             "transcript_source": str(payload_transcript.get("source") or ""),
             "transcript_hash": str(local_extract_payload.get("transcript_hash") or ""),
+            "visual_evidence_hash": str(local_extract_payload.get("visual_evidence_hash") or ""),
+            "visual_provider": str(payload_visual_provider.get("provider") or ""),
+            "visual_prompt_version": str(payload_visual.get("prompt_version") or ""),
             "qwen_model_id": str(local_extract_payload.get("qwen_extract", {}).get("_qwen_model") or ""),
             "qwen_prompt_version": str(local_extract_payload.get("analysis_boundary", {}).get("qwen_prompt_version") or ""),
             "qwen_prompt_fingerprint": str(local_extract_payload.get("analysis_boundary", {}).get("qwen_prompt_fingerprint") or ""),
@@ -271,6 +277,7 @@ def pre_schema_adapter(payload: dict[str, Any]) -> dict[str, Any]:
     # final report root, but the final schema intentionally disallows them.
     adapted.pop("important_terms", None)
     adapted.pop("corrected_terms", None)
+    adapted.pop("personal_relevance", None)
 
     score = adapted.get("replacement_score")
     if isinstance(score, (int, float)) and not isinstance(score, bool):
@@ -309,7 +316,7 @@ def pre_schema_adapter(payload: dict[str, Any]) -> dict[str, Any]:
     score_basis = adapted.get("score_basis")
     if isinstance(score_basis, dict):
         fixed_basis = copy.deepcopy(score_basis)
-        for key in ("information_density", "evidence_quality", "originality", "watch_value"):
+        for key in ("information_density", "evidence_quality", "topic_interest"):
             if key in fixed_basis and not isinstance(fixed_basis[key], str):
                 fixed_basis[key] = stringify_basis_value(fixed_basis[key])
         adapted["score_basis"] = fixed_basis
@@ -335,6 +342,9 @@ def apply_stability_metadata(payload: dict[str, Any], metadata: Optional[dict[st
             adapted[payload_key] = str(value)
     for key in (
         "transcript_hash",
+        "visual_evidence_hash",
+        "visual_provider",
+        "visual_prompt_version",
         "qwen_model_id",
         "qwen_prompt_version",
         "qwen_prompt_fingerprint",
@@ -356,7 +366,9 @@ def deterministic_report_adapter(
     scoring_weights: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     try:
-        return apply_deterministic_scoring(apply_stability_metadata(payload, metadata), scoring_weights)
+        adapted = copy.deepcopy(payload)
+        adapted.pop("personal_relevance", None)
+        return apply_deterministic_scoring(apply_stability_metadata(adapted, metadata), scoring_weights)
     except ValueError as exc:
         raise CodexReviewError(str(exc), reason_code="schema_invalid") from exc
 
@@ -469,7 +481,7 @@ CODEX_CLI_JSON_CONTRACT = """Codex CLI JSON output hard contract:
 - The JSON must fully conform to the WatchBrief V5 schema.
 
 Field rules:
-- replacement_score: number, 0 <= replacement_score <= 10, keep one decimal place. It is a video content score based on content quality, credibility/evidence quality, information density, originality, expression quality, and time cost. It is not a watch/don't-watch decision. It is only your model-suggested reference; final output will be recomputed deterministically from structured_assessment.
+- replacement_score: number, 0 <= replacement_score <= 10, keep one decimal place. It is a score based on information density, evidence quality, and topic interest. It is not a watch/don't-watch decision. It is only your model-suggested reference; final output will be recomputed deterministically from structured_assessment.
 - tag: string; must be exactly one of: 报告足够替代, 报告基本可替代, 只建议跳看, 值得补看, 建议完整看, 不推荐观看, 解析不足.
 - one_line_brief: string; must start with “这期视频主要讲：”.
 - watch_verdict: string; say what the report already extracts and where to jump if the user wants source context. Do not decide on behalf of the user; provide a补看入口, not a final watch/don't-watch command.
@@ -482,6 +494,17 @@ Field rules:
 - arrow_chain: array of strings, 5 to 7 nodes. Never output a single string. Never output an array of objects.
 - final_conclusion: string; only thematic conclusion. Never include viewing advice, score reasons, or content caveats.
 - content_caveat: string. If none, output an empty string. Do not omit it.
+- target_summary: string. It is the reader-facing opening in Chinese: directly summarize the specific subject, main content, and outcome or conclusion stated in the video. For a long video, include major secondary topics. Do not write a table of contents, a quality judgment, or production meta-language.
+- reading_flow: required array with 2 to 5 focused content points. Each object has exactly start, end, heading, body. It is the primary content summary, not an index of existing fields.
+- reading_flow[].start and end: original MM:SS or H:MM:SS timestamps grounded in the input evidence; sections must be ordered, non-overlapping, and within the duration.
+- reading_flow[].heading: name the actual subject or event covered, never a generic stage label.
+- reading_flow[].body: 1 to 3 natural Chinese sentences with the specific people, products, events, claims, examples, methods, and results actually present. Attribute claims to the speaker where appropriate. Remove greetings, repetition, and table-of-contents phrasing. Do not write quality analysis, viewing advice, forced problem-mechanism-turning-point structure, or invented facts.
+- For narrative or documentary content, preserve the main sequence and outcome. For explanatory content, preserve the concrete mechanisms, examples, and steps. For long content, reading_flow must contain 3 to 5 sections reaching from the first phase to the final phase.
+- target_sections: object required for the default WatchBefore template. It must contain exactly these keys in this order: direct_statements, key_points, practical_takeaways, boundaries.
+- target_sections.direct_statements: array of 1 to 6 Chinese strings for 直接结论.
+- target_sections.key_points: array of 1 to 6 Chinese strings for 具体观点.
+- target_sections.practical_takeaways: array of 1 to 6 Chinese strings for 可直接采用. If the source has no actionable method, say so directly instead of inventing actions.
+- target_sections.boundaries: array of 1 to 6 Chinese strings for 注意边界.
 - watch_segments: array. Each item must be an object with priority, start, end, title, reason.
 - watch_segments[].priority: one of primary, optional, backup.
 - watch_segments[].start and end: MM:SS strings.
@@ -489,6 +512,7 @@ Field rules:
 - watch_segments: exactly one primary, at most one optional.
 - watch_segments[].label is forbidden. Use title, not label.
 - watch_segments primary must be the best understanding-entry segment, not merely the densest or latest segment. After watching primary, a reader should know what the video is mainly about, what object/product/idea is being discussed, what problem it addresses, and what path/mechanism creates the claimed effect.
+- primary must be the shortest sufficient understanding-entry segment: start at the first substantive explanation and end after the last fact required for the core conclusion. Exclude removable hooks, greetings, repeated examples, and wrap-up. optional is allowed only for key evidence or boundaries absent from primary; backup is allowed only for a genuine alternative entry.
 - For product/technology/explainer/opinion videos, prefer a segment that combines object definition + core path/mechanism + effect. Intro suspense, greeting, cold open, and anecdotal setup are usually not primary. Privacy, deployment, limitations, commercialization, or risk-only segments are usually optional/backup unless they also explain the object, path, and effect.
 - If compact_local_extract_payload includes watch_segment_candidates, choose primary/optional/backup from those candidates unless you have a stronger exact timestamp from the input. Do not ignore understanding-entry candidates and default to either 00:00 or a high-density late segment.
 - long_content_breakdown: optional array. It is required only when duration is longer than 45 minutes and the content is a podcast/interview/lecture/talk/course/workshop/seminar/training or similar long-form educational/speech content.
@@ -496,10 +520,11 @@ Field rules:
 - long_content_breakdown items must contain start, end, title, summary. Use original MM:SS or H:MM:SS timestamps, keep phases ordered and non-overlapping, and write concrete Chinese summaries of what each phase explains.
 - Do not output long_content_breakdown for short videos or videos that are not long-form podcast/speech/course-like content.
 - only_one_segment: string. It must match the primary start/end. Example: 只选一段：00:00 | 00:05。这一段已经覆盖全片核心。
-- score_basis: object with four string fields: information_density, evidence_quality, originality, watch_value.
+- score_basis: object with three string fields: information_density, evidence_quality, topic_interest.
 - score_basis values must be strings. Never output numbers, objects, arrays, or omit these fields.
-- structured_assessment: object required for Watch Order pages with numeric fields 信息密度, 论据质量, 独创性, 观看性价比, each from 0 to 10.
-- structured_assessment drives the final deterministic video overall value score using: information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3.
+- structured_assessment: object required for Watch Order pages with numeric fields 信息密度, 论据质量, 话题兴趣, each from 0 to 10.
+- structured_assessment drives the final deterministic score. The WatchBefore default is: information_density*0.35 + evidence_quality*0.35 + topic_interest*0.3.
+- If no WatchBefore content-interest profile is provided, set 话题兴趣 to 5.0 and state in score_basis.topic_interest that personal topic interest is not learned yet. Do not infer personal interest from author, channel, title, or generic popularity.
 - score_trace is generated by deterministic validation. You may omit it; if you output it, it will be overwritten.
 - transcript_hash, qwen_model_id, qwen_prompt_version, qwen_prompt_fingerprint, codex_model, codex_prompt_version, codex_prompt_fingerprint, scoring_formula_version, and watchbrief_version are generated by deterministic validation. You may omit them; if you output them, they will be overwritten.
 - tag is a legacy compatibility band derived from the content score. Do not treat it as the user's final viewing decision. Report substitutability may appear in watch_verdict, but must not define the score.
@@ -533,6 +558,7 @@ def build_codex_cli_retry_prompt(
     watch_verdict_hint = ""
     arrow_chain_hint = ""
     long_breakdown_hint = ""
+    reading_flow_hint = ""
     if any("arrow_chain" in error and "maxLength" in error for error in schema_errors):
         arrow_chain_hint = (
             "\narrow_chain targeted correction:\n"
@@ -564,6 +590,14 @@ def build_codex_cli_retry_prompt(
             "- Each phase must be an object with start, end, title, summary.\n"
             "- Keep phases ordered and non-overlapping. Do not use this field for short videos.\n"
         )
+    if any("reading_flow" in error for error in schema_errors):
+        reading_flow_hint = (
+            "\nreading_flow targeted correction:\n"
+            "- Output 2 to 5 objects with exactly start, end, heading, body.\n"
+            "- Keep them ordered and non-overlapping; use source timestamps only.\n"
+            "- Write each body as a concrete content summary with actual subjects, examples, and outcomes; no quality analysis or viewing advice.\n"
+            "- Long content needs 3 to 5 sections that reach from its first phase to its final phase.\n"
+        )
     return (
         f"{system}\n\n"
         "Your previous JSON did not pass the WatchBrief V5 schema.\n"
@@ -581,13 +615,13 @@ def build_codex_cli_retry_prompt(
         "- only_one_segment must be a string.\n"
         "- score_basis.information_density must be a string.\n"
         "- score_basis.evidence_quality must be a string.\n"
-        "- score_basis.originality must be a string.\n"
-        "- score_basis.watch_value must be a string.\n\n"
-        "- structured_assessment must be an object with 信息密度, 论据质量, 独创性, 观看性价比 numeric fields from 0 to 10.\n\n"
+        "- score_basis.topic_interest must be a string.\n\n"
+        "- structured_assessment must be an object with 信息密度, 论据质量, 话题兴趣 numeric fields from 0 to 10.\n\n"
         f"{watch_verdict_hint}\n"
         f"{arrow_chain_hint}\n"
         f"{legacy_label_hint}\n"
         f"{long_breakdown_hint}\n"
+        f"{reading_flow_hint}\n"
         f"{CODEX_CLI_JSON_CONTRACT}\n"
         f"{review_request.get('target_payload_contract_text') or ''}\n"
         "Previous JSON:\n"
@@ -608,6 +642,8 @@ def build_codex_cli_command(
         "--skip-git-repo-check",
         "-m",
         model,
+        "-c",
+        f'model_reasoning_effort="{CODEX_CLI_REASONING_EFFORT}"',
         "-C",
         str(cwd),
         "-s",

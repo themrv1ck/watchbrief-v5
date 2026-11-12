@@ -5,7 +5,7 @@
   "duration": "18:06",
   "date": "2026-04-21",
   "topic": "社交心理 / 魅力机制 / 关系吸引 / 自我呈现",
-  "replacement_score": 3.7,
+  "replacement_score": 4.2,
   "tag": "不推荐观看",
   "one_line_brief": "这期视频主要讲：魅力来自他人能稳定读到善意、潜力和真实，而不是把自己表演得毫无缺点。",
   "watch_verdict": "看报告基本够，原视频只建议跳看 08:20 | 12:40；不需要完整观看。",
@@ -26,6 +26,39 @@
   ],
   "final_conclusion": "魅力的核心不是表演得更完美，而是让别人读到你身上的善意、潜力和真实。",
   "content_caveat": "观点适合社交入门，论证主要依靠经验观察，缺少更系统的研究支撑。",
+  "target_summary": "这支视频先拆开“魅力等于完美表演”的想象，再解释他人怎样从善意、潜力和真实感中读到一个人，最后落到表达与行动是否一致。",
+  "reading_flow": [
+    {
+      "start": "00:00",
+      "end": "08:20",
+      "heading": "先拆掉把魅力当成完美表演的想象",
+      "body": "视频从外形、话术和包装的常见理解切入，转而追问别人究竟在互动里读到了什么，为后面的信号解释建立问题。"
+    },
+    {
+      "start": "08:20",
+      "end": "18:06",
+      "heading": "真正能被稳定读到的，是善意、潜力和真实",
+      "body": "核心段把三类信号放在一起说明，并把落点放回一致性：减少过度包装，让表达、边界和行动不互相打架。"
+    }
+  ],
+  "target_sections": {
+    "direct_statements": [
+      "魅力不是完美表演，而是让别人稳定读到善意、潜力和真实信号。",
+      "过度包装会让信号失真，适度真实反而更容易建立信任。"
+    ],
+    "key_points": [
+      "视频把吸引解释成善意、潜力、真实感和互动反馈共同形成的信号。",
+      "它反对把魅力简化成外形、话术或毫无缺点的自我展示。"
+    ],
+    "practical_takeaways": [
+      "减少过度包装，让表达、边界和行动保持一致。",
+      "在互动里让善意和成长性被对方稳定读到。"
+    ],
+    "boundaries": [
+      "观点适合社交入门，论证主要依靠经验观察。",
+      "视频缺少更系统的研究支撑和反例展开。"
+    ]
+  },
   "watch_segments": [
     {
       "priority": "primary",
@@ -39,35 +72,32 @@
   "score_basis": {
     "information_density": "核心判断集中在 08:20 | 12:40，前后多是常见社交建议的重复铺陈。",
     "evidence_quality": "论据以经验观察和生活例子为主，没有给出数据、反例或清晰研究来源。",
-    "originality": "善意、潜力、真实的组合表达有启发，但单项观点并不新。",
-    "watch_value": "报告可以替代主要内容，原视频剩余价值主要是作者用例子解释信号的语气和节奏。"
+    "topic_interest": "样例报告未接入个人内容兴趣画像，话题兴趣固定按中性分处理。"
   },
   "structured_assessment": {
     "信息密度": 4.0,
     "论据质量": 3.8,
-    "独创性": 3.5,
-    "观看性价比": 3.6
-  },
-  "score_trace": {
-    "information_density": 4.0,
-    "evidence_quality": 3.8,
-    "originality": 3.5,
-    "watch_value": 3.6,
-    "formula": "information_density*0.2 + evidence_quality*0.3 + originality*0.2 + watch_value*0.3",
-    "computed_replacement_score": 3.7,
-    "model_suggested_score": 3.7,
-    "final_score_source": "deterministic_formula",
-    "score_semantics": "video_overall_value",
-    "warnings": []
+    "话题兴趣": 5.0
   },
   "transcript_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "qwen_model_id": "mock-qwen",
-  "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v2",
+  "qwen_prompt_version": "watchbrief_v5.qwen_local_extract_prompt.v6",
   "qwen_prompt_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "codex_model": "gpt-5.4",
-  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v5",
+  "codex_prompt_version": "watchbrief_v5.codex_review_prompt.v10",
   "codex_prompt_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "scoring_formula_version": "watchbrief_v5.video_value_formula.v2",
-  "watchbrief_version": "watchbrief_v5",
-  "confidence_note": "mock payload 覆盖字段契约；未接入真实字幕或模型判断。"
+  "scoring_formula_version": "watchbrief_v5.topic_interest_formula.v2",
+  "watchbrief_version": "watchbrief_v6",
+  "confidence_note": "mock payload 覆盖字段契约；未接入真实字幕或模型判断。",
+  "score_trace": {
+    "information_density": 4.0,
+    "evidence_quality": 3.8,
+    "topic_interest": 5.0,
+    "formula": "information_density*0.35 + evidence_quality*0.35 + topic_interest*0.3",
+    "score_semantics": "content_quality_with_topic_interest",
+    "computed_replacement_score": 4.2,
+    "model_suggested_score": 4.1,
+    "final_score_source": "deterministic_formula",
+    "warnings": []
+  }
 }

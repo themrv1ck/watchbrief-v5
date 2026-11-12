@@ -21,10 +21,13 @@ from scripts.resolver import (
     drop_internal_download_fields,
     is_bilibili_list_url,
     is_xiaohongshu_board_url,
+    normalize_video_entry,
     refresh_xiaohongshu_media_url_from_browser,
     resolve_url,
     xiaohongshu_board_id_from_url,
+    xiaohongshu_note_id_from_url,
     xiaohongshu_dom_board_notes,
+    sanitize_xiaohongshu_url_for_output,
 )
 
 
@@ -204,12 +207,98 @@ class AcquisitionResolverTest(unittest.TestCase):
                 "resource_count": 1,
                 "video_element_count": 1,
             }
-            return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps(json.dumps(payload)), stderr="")
 
-        result = refresh_xiaohongshu_media_url_from_browser(tokenized_url, runner=safe_runner)
+        result = refresh_xiaohongshu_media_url_from_browser(tokenized_url, browser="safari", runner=safe_runner)
 
         self.assertTrue(result["media_url_available"])
         self.assertEqual(result["provider"], "safari-performance")
+
+    def test_xiaohongshu_media_refresh_uses_arc_without_falling_back_to_safari(self) -> None:
+        seen: dict[str, object] = {}
+
+        def arc_runner(command, capture_output, text, timeout):
+            seen["browser"] = command[3]
+            seen["command_target"] = command[4]
+            seen["script"] = command[2]
+            payload = {
+                "media_url": "https://example.com/video.mp4?sig=SECRET_MEDIA",
+                "provider": "arc-performance",
+                "browser": "arc",
+                "media_url_available": True,
+                "media_url_type": "media_or_external_url_with_query",
+                "resource_count": 1,
+                "video_element_count": 1,
+            }
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps(json.dumps(payload)), stderr="")
+
+        result = refresh_xiaohongshu_media_url_from_browser(
+            "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+            browser="arc",
+            runner=arc_runner,
+        )
+
+        self.assertEqual(seen["browser"], "arc")
+        self.assertEqual(seen["command_target"], "0123456789abcdef01234567")
+        script = str(seen["script"])
+        arc_start = script.index('if targetBrowser is "arc" then')
+        arc_end = script.index('    else\n        set targetUrl to read POSIX file targetReference', arc_start)
+        arc_script = script[arc_start:arc_end]
+        self.assertIn('tell application id "company.thebrowser.Browser"', arc_script)
+        self.assertIn('if application id "company.thebrowser.Browser" is not running', arc_script)
+        self.assertIn("execute tabRef javascript jsSource", arc_script)
+        self.assertIn("set tabRef to a reference to tab ti of window wi", arc_script)
+        self.assertIn('tabUrl contains ("/explore/" & targetNoteId)', arc_script)
+        self.assertIn('tabUrl contains ("/discovery/item/" & targetNoteId)', arc_script)
+        self.assertNotIn("make new tab", arc_script)
+        self.assertNotIn("set URL of targetTab", arc_script)
+        self.assertNotIn("delay 8", arc_script)
+        self.assertNotIn("activate", arc_script)
+        self.assertNotIn("select", arc_script)
+        self.assertEqual(result["provider"], "arc-performance")
+        self.assertTrue(result["media_url_available"])
+
+    def test_xiaohongshu_note_id_from_url_supports_both_note_paths(self) -> None:
+        note_id = "0123456789abcdef01234567"
+        self.assertEqual(
+            xiaohongshu_note_id_from_url(f"https://www.xiaohongshu.com/explore/{note_id}"),
+            note_id,
+        )
+        self.assertEqual(
+            xiaohongshu_note_id_from_url(f"https://www.xiaohongshu.com/discovery/item/{note_id}?xsec_token=TOKEN"),
+            note_id,
+        )
+        self.assertEqual(
+            xiaohongshu_note_id_from_url("https://www.xiaohongshu.com/board/0123456789abcdef01234567"),
+            "",
+        )
+
+    def test_xiaohongshu_note_urls_are_canonicalized_before_output(self) -> None:
+        note_id = "0123456789abcdef01234567"
+        tokenized_url = f"https://www.xiaohongshu.com/discovery/item/{note_id}?xsec_token=TOKEN"
+        canonical_url = f"https://www.xiaohongshu.com/explore/{note_id}"
+        self.assertEqual(sanitize_xiaohongshu_url_for_output(tokenized_url), canonical_url)
+        self.assertEqual(
+            normalize_video_entry({"webpage_url": tokenized_url, "title": "video"}, 0)["url"],
+            canonical_url,
+        )
+
+    def test_xiaohongshu_media_refresh_rejects_unknown_browser_without_running_osascript(self) -> None:
+        called = False
+
+        def unexpected_runner(*args, **kwargs):
+            nonlocal called
+            called = True
+            raise AssertionError("osascript must not run for an unsupported browser")
+
+        result = refresh_xiaohongshu_media_url_from_browser(
+            "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+            browser="firefox",
+            runner=unexpected_runner,
+        )
+
+        self.assertFalse(called)
+        self.assertEqual(result["reason_code"], "unsupported_media_refresh_browser")
 
     def test_resolve_single_video_url(self) -> None:
         payload = {
@@ -312,6 +401,93 @@ class AcquisitionResolverTest(unittest.TestCase):
         self.assertEqual(resolved["videos"][1]["cid"], "222")
         self.assertEqual(resolved["videos"][0]["channel"], "lmt831")
         self.assertEqual(resolved["videos"][0]["pubdate"], 1777464000)
+
+    def test_real_twelve_part_single_selection_uses_page_cid_and_duration(self) -> None:
+        from helpers import ROOT
+        fixture = json.loads((ROOT / "tests/fixtures/bilibili_hamilton_12p.json").read_text())
+        for index in (1, 2, 12):
+            with self.subTest(page=index):
+                url = f"https://www.bilibili.com/video/BV1Me41137rw/?p={index}"
+                raw = {"id": "BV1Me41137rw", "title": f"课程 P{index}", "webpage_url": "https://www.bilibili.com/video/BV1Me41137rw/", "duration": 999}
+                resolved = resolve_url(url, runner=runner_with_payload(raw), allow_browser_auth=False, allow_playlist_expansion=False, urlopen_func=lambda *a, **k: FakeResponse(json.dumps(fixture).encode()))
+                item = resolved["videos"][0];page=fixture["data"]["pages"][index-1]
+                self.assertEqual(item["cid"], str(page["cid"]))
+                self.assertEqual(item["duration"], page["duration"])
+                self.assertEqual(item["page_index"], index)
+                self.assertEqual(item["title"], page["part"])
+                self.assertIn(f"p={index}", item["url"])
+
+    def test_explicit_episode_is_not_expanded_when_extractor_returns_all_parts(self) -> None:
+        from helpers import ROOT
+        fixture = json.loads((ROOT / "tests/fixtures/bilibili_hamilton_12p.json").read_text())
+        entries = [{"url": f"https://www.bilibili.com/video/BV1Me41137rw?p={i}","title": f"Part {i}"} for i in range(1,13)]
+        for selector in ["p=2", "page=2", "cid=824337034"]:
+            with self.subTest(selector=selector):
+                result=resolve_url("https://www.bilibili.com/video/BV1Me41137rw/?"+selector, runner=runner_with_payload({"title":"课程","entries":entries}),allow_browser_auth=False,urlopen_func=lambda *a, **k:FakeResponse(json.dumps(fixture).encode()))
+                self.assertEqual(result["source_kind"], "single")
+                self.assertEqual(len(result["videos"]),1)
+                self.assertEqual(result["videos"][0]["cid"],"824337034")
+                self.assertTrue(result["videos"][0]["url"].endswith("?p=2"))
+
+    def test_twelve_part_metadata_fallback_preserves_expansion_and_explicit_selection(self) -> None:
+        from helpers import ROOT
+        from scripts.resolver import build_bilibili_resolution_from_metadata
+        data = json.loads((ROOT / "tests/fixtures/bilibili_hamilton_12p.json").read_text())["data"]
+        base = "https://www.bilibili.com/video/BV1Me41137rw/"
+        whole = build_bilibili_resolution_from_metadata(base, data, {}, {}, allow_playlist_expansion=True)
+        self.assertEqual(whole["source_kind"], "list")
+        self.assertEqual(len(whole["videos"]), 12)
+        self.assertEqual([v["cid"] for v in whole["videos"]], [str(p["cid"]) for p in data["pages"]])
+        for query in ["?p=2", "?page=2", "?cid=824337034"]:
+            selected = build_bilibili_resolution_from_metadata(base+query, data, {}, {}, allow_playlist_expansion=True)
+            self.assertEqual(selected["source_kind"], "single")
+            self.assertEqual(selected["videos"][0]["cid"], "824337034")
+            self.assertEqual(int(selected["duration"]), 544)
+            self.assertTrue(selected["videos"][0]["url"].endswith("?p=2"))
+
+    def test_authorized_412_fallback_uses_all_parts_or_requested_part(self) -> None:
+        from helpers import ROOT
+        fixture = json.loads((ROOT / "tests/fixtures/bilibili_hamilton_12p.json").read_text())
+        def blocked(command, capture_output, text, timeout):
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="HTTP Error 412: Precondition Failed")
+        def fetch(request, timeout):
+            if "x/web-interface/view" in request.full_url:
+                return FakeResponse(json.dumps(fixture).encode())
+            return FakeResponse(("<script>window.__INITIAL_STATE__=" + json.dumps({"videoData": fixture["data"]}) + ";</script>").encode())
+        base = "https://www.bilibili.com/video/BV1Me41137rw/"
+        for suffix, expand, count, first_cid in [("", True, 12, "824336293"), ("?p=2", True, 1, "824337034"), ("", False, 1, "824336293")]:
+            with self.subTest(suffix=suffix,expand=expand):
+                resolved = resolve_url(base+suffix, runner=blocked, cookie_header="test-session", allow_browser_auth=False, allow_playlist_expansion=expand, urlopen_func=fetch)
+                self.assertEqual(len(resolved["videos"]), count)
+                self.assertEqual(resolved["videos"][0]["cid"], first_cid)
+
+    def test_distinct_bvid_collection_does_not_receive_first_video_cid(self) -> None:
+        from helpers import ROOT
+        from scripts.resolver import enrich_bilibili_multipart_videos, build_bilibili_resolution_from_metadata
+        fixture = json.loads((ROOT / "tests/fixtures/bilibili_hamilton_12p.json").read_text())
+        other = {"url": "https://www.bilibili.com/video/BV15qQwB4EZ9/", "title": "另一个视频", "duration": 999}
+        result = enrich_bilibili_multipart_videos([{"url":"https://www.bilibili.com/video/BV1Me41137rw?p=2"},other],source_url="https://www.bilibili.com/video/BV1Me41137rw/",cookie_header="",timeout=5,urlopen_func=lambda *a, **k:FakeResponse(json.dumps(fixture).encode()))
+        self.assertEqual(result[0]["cid"], "824337034")
+        self.assertEqual(result[1], other)
+        single = dict(fixture["data"]);single["pages"] = single["pages"][:1]
+        single["videos"] = 1
+        single["ugc_season"] = {"sections":[{"episodes":[{"bvid":"BV15qQwB4EZ9"}]}]}
+        resolved = build_bilibili_resolution_from_metadata("https://www.bilibili.com/video/BV1Me41137rw/",single,{}, {},allow_playlist_expansion=True)
+        self.assertEqual(resolved["source_kind"], "single")
+        self.assertEqual(len(resolved["videos"]), 1)
+
+    def test_missing_part_duration_is_not_replaced_by_course_total(self) -> None:
+        from helpers import ROOT
+        from scripts.resolver import build_bilibili_resolution_from_metadata
+        data=json.loads((ROOT/"tests/fixtures/bilibili_hamilton_12p.json").read_text())["data"]
+        data["pages"][1]["duration"]=0
+        result=build_bilibili_resolution_from_metadata("https://www.bilibili.com/video/BV1Me41137rw?p=2",data,{}, {},allow_playlist_expansion=True)
+        self.assertEqual(result["videos"][0]["duration"],0)
+        self.assertNotEqual(int(result["duration"]),data["duration"])
+        data["pages"]=data["pages"][:1]
+        with self.assertRaises(BilibiliResolverError) as caught:
+            build_bilibili_resolution_from_metadata("https://www.bilibili.com/video/BV1Me41137rw",data,{}, {},allow_playlist_expansion=True)
+        self.assertEqual(caught.exception.reason_code,"bilibili_list_expansion_failed")
 
     def test_bilibili_list_url_is_identified_as_list(self) -> None:
         url = "https://www.bilibili.com/list/ml3621337310?oid=114282922511207&bvid=BV1GRRXYEEGn"
@@ -702,6 +878,25 @@ class AcquisitionResolverTest(unittest.TestCase):
 
         self.assertEqual(resolved["source_kind"], "single")
         self.assertIn("yt-dlp", seen_command)
+
+    def test_xiaohongshu_single_video_keeps_share_url_only_for_download(self) -> None:
+        note_id = "66ef836500000000250326ce"
+        share_url = f"https://www.xiaohongshu.com/discovery/item/{note_id}?xsec_token=SHARE_TOKEN"
+        payload = {
+            "id": note_id,
+            "title": "小红书单视频",
+            "webpage_url": f"https://www.xiaohongshu.com/explore/{note_id}",
+            "duration": 196,
+        }
+
+        def run(command, capture_output, text, timeout):
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
+
+        resolved = resolve_url(share_url, runner=run, allow_browser_auth=False)
+        item = resolved["videos"][0]
+        self.assertEqual(item["url"], f"https://www.xiaohongshu.com/explore/{note_id}")
+        self.assertEqual(item["_download_url"], share_url)
+
 
     def test_xiaohongshu_board_browser_cookie_loader_is_used_without_exposing_values(self) -> None:
         url = "https://www.xiaohongshu.com/board/69e0e0930000000016034f8a"

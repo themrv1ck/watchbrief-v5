@@ -36,15 +36,19 @@ try:
         fetch_youtube_connect_transcript,
         material_from_youtube_connect,
     )
+    from .preference_profile import build_personal_relevance
+    from .scoring import apply_deterministic_scoring
     from .providers.youtube_safari_provider import fetch_youtube_chrome_transcript, fetch_youtube_safari_transcript
     from .report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from .renderer import render_single_video_html
     from .report_cache import build_report_cache_identity, read_cached_report, report_cache_dir, write_cached_report
-    from .resolver import refresh_xiaohongshu_media_url_from_browser, resolve_url
+    from .resolver import refresh_xiaohongshu_media_url_from_browser, resolve_url, sanitize_xiaohongshu_url_for_output
     from .subtitle_fetcher import fetch_platform_subtitles
     from .transcriber import transcribe_audio_to_material
     from .transcript_source_adapter import transcript_material_to_local_extract_input
     from .transcript_quality import MIN_TRANSCRIPT_COVERAGE_RATIO, parse_time_seconds, validate_transcript_coverage
+    from .visual_analyzer import download_visual_video, video_path_from_result, visual_download_debug
+    from .visual_activation import decide_visual_analysis
     from .watch_order import write_watch_order
     from .scoring import SCORING_FORMULA_VERSION
 except ImportError:  # pragma: no cover - direct script execution
@@ -59,15 +63,19 @@ except ImportError:  # pragma: no cover - direct script execution
         fetch_youtube_connect_transcript,
         material_from_youtube_connect,
     )
+    from preference_profile import build_personal_relevance
+    from scoring import apply_deterministic_scoring
     from providers.youtube_safari_provider import fetch_youtube_chrome_transcript, fetch_youtube_safari_transcript
     from report_targets import DEFAULT_REPORT_TARGET, normalize_report_target
     from renderer import render_single_video_html
     from report_cache import build_report_cache_identity, read_cached_report, report_cache_dir, write_cached_report
-    from resolver import refresh_xiaohongshu_media_url_from_browser, resolve_url
+    from resolver import refresh_xiaohongshu_media_url_from_browser, resolve_url, sanitize_xiaohongshu_url_for_output
     from subtitle_fetcher import fetch_platform_subtitles
     from transcriber import transcribe_audio_to_material
     from transcript_source_adapter import transcript_material_to_local_extract_input
     from transcript_quality import MIN_TRANSCRIPT_COVERAGE_RATIO, parse_time_seconds, validate_transcript_coverage
+    from visual_analyzer import download_visual_video, video_path_from_result, visual_download_debug
+    from visual_activation import decide_visual_analysis
     from watch_order import write_watch_order
     from scoring import SCORING_FORMULA_VERSION
 
@@ -85,12 +93,13 @@ SUBTITLE_QUALITY_AUDIO_FALLBACK_REASONS = {
     "plain_text_char_count_too_low",
     "video_duration_missing_for_quality_gate",
     "title_transcript_mismatch",
+    "subtitle_episode_identity_mismatch",
 }
 
 
 def audio_source_url_type(url: str) -> str:
     parsed = urllib.parse.urlparse(str(url or ""))
-    if parsed.netloc.endswith("xiaohongshu.com") and "/explore/" in parsed.path:
+    if parsed.netloc.endswith("xiaohongshu.com") and ("/explore/" in parsed.path or "/discovery/item/" in parsed.path):
         query = urllib.parse.parse_qs(parsed.query)
         return "note_url_with_xsec" if "xsec_token" in query else "note_url"
     if parsed.scheme and parsed.netloc:
@@ -120,7 +129,7 @@ def audio_source_for_item(item: dict[str, Any], metadata: dict[str, str]) -> tup
 
 def is_xiaohongshu_note_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(str(url or ""))
-    return parsed.netloc.endswith("xiaohongshu.com") and "/explore/" in parsed.path
+    return parsed.netloc.endswith("xiaohongshu.com") and ("/explore/" in parsed.path or "/discovery/item/" in parsed.path)
 
 
 def safe_media_refresh_debug(refresh_result: dict[str, Any]) -> dict[str, Any]:
@@ -166,6 +175,8 @@ def subtitle_quality_fallback_reason_code(reason: str) -> str:
         return "subtitle_timeline_mismatch"
     if reason == "title_transcript_mismatch":
         return "subtitle_title_transcript_mismatch"
+    if reason == "subtitle_episode_identity_mismatch":
+        return "subtitle_episode_identity_mismatch"
     return "subtitle_quality_insufficient"
 
 
@@ -174,6 +185,8 @@ def subtitle_quality_fallback_error(reason: str) -> str:
         return "subtitle timeline exceeds video duration; retrying with audio transcription"
     if reason == "title_transcript_mismatch":
         return "subtitle title/content mismatch; retrying with audio transcription"
+    if reason == "subtitle_episode_identity_mismatch":
+        return "subtitle BVID/CID does not match the requested episode; retrying with audio transcription"
     return "platform subtitle quality is insufficient; retrying with audio transcription"
 
 
@@ -182,11 +195,14 @@ class PipelineDependencies:
     resolve_url_func: Callable[..., dict[str, Any]] = resolve_url
     fetch_subtitles_func: Callable[..., Any] = fetch_platform_subtitles
     download_audio_func: Callable[..., Any] = download_standard_audio
+    download_visual_func: Callable[..., Any] = download_visual_video
     transcribe_func: Callable[..., Any] = transcribe_audio_to_material
     youtube_connect_fallback_func: Optional[Callable[[str], Any]] = fetch_youtube_connect_transcript
     youtube_chrome_fallback_func: Optional[Callable[[str], Any]] = fetch_youtube_chrome_transcript
     youtube_safari_fallback_func: Optional[Callable[[str], Any]] = fetch_youtube_safari_transcript
     build_local_extract_func: Callable[..., dict[str, Any]] = build_local_extract_payload
+    analyze_visual_func: Optional[Callable[..., dict[str, Any]]] = None
+    prepare_visual_func: Optional[Callable[[], Any]] = None
     build_review_request_func: Callable[..., dict[str, Any]] = build_review_request
     parse_review_response_func: Callable[[Any], dict[str, Any]] = parse_review_response
     render_func: Callable[[dict[str, Any]], str] = render_single_video_html
@@ -197,10 +213,15 @@ class PipelineDependencies:
     resolver_options: dict[str, Any] = field(default_factory=dict)
     subtitle_options: dict[str, Any] = field(default_factory=dict)
     audio_download_options: dict[str, Any] = field(default_factory=dict)
+    visual_download_options: dict[str, Any] = field(default_factory=dict)
     media_url_refresh_func: Optional[Callable[..., dict[str, Any]]] = refresh_xiaohongshu_media_url_from_browser
+    media_url_refresh_browser: str = ""
     transcriber_options: dict[str, Any] = field(default_factory=dict)
+    visual_analysis_options: dict[str, Any] = field(default_factory=dict)
+    visual_analysis_mode: str | None = None
     local_extract_options: dict[str, Any] = field(default_factory=dict)
     review_options: dict[str, Any] = field(default_factory=dict)
+    force_audio_transcription: bool = False
 
 
 def write_text(path: Path, content: str) -> None:
@@ -348,6 +369,24 @@ def apply_metadata_display_fields(payload: dict[str, Any], metadata: dict[str, s
     normalized = copy.deepcopy(payload)
     normalized["date"] = metadata["date"]
     normalized["duration"] = metadata["duration"]
+    return normalized
+
+
+def apply_personal_relevance(payload: dict[str, Any], metadata: dict[str, str], review_options: dict[str, Any]) -> dict[str, Any]:
+    normalized = copy.deepcopy(payload)
+    profile = review_options.get("preference_profile")
+    if isinstance(profile, dict) and profile.get("schema_version") and profile.get("sha256"):
+        relevance = build_personal_relevance(normalized, profile)
+        normalized["personal_relevance"] = relevance
+        structured = normalized.get("structured_assessment")
+        if isinstance(structured, dict):
+            structured["话题兴趣"] = relevance["topic_interest_score"]
+        score_basis = normalized.get("score_basis")
+        if isinstance(score_basis, dict):
+            score_basis["topic_interest"] = relevance["summary"]
+        normalized = apply_deterministic_scoring(normalized, review_options.get("scoring_weights"))
+    else:
+        normalized.pop("personal_relevance", None)
     return normalized
 
 
@@ -775,7 +814,7 @@ def resolve_with_youtube_connect_fallback(
 def initial_manifest(source_url: str, source_kind: str, total_count: int) -> dict[str, Any]:
     return {
         "manifest_version": "watchbrief_v5.pipeline_manifest.v1",
-        "source_url": source_url,
+        "source_url": sanitize_xiaohongshu_url_for_output(source_url),
         "source_kind": source_kind,
         "total_count": total_count,
         "completed_count": 0,
@@ -993,6 +1032,7 @@ def process_video_item(
     work_dir = (work_root or (output_dir / "_work")) / slug
     subtitle_dir = work_dir / "subtitles"
     audio_dir = work_dir / "audio"
+    visual_dir = work_dir / "visual"
     transcript_dir = work_dir / "transcript"
     artifact_dir = (artifact_root or (output_dir / "payloads")) / slug
     html_path = output_dir / f"{slug}.html"
@@ -1000,6 +1040,7 @@ def process_video_item(
     item_manifest_path = artifact_dir / "item_manifest.json"
     review_request_path = artifact_dir / "review_request.json"
     local_extract_path = artifact_dir / "local_extract.json"
+    visual_evidence_path = artifact_dir / "visual_evidence.json"
 
     item_manifest: dict[str, Any] = {
         "item_manifest_version": "watchbrief_v5.pipeline_item.v1",
@@ -1012,6 +1053,8 @@ def process_video_item(
         "work_dir": str(work_dir),
         "html_path": str(html_path),
         "payload_path": str(payload_path),
+        "visual_analysis_enabled": False,
+        "force_audio_transcription": deps.force_audio_transcription,
         "steps": [],
     }
     if isinstance(item.get("transcript_fallback"), dict):
@@ -1036,11 +1079,14 @@ def process_video_item(
         *,
         subtitle_available: bool,
         rejection_debug: Optional[dict[str, Any]] = None,
+        forced: bool = False,
     ) -> dict[str, Any]:
         audio_kwargs = {
-            "subtitle_checked": True,
+            "subtitle_checked": not forced,
             "subtitle_available": subtitle_available,
         }
+        if forced:
+            audio_kwargs["force_audio_transcription"] = True
         if rejection_debug:
             audio_kwargs["subtitle_available"] = False
         for key in ("bvid", "cid", "playinfo"):
@@ -1057,17 +1103,19 @@ def process_video_item(
         except BaseException as exc:
             refresh_result: dict[str, Any] = {}
             refreshed_media_url = ""
+            refresh_browser = str(deps.media_url_refresh_browser or "").strip().lower()
             if (
                 isinstance(exc, AcquisitionError)
                 and exc.stage == "audio_downloader"
                 and not audio_source_debug.get("media_url_available")
                 and is_xiaohongshu_note_url(audio_source_url)
                 and deps.media_url_refresh_func is not None
+                and refresh_browser
             ):
                 try:
                     refresh_result = deps.media_url_refresh_func(
                         audio_source_url,
-                        browser=str(audio_source_debug.get("selected_cookies_browser") or item.get("selected_cookies_browser") or "safari"),
+                        browser=refresh_browser,
                     )
                 except Exception as refresh_exc:
                     refresh_result = {
@@ -1179,7 +1227,20 @@ def process_video_item(
         local_input: dict[str, Any] | None = None
         transcript_quality_debug: dict[str, Any] | None = None
         fallback_material = item.get("_transcript_material")
-        if isinstance(fallback_material, dict):
+        if deps.force_audio_transcription:
+            step(
+                "subtitle_fetcher",
+                "skipped",
+                {
+                    "reason": "force_audio_transcription",
+                    "audio_downloader_skipped_due_to_subtitle": False,
+                },
+            )
+            material = download_and_transcribe_audio(
+                subtitle_available=False,
+                forced=True,
+            )
+        elif isinstance(fallback_material, dict):
             material = copy.deepcopy(fallback_material)
             fallback_step = copy.deepcopy(item.get("transcript_fallback") or {})
             fallback_step.setdefault("transcript_source", material.get("source", {}).get("kind", "youtube_connect"))
@@ -1226,6 +1287,15 @@ def process_video_item(
                     segments=subtitle_local_input["transcript_segments"],
                     transcript_source=subtitle_local_input["transcript_source"],
                     title=metadata.get("title"),
+                    episode_identity={
+                        "page_index": item.get("page_index"),
+                        "page_count": item.get("page_count"),
+                        "expected_bvid": item.get("bvid"), "expected_cid": item.get("cid"),
+                        "source_bvid": material.get("source", {}).get("bvid"),
+                        "source_cid": material.get("source", {}).get("cid"),
+                        "provider": material.get("source", {}).get("provider"),
+                        "part_title": material.get("source", {}).get("part_title"),
+                    },
                 )
                 if subtitle_quality_should_fallback_to_audio(subtitle_quality_debug):
                     fallback_reason = str(subtitle_quality_debug.get("transcript_quality_reason") or "")
@@ -1304,15 +1374,115 @@ def process_video_item(
                 **transcript_quality_debug,
             },
         )
+        visual_mode = deps.visual_analysis_mode or ("on" if deps.analyze_visual_func is not None else "off")
+        visual_decision = decide_visual_analysis(
+            visual_mode,
+            local_input["transcript_segments"],
+            duration_seconds=parse_duration_seconds(transcript_quality_debug.get("video_duration_seconds")),
+            max_gap_seconds=float(deps.visual_analysis_options.get("max_gap_seconds") or 10.0),
+        )
+        if visual_decision["enabled"] and deps.analyze_visual_func is None:
+            raise PipelineError("visual_preflight", "visual_analyzer_unavailable", "visual analysis was selected but no analyzer is configured")
+        item_manifest["visual_analysis_enabled"] = visual_decision["enabled"]
+        item_manifest["visual_activation"] = visual_decision
+        step("visual_activation", "enabled" if visual_decision["enabled"] else "skipped", visual_decision)
+        visual_evidence: dict[str, Any] | None = None
+        if visual_decision["enabled"]:
+            if deps.prepare_visual_func is not None:
+                try:
+                    deps.prepare_visual_func()
+                    step("visual_preflight", "completed")
+                except BaseException as exc:
+                    record = error_record(item, exc)
+                    step("visual_preflight", "failed", {"reason_code": record["reason_code"], "error": record["error"]})
+                    raise
+            visual_source_url, visual_source_debug = audio_source_for_item(item, metadata)
+            try:
+                visual_download_kwargs = dict(deps.visual_download_options)
+                visual_result = deps.download_visual_func(
+                    visual_source_url,
+                    visual_dir,
+                    **visual_download_kwargs,
+                )
+                visual_video_path = video_path_from_result(visual_result)
+                visual_acquisition_debug = visual_download_debug(visual_result)
+                visual_acquisition_debug.update(visual_source_debug)
+                step("visual_acquisition", "completed", visual_acquisition_debug)
+            except BaseException as exc:
+                record = error_record(item, exc)
+                step(
+                    "visual_acquisition",
+                    "failed",
+                    {
+                        "stage": record["stage"],
+                        "reason_code": record["reason_code"],
+                        "error": record["error"],
+                        **(record.get("debug") or {}),
+                    },
+                )
+                raise
+            try:
+                visual_evidence = deps.analyze_visual_func(
+                    visual_video_path,
+                    visual_dir,
+                    **deps.visual_analysis_options,
+                )
+                if not isinstance(visual_evidence, dict):
+                    raise PipelineError(
+                        "visual_analysis",
+                        "visual_evidence_invalid",
+                        "visual analyzer must return a JSON object",
+                    )
+                visual_evidence_hash = str(visual_evidence.get("visual_evidence_hash") or "")
+                if not re.fullmatch(r"[0-9a-f]{64}", visual_evidence_hash):
+                    raise PipelineError(
+                        "visual_analysis",
+                        "visual_evidence_hash_invalid",
+                        "visual analyzer did not return a valid evidence hash",
+                    )
+                deps.write_json_func(visual_evidence_path, visual_evidence)
+                item_manifest["visual_evidence_hash"] = visual_evidence_hash
+                item_manifest["visual_evidence_path"] = str(visual_evidence_path)
+                step(
+                    "visual_analysis",
+                    "completed",
+                    {
+                        "path": str(visual_evidence_path),
+                        "visual_evidence_hash": visual_evidence_hash,
+                        "evidence_version": visual_evidence.get("evidence_version"),
+                        "prompt_version": visual_evidence.get("prompt_version"),
+                        "provider": visual_evidence.get("provider"),
+                        "frame_count": len(visual_evidence.get("frames") or []),
+                        "duration_seconds": visual_evidence.get("duration_seconds"),
+                        "sampling": visual_evidence.get("sampling"),
+                    },
+                )
+            except BaseException as exc:
+                record = error_record(item, exc)
+                step(
+                    "visual_analysis",
+                    "failed",
+                    {
+                        "stage": record["stage"],
+                        "reason_code": record["reason_code"],
+                        "error": record["error"],
+                        **(record.get("debug") or {}),
+                    },
+                )
+                raise
         local_extract_kwargs = {
             "transcript_language": local_input["transcript_language"],
             "transcript_quality": local_input["transcript_quality"],
             "transcript_source": local_input["transcript_source"],
         }
+        if visual_evidence is not None:
+            local_extract_kwargs["visual_evidence"] = visual_evidence
         local_extract_kwargs.update(deps.local_extract_options)
         local_extract_kwargs.setdefault("debug_dir", artifact_dir)
         local_extract_debug = local_extract_start_debug(local_extract_kwargs)
         local_extract_debug["transcript_hash"] = transcript_hash_from_segments(local_input["transcript_segments"])
+        if visual_evidence is not None:
+            local_extract_debug["visual_evidence_hash"] = visual_evidence["visual_evidence_hash"]
         local_extract_debug["segment_count"] = len(local_input["transcript_segments"])
         local_extract_debug["transcript_char_count"] = sum(
             len(str(segment.get("text") or ""))
@@ -1352,6 +1522,14 @@ def process_video_item(
             "transcript_char_count": local_extract_debug["transcript_char_count"],
             "chunked": bool(chunked_debug),
         }
+        if visual_evidence is not None:
+            completed_local_extract_debug.update(
+                {
+                    "visual_evidence_hash": visual_evidence["visual_evidence_hash"],
+                    "visual_provider": (visual_evidence.get("provider") or {}).get("provider"),
+                    "visual_prompt_version": visual_evidence.get("prompt_version"),
+                }
+            )
         if isinstance(chunked_debug, dict):
             completed_local_extract_debug.update({
                 "chunk_count": chunked_debug.get("chunk_count"),
@@ -1368,6 +1546,17 @@ def process_video_item(
 
         review_request = deps.build_review_request_func(local_extract_payload, report_target=report_target)
         scoring_formula_version = str(deps.review_options.get("scoring_formula_version") or SCORING_FORMULA_VERSION)
+        preference_profile = deps.review_options.get("preference_profile")
+        if isinstance(preference_profile, dict):
+            safe_preference_profile = {
+                "path": str(preference_profile.get("path") or ""),
+                "schema_version": str(preference_profile.get("schema_version") or ""),
+                "sha256": str(preference_profile.get("sha256") or ""),
+                "bytes": int(preference_profile.get("bytes") or 0),
+            }
+            review_request["preference_profile"] = safe_preference_profile
+        else:
+            safe_preference_profile = None
         stability = review_request.setdefault("stability_metadata", {})
         if isinstance(stability, dict):
             stability["scoring_formula_version"] = scoring_formula_version
@@ -1377,23 +1566,29 @@ def process_video_item(
             stability["source_bvid"] = str(item.get("bvid") or item.get("aid") or "")
             stability["source_cid"] = str(item.get("cid") or "")
             stability["transcript_source"] = str(local_input.get("transcript_source") or stability.get("transcript_source") or "")
+            if safe_preference_profile:
+                stability["preference_profile_schema_version"] = safe_preference_profile["schema_version"]
+                stability["preference_profile_sha256"] = safe_preference_profile["sha256"]
         deps.write_json_func(review_request_path, review_request)
         codex_model_id = str(deps.review_options.get("codex_model") or "")
-        step(
-            "codex_review_request",
-            "completed",
-            {
-                "model_call_allowed": review_request.get("model_call_allowed"),
-                "report_target": report_target,
-                "transcript_hash": local_extract_debug["transcript_hash"],
-                "qwen_model_id": local_extract_payload.get("qwen_extract", {}).get("_qwen_model", local_extract_debug["qwen_model"]),
-                "qwen_prompt_version": local_extract_payload.get("analysis_boundary", {}).get("qwen_prompt_version", ""),
-                "codex_model": codex_model_id,
-                "codex_prompt_version": str(review_request.get("codex_prompt_version") or CODEX_REVIEW_PROMPT_VERSION),
-                "scoring_formula_version": scoring_formula_version,
-                "watchbrief_version": WATCHBRIEF_VERSION,
-            },
-        )
+        review_request_debug = {
+            "model_call_allowed": review_request.get("model_call_allowed"),
+            "report_target": report_target,
+            "transcript_hash": local_extract_debug["transcript_hash"],
+            "qwen_model_id": local_extract_payload.get("qwen_extract", {}).get("_qwen_model", local_extract_debug["qwen_model"]),
+            "qwen_prompt_version": local_extract_payload.get("analysis_boundary", {}).get("qwen_prompt_version", ""),
+            "codex_model": codex_model_id,
+            "codex_prompt_version": str(review_request.get("codex_prompt_version") or CODEX_REVIEW_PROMPT_VERSION),
+            "scoring_formula_version": scoring_formula_version,
+            "watchbrief_version": WATCHBRIEF_VERSION,
+        }
+        if safe_preference_profile:
+            review_request_debug.update({
+                "preference_profile_path": safe_preference_profile["path"],
+                "preference_profile_schema_version": safe_preference_profile["schema_version"],
+                "preference_profile_sha256": safe_preference_profile["sha256"],
+            })
+        step("codex_review_request", "completed", review_request_debug)
 
         cache_enabled = bool(deps.review_options.get("report_cache_enabled", False))
         force_reanalysis = bool(deps.review_options.get("force_reanalysis", False))
@@ -1448,7 +1643,11 @@ def process_video_item(
                     )
 
         if cached_payload is not None:
-            normalized_payload = apply_metadata_display_fields(cached_payload, metadata)
+            normalized_payload = apply_personal_relevance(
+                apply_metadata_display_fields(cached_payload, metadata),
+                metadata,
+                deps.review_options,
+            )
             deps.write_json_func(payload_path, normalized_payload)
             step("codex_review", "skipped", {"cache_hit": True, "cache_key": cache_key, "cached_payload_path": cached_payload_path})
             step("validator", "completed", {"path": str(payload_path), "source": "report_cache"})
@@ -1458,7 +1657,7 @@ def process_video_item(
             provider_review_request = copy.deepcopy(review_request)
             provider_review_request["_watchbrief_debug_dir"] = str(artifact_dir)
             raw_review_response = review_response_provider(copy.deepcopy(item), provider_review_request, copy.deepcopy(local_extract_payload))
-            normalized_payload = apply_metadata_display_fields(
+            content_payload = apply_metadata_display_fields(
                 parse_review_response_with_metadata(
                     deps.parse_review_response_func,
                     raw_review_response,
@@ -1467,10 +1666,19 @@ def process_video_item(
                 ),
                 metadata,
             )
+            normalized_payload = apply_personal_relevance(
+                content_payload,
+                metadata,
+                deps.review_options,
+            )
             deps.write_json_func(payload_path, normalized_payload)
             step("validator", "completed", {"path": str(payload_path)})
             if cache_enabled and cache_identity is not None:
-                written_cache_path, written_cache_key = write_cached_report(report_cache_dir(deps.review_options.get("report_cache_dir")), cache_identity, normalized_payload)
+                written_cache_path, written_cache_key = write_cached_report(
+                    report_cache_dir(deps.review_options.get("report_cache_dir")),
+                    cache_identity,
+                    content_payload,
+                )
                 item_manifest["cache_hit"] = False
                 item_manifest["cache_key"] = written_cache_key
                 item_manifest["cached_payload_path"] = str(written_cache_path)

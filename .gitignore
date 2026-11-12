@@ -32,6 +32,9 @@ build/
 
 WatchBrief-Runs/
 WatchBrief-Debug/
+outputs/
+work/
+rollback/
 *_debug*/
 payloads/
 _work/
